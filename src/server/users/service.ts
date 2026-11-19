@@ -5,9 +5,8 @@ import type { Config } from '../config'
 import { AppError, ConfigError, NotFoundError, ValidationError } from '../errors'
 import { hashPassword, verifyPassword, verifyPasswordOrDummy } from './passwords'
 import { toPublicUser } from './types'
-import type { PublicUser, Role, Session, User, UserStore } from './types'
+import type { PublicUser, Session, User, UserStore } from './types'
 
-const ROLES: Role[] = ['viewer', 'tester', 'developer', 'admin']
 const RESERVED = new Set(['baseline', 'system'])
 const USERNAME = /^[a-z0-9._-]{2,32}$/
 
@@ -24,12 +23,8 @@ function checkPassword(password: string): void {
   }
 }
 
-function checkRole(role: string): asserts role is Role {
-  if (!ROLES.includes(role as Role)) throw new ValidationError(`role must be one of ${ROLES.join(', ')}`)
-}
-
 const invalidLogin = () => new AppError('Invalid username or password', 401)
-const isActiveAdmin = (u: User) => u.role === 'admin' && !u.disabled
+const isActive = (u: User) => !u.disabled
 
 export class UserService {
   private readonly users: UserStore
@@ -48,13 +43,13 @@ export class UserService {
     return hashPassword(plain, this.hashCost)
   }
 
-  private async otherActiveAdmins(exceptId: string): Promise<number> {
-    return (await this.users.listUsers()).filter((u) => u.id !== exceptId && isActiveAdmin(u)).length
+  private async otherActiveUsers(exceptId: string): Promise<number> {
+    return (await this.users.listUsers()).filter((u) => u.id !== exceptId && isActive(u)).length
   }
 
-  private async guardLastAdmin(target: User): Promise<void> {
-    if (isActiveAdmin(target) && (await this.otherActiveAdmins(target.id)) === 0) {
-      throw new AppError('At least one active admin is required', 409)
+  private async guardLastActive(target: User): Promise<void> {
+    if (isActive(target) && (await this.otherActiveUsers(target.id)) === 0) {
+      throw new AppError('At least one active user is required', 409)
     }
   }
 
@@ -116,44 +111,41 @@ export class UserService {
     return (await this.users.listUsers()).map(toPublicUser)
   }
 
-  async create(input: { username: string; displayName?: string; role: Role; password: string }, actor: string): Promise<PublicUser> {
+  async create(input: { username: string; displayName?: string; password: string }, actor: string): Promise<PublicUser> {
     const username = normalizeUsername(input.username)
     checkPassword(input.password)
-    checkRole(input.role)
     const ts = this.now().toISOString()
     const user: User = {
       id: randomUUID(),
       username,
       displayName: input.displayName?.trim() || username,
-      role: input.role,
+      role: 'admin', // spec A8: no roles in the API; stored so data stays valid if they return
       passwordHash: await this.hash(input.password),
       disabled: false,
       createdAt: ts,
       updatedAt: ts,
     }
     await this.users.createUser(user)
-    await safeRecord(this.audit, { actor, action: 'user.create', target: username, details: { role: user.role } })
+    await safeRecord(this.audit, { actor, action: 'user.create', target: username, details: {} })
     return toPublicUser(user)
   }
 
   async update(
     id: string,
-    patch: { displayName?: string; role?: Role; password?: string; disabled?: boolean },
+    patch: { displayName?: string; password?: string; disabled?: boolean },
     actor: string,
     opts: { keepSessionId?: string } = {},
   ): Promise<PublicUser> {
     const current = await this.load(id)
-    if (patch.role !== undefined) checkRole(patch.role)
     if (patch.password !== undefined) checkPassword(patch.password)
     const next: User = {
       ...current,
       displayName: patch.displayName?.trim() || current.displayName,
-      role: patch.role ?? current.role,
       disabled: patch.disabled ?? current.disabled,
       passwordHash: patch.password !== undefined ? await this.hash(patch.password) : current.passwordHash,
       updatedAt: this.now().toISOString(),
     }
-    if (isActiveAdmin(current) && !isActiveAdmin(next)) await this.guardLastAdmin(current)
+    if (isActive(current) && !isActive(next)) await this.guardLastActive(current)
     await this.users.updateUser(next)
     if (next.disabled && !current.disabled) await this.users.deleteSessionsOf(id)
     else if (patch.password !== undefined) {
@@ -163,7 +155,6 @@ export class UserService {
     }
     const changed = [
       patch.displayName !== undefined && 'displayName',
-      patch.role !== undefined && 'role',
       patch.password !== undefined && 'password',
       patch.disabled !== undefined && 'disabled',
     ].filter(Boolean)
@@ -173,7 +164,7 @@ export class UserService {
 
   async remove(id: string, actor: string): Promise<void> {
     const user = await this.load(id)
-    await this.guardLastAdmin(user)
+    await this.guardLastActive(user)
     await this.users.deleteUser(id)
     await safeRecord(this.audit, { actor, action: 'user.delete', target: user.username })
   }

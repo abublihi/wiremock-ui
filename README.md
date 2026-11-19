@@ -19,18 +19,13 @@ The UI listens on http://localhost:3000 and WireMock on http://localhost:8080. C
 
 Accounts live in Redis. On first start the UI creates one admin from `ADMIN_USER` / `ADMIN_PASSWORD` (only when there are no users yet; changing those variables later does not touch existing accounts).
 
-| Role | Can |
-| --- | --- |
-| `viewer` | Read mocks, the catalog and the request log |
-| `tester` | Also create mocks and edit or delete their own |
-| `developer` | Also edit anyone's (non-baseline) mocks, write the catalog (integrations and endpoints) and clear the request log |
-| `admin` | Also edit baseline mocks, delete catalog entries, manage users, read the audit log and run imports |
+There are no roles: every signed-in user can manage everything (mocks, catalog, request log, users, audit log and imports). Sign-in, sessions and CSRF protection stay.
 
 - **Browser sessions:** `POST /api/session` with `{ "username", "password" }` sets an HttpOnly `wmui_session` cookie and returns `{ user, csrfToken }`. Send the token as `X-CSRF-Token` on every `POST`, `PUT`, `PATCH` and `DELETE`. `DELETE /api/session` signs out. The cookie is `Secure` when `PUBLIC_UI_URL` is https, or when `TRUST_PROXY` is on and the proxy sends `X-Forwarded-Proto: https`.
 - **Scripts:** HTTP Basic with a user account. No CSRF token is needed and no `WWW-Authenticate` challenge is sent, so browsers never pop a login dialog.
 - **Rate limit:** browser sign-in and Basic auth share one limit of 10 failed attempts per 15 minutes per client IP; after that every attempt from that IP gets `429` (even with the right password) until the window ends. Successful sign-ins do not count.
-- Admins manage accounts through `/api/users`; anyone can change their own password with `POST /api/session/password` (`{ current, next }`). An admin who resets their own password through `/api/users` stays signed in on that session; their other sessions end.
-- **Audit log:** admins read it with `GET /api/audit?limit=100` (1–500, newest first). The response is `{ entries, nextCursor }`; pass `cursor=<nextCursor>` for the next page until it is `null`. Entries are kept 30 days.
+- Any signed-in user manages accounts through `/api/users` (`username`, `password`, optional `displayName`; a `role` field is rejected with 400). The last active user cannot be disabled or deleted (409). Anyone can change their own password with `POST /api/session/password` (`{ current, next }`). Resetting your own password through `/api/users` keeps the session you did it from; your other sessions end.
+- **Audit log:** any signed-in user reads it with `GET /api/audit?limit=100` (1–500, newest first). The response is `{ entries, nextCursor }`; pass `cursor=<nextCursor>` for the next page until it is `null`. Entries are kept 30 days.
 
 Behind a reverse proxy, set `TRUST_PROXY=true` so the client IP (for rate limiting) is taken from `X-Forwarded-For`. The rightmost hop is used, because that is the one your proxy appended; do not enable it without a proxy, as clients could spoof the header. `PUBLIC_UI_URL` is the externally visible base URL of the UI (for example `https://wiremock-ui.example.com`); an https URL marks session cookies `Secure`.
 

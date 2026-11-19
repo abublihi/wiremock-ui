@@ -51,7 +51,7 @@ test('login wrong password and unknown user give the same 401 message', async ()
 
 test('disabled user cannot log in (same 401)', async () => {
   await admin()
-  const u = await svc.create({ username: 'bob', role: 'tester', password: 'bobpass12' }, 'root')
+  const u = await svc.create({ username: 'bob', password: 'bobpass12' }, 'root')
   await svc.update(u.id, { disabled: true }, 'root')
   await expect(svc.login('bob', 'bobpass12', '1.1.1.1', config)).rejects.toMatchObject({ status: 401, message: 'Invalid username or password' })
 })
@@ -64,21 +64,20 @@ test('rate limit: failures only — 15 successes pass; after 10 failures the rig
   await svc.login('root', 'rootpass1', '3.3.3.3', config)
 })
 
-test('last admin cannot be demoted, disabled or removed (409)', async () => {
+test('the last active user cannot be disabled or removed (409)', async () => {
   await admin()
   const id = await rootId()
-  for (const patch of [{ role: 'viewer' as const }, { disabled: true }]) {
-    await expect(svc.update(id, patch, 'root')).rejects.toMatchObject({ status: 409, message: 'At least one active admin is required' })
-  }
-  await expect(svc.remove(id, 'root')).rejects.toMatchObject({ status: 409 })
-  const second = await svc.create({ username: 'two', role: 'admin', password: 'twopass12' }, 'root')
-  await svc.update(id, { role: 'viewer' }, 'root')
+  await expect(svc.update(id, { disabled: true }, 'root')).rejects.toMatchObject({ status: 409, message: 'At least one active user is required' })
+  await expect(svc.remove(id, 'root')).rejects.toMatchObject({ status: 409, message: 'At least one active user is required' })
+  const second = await svc.create({ username: 'two', password: 'twopass12' }, 'root')
+  await svc.update(id, { disabled: true }, 'root')
   await expect(svc.remove(second.id, 'root')).rejects.toMatchObject({ status: 409 })
+  await expect(svc.update(second.id, { disabled: true }, 'root')).rejects.toMatchObject({ status: 409 })
 })
 
 test('password change and disable end existing sessions', async () => {
   await admin()
-  const u = await svc.create({ username: 'bob', role: 'tester', password: 'bobpass12' }, 'root')
+  const u = await svc.create({ username: 'bob', password: 'bobpass12' }, 'root')
   const s1 = (await svc.login('bob', 'bobpass12', '1.1.1.1', config)).session
   await svc.update(u.id, { password: 'newpass123' }, 'root')
   expect(await store.getSession(s1.id)).toBeNull()
@@ -116,21 +115,20 @@ test('logout deletes the session; changeOwnPassword checks the current one', asy
   await svc.login('root', 'brandnew12', '1.1.1.1', config)
 })
 
-test('reserved usernames, bad usernames, short/long passwords and bad roles rejected (400)', async () => {
+test('reserved usernames, bad usernames, short/long passwords rejected (400)', async () => {
   await admin()
-  const base = { role: 'tester' as const, password: 'longenough1' }
+  const base = { password: 'longenough1' }
   for (const username of ['baseline', 'System', 'a', 'has space']) {
     await expect(svc.create({ ...base, username }, 'root')).rejects.toMatchObject({ status: 400 })
   }
   await expect(svc.create({ ...base, username: 'okname', password: 'short' }, 'root')).rejects.toMatchObject({ status: 400, message: 'password must be 8–72 characters' })
   await expect(svc.create({ ...base, username: 'okname', password: 'x'.repeat(73) }, 'root')).rejects.toMatchObject({ status: 400 })
-  await expect(svc.create({ ...base, username: 'okname', role: 'root' as never }, 'root')).rejects.toMatchObject({ status: 400 })
   expect((await svc.create({ ...base, username: 'MixedCase' }, 'root')).username).toBe('mixedcase')
 })
 
 test('audit entries written for create/update/delete without password values', async () => {
   await admin()
-  const u = await svc.create({ username: 'bob', role: 'tester', password: 'bobpass12' }, 'root')
+  const u = await svc.create({ username: 'bob', password: 'bobpass12' }, 'root')
   await svc.update(u.id, { password: 'newpass123', displayName: 'Bob' }, 'root')
   await svc.remove(u.id, 'root')
   const entries = (await audit.list()).entries.filter((e) => e.actor === 'root')
@@ -143,7 +141,7 @@ test('audit entries written for create/update/delete without password values', a
 
 test('no UserService return value contains passwordHash', async () => {
   await admin()
-  const created = await svc.create({ username: 'bob', role: 'tester', password: 'bobpass12' }, 'root')
+  const created = await svc.create({ username: 'bob', password: 'bobpass12' }, 'root')
   const updated = await svc.update(created.id, { displayName: 'B' }, 'root')
   const login = await svc.login('bob', 'bobpass12', '1.1.1.1', config)
   for (const v of [created, updated, login, await svc.list()]) expect(JSON.stringify(v)).not.toContain('passwordHash')

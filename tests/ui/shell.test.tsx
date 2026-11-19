@@ -4,14 +4,14 @@ import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { renderToString } from 'react-dom/server'
 import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } from '@tanstack/react-router'
-import type { PublicUser, Role } from '@/server/users/types'
+import type { PublicUser } from '@/server/users/types'
 import { AppShell, APP_NAV } from '@/ui/components/shell/AppShell'
 import { HazardStrip } from '@/ui/components/shell/HazardStrip'
 import { PrefsProvider, usePrefsState, type Prefs } from '@/ui/i18n'
 import { RootDocument, prefsFromRequest } from '@/routes/__root'
 
-const user = (role: Role): PublicUser => ({
-  id: 'u1', username: 'sara', displayName: 'Sara Q', role, disabled: false,
+const user = (_label = 'user'): PublicUser => ({
+  id: 'u1', username: 'sara', displayName: 'Sara Q', disabled: false,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 
@@ -53,13 +53,13 @@ describe('HazardStrip', () => {
 })
 
 describe('AppShell', () => {
-  it('shows every nav item to a signed-in user, whatever the role field says', async () => {
-    await renderShell(user('viewer'))
+  it('shows every nav item to a signed-in user', async () => {
+    await renderShell(user())
     expect(navLabels()).toEqual(['Mocks', 'Request log', 'Catalog', 'Users', 'Audit', 'Import'])
   })
 
   it('shows the hazard strip, the user and labelled icon-only controls', async () => {
-    await renderShell(user('tester'))
+    await renderShell(user())
     expect(screen.getByRole('note')).toBeTruthy()
     expect(screen.getByText('Sara Q')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Open navigation' })).toBeTruthy()
@@ -91,7 +91,7 @@ describe('preference toggles and the mobile nav', () => {
         <div data-testid="document" className={prefs.theme}>
           <QueryClientProvider client={queryClient}>
             <PrefsProvider prefs={prefs} onThemeChange={setTheme}>
-              <AppShell nav={APP_NAV} user={user('tester')}>
+              <AppShell nav={APP_NAV} user={user()}>
                 <p>page content</p>
               </AppShell>
             </PrefsProvider>

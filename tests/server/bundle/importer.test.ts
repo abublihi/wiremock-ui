@@ -11,7 +11,6 @@ const admin: PublicUser = {
   id: 'ui-admin',
   username: 'ui-admin',
   displayName: 'a',
-  role: 'admin',
   disabled: false,
   createdAt: '',
   updatedAt: '',

@@ -24,7 +24,7 @@ const answer = async () => (await fetch(`${env.wm.url}/prec/users?id=7`)).text()
 beforeAll(async () => {
   env = await startTestRuntime()
   rt = env.rt
-  tester = await rt.users.create({ username: 'prec-tester', role: 'tester', password: 'password-1' }, 'ui-admin')
+  tester = await rt.users.create({ username: 'prec-tester', password: 'password-1' }, 'ui-admin')
 }, 120_000)
 afterAll(async () => {
   await env?.stop()

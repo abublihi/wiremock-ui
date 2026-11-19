@@ -141,8 +141,8 @@ test('WireMock rejects stub → 400 carrying WireMock reason', async () => {
 
 const mockBody = (path: string) => input(path)
 
-async function userSession(username: string, role: string) {
-  await rt.users.create({ username, role: role as never, password: 'password-1' }, 'ui-admin')
+async function userSession(username: string) {
+  await rt.users.create({ username, password: 'password-1' }, 'ui-admin')
   return login(rt, username, 'password-1')
 }
 
@@ -166,7 +166,7 @@ async function seedBaseline(path: string) {
 const served = async (path: string) => (await fetch(`${wm().url}${path}`)).status
 
 test('cookie POST /api/mocks without X-CSRF-Token is 403, with the token 201', async () => {
-  const s = await userSession('csrf-tester', 'tester')
+  const s = await userSession('csrf-tester')
   const denied = await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/csrf1'), asSession(s, false)))
   expect(denied.status).toBe(403)
   expect(await denied.json()).toEqual({ error: 'CSRF token missing or invalid' })
@@ -174,52 +174,29 @@ test('cookie POST /api/mocks without X-CSRF-Token is 403, with the token 201', a
   expect(ok.status).toBe(201)
 })
 
-test('viewer: GET mocks 200, POST mocks 403', async () => {
-  const s = await userSession('viewer-1', 'viewer')
-  expect((await listMocks(rt, req('/api/mocks', 'GET', undefined, asSession(s)))).status).toBe(200)
-  const res = await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/viewer'), asSession(s)))
-  expect(res.status).toBe(403)
-  expect(await res.json()).toEqual({ error: 'Forbidden' })
-})
-
-test("tester cannot touch others' or baseline mocks (403, WireMock unchanged)", async () => {
-  const owner = await userSession('tester-a', 'tester')
-  const other = await userSession('tester-b', 'tester')
+test("any signed-in user edits and deletes others' and baseline mocks", async () => {
+  const owner = await userSession('user-a')
+  const other = await userSession('user-b')
   const mine = await (await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/own'), asSession(owner)))).json()
   const baseId = await seedBaseline('/h/base1')
 
   const put = await updateMock(rt, req(`/api/mocks/${mine.id}`, 'PUT', { stub: input('/h/own', { response: { status: 418 } }), version: 1 }, asSession(other)), { id: mine.id })
-  expect(put.status).toBe(403)
+  expect(put.status).toBe(200)
+  expect(await served('/h/own')).toBe(418)
   const del = await deleteMock(rt, req(`/api/mocks/${mine.id}`, 'DELETE', undefined, asSession(other)), { id: mine.id })
-  expect(del.status).toBe(403)
-  expect(await served('/h/own')).toBe(200)
-  expect(await rt.store.get(mine.id)).toEqual(mine)
+  expect(del.status).toBe(204)
+  expect(await served('/h/own')).toBe(404)
 
   const basePut = await updateMock(rt, req(`/api/mocks/${baseId}`, 'PUT', { stub: input('/h/base1', { response: { status: 418 } }), version: 1 }, asSession(owner)), { id: baseId })
-  expect(basePut.status).toBe(403)
-  const baseDel = await deleteMock(rt, req(`/api/mocks/${baseId}`, 'DELETE', undefined, asSession(owner)), { id: baseId })
-  expect(baseDel.status).toBe(403)
-  expect(await served('/h/base1')).toBe(200)
-  expect((await rt.store.get(baseId))?.metadata?.wiremockUi?.version).toBe(1)
-
-  const ownPut = await updateMock(rt, req(`/api/mocks/${mine.id}`, 'PUT', { stub: input('/h/own'), version: 1 }, asSession(owner)), { id: mine.id })
-  expect(ownPut.status).toBe(200)
-})
-
-test('developer can edit another tester\'s mock but not a baseline mock', async () => {
-  const tester = await userSession('tester-c', 'tester')
-  const dev = await userSession('dev-1', 'developer')
-  const mine = await (await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/dev-edit'), asSession(tester)))).json()
-  const ok = await updateMock(rt, req(`/api/mocks/${mine.id}`, 'PUT', { stub: input('/h/dev-edit'), version: 1 }, asSession(dev)), { id: mine.id })
-  expect(ok.status).toBe(200)
-  const baseId = await seedBaseline('/h/base2')
-  const denied = await deleteMock(rt, req(`/api/mocks/${baseId}`, 'DELETE', undefined, asSession(dev)), { id: baseId })
-  expect(denied.status).toBe(403)
-  expect(await served('/h/base2')).toBe(200)
+  expect(basePut.status).toBe(200)
+  expect(await served('/h/base1')).toBe(418)
+  const baseDel = await deleteMock(rt, req(`/api/mocks/${baseId}`, 'DELETE', undefined, asSession(other)), { id: baseId })
+  expect(baseDel.status).toBe(204)
+  expect(await served('/h/base1')).toBe(404)
 })
 
 test('mock create/update/delete write audit entries with actor and target', async () => {
-  const s = await userSession('audited', 'tester')
+  const s = await userSession('audited')
   const m = await (await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/audit'), asSession(s)))).json()
   await updateMock(rt, req(`/api/mocks/${m.id}`, 'PUT', { stub: input('/h/audit'), version: 1 }, asSession(s)), { id: m.id })
   await deleteMock(rt, req(`/api/mocks/${m.id}`, 'DELETE', undefined, asSession(s)), { id: m.id })
@@ -229,7 +206,7 @@ test('mock create/update/delete write audit entries with actor and target', asyn
 })
 
 test('a body cannot spoof the owner', async () => {
-  const s = await userSession('spoofer', 'tester')
+  const s = await userSession('spoofer')
   const body = input('/h/spoof', { metadata: { wiremockUi: { owner: 'baseline', version: 99, updatedBy: 'baseline' } } })
   const created = await (await createMock(rt, req('/api/mocks', 'POST', body, asSession(s)))).json()
   expect(created.metadata.wiremockUi).toMatchObject({ owner: 'spoofer', version: 1, updatedBy: 'spoofer' })
@@ -238,7 +215,7 @@ test('a body cannot spoof the owner', async () => {
 })
 
 test('an audit failure after a committed write is logged and the write still succeeds', async () => {
-  const s = await userSession('audit-fail', 'tester')
+  const s = await userSession('audit-fail')
   const real = rt.audit.record
   rt.audit.record = async () => {
     throw new Error('audit down')
@@ -253,7 +230,7 @@ test('an audit failure after a committed write is logged and the write still suc
 })
 
 test('GET /api/mocks: owner=me, status and q filters; bad status is 400', async () => {
-  const s = await userSession('filterer', 'tester')
+  const s = await userSession('filterer')
   const mine = await (await createMock(rt, req('/api/mocks', 'POST', input('/h/f-mine/zebra', { response: { status: 418 } }), asSession(s)))).json()
   await createMock(rt, req('/api/mocks', 'POST', input('/h/f-other')))
   const ids = async (qs: string) => (await (await listMocks(rt, req(`/api/mocks?${qs}`, 'GET', undefined, asSession(s)))).json()).map((x: { id: string }) => x.id)
@@ -268,9 +245,9 @@ test('GET /api/mocks: owner=me, status and q filters; bad status is 400', async 
 })
 
 test('duplicate, history, restore and reset-mine over HTTP', async () => {
-  const s = await userSession('extras', 'tester')
-  const viewer = await userSession('extras-viewer', 'viewer')
-  const other = await userSession('extras-other', 'tester')
+  const s = await userSession('extras')
+  const viewer = await userSession('extras-viewer')
+  const other = await userSession('extras-other')
   const baseId = await seedBaseline('/h/x-base')
 
   // duplicate needs no body or content type, but cookie sessions need CSRF
@@ -280,15 +257,14 @@ test('duplicate, history, restore and reset-mine over HTTP', async () => {
   expect(dupRes.status).toBe(201)
   const dup = await dupRes.json()
   expect(dup.metadata.wiremockUi.owner).toBe('extras')
-  expect((await duplicateMock(rt, req(`/api/mocks/${baseId}/duplicate`, 'POST', undefined, asSession(viewer)), { id: baseId })).status).toBe(403)
+  expect((await duplicateMock(rt, req(`/api/mocks/${baseId}/duplicate`, 'POST', undefined, asSession(viewer)), { id: baseId })).status).toBe(201)
   expect((await duplicateMock(rt, req('/api/mocks/nope/duplicate', 'POST', undefined, asSession(s)), { id: 'nope' })).status).toBe(404)
 
   // history + restore
   await updateMock(rt, req(`/api/mocks/${dup.id}`, 'PUT', { stub: input('/h/x-base', { response: { status: 202, body: 'v2' } }), version: 1 }, asSession(s)), { id: dup.id })
   const hist = await (await mockHistory(rt, req(`/api/mocks/${dup.id}/history`, 'GET', undefined, asSession(viewer)), { id: dup.id })).json()
   expect(hist.map((h: { metadata: { wiremockUi: { version: number } } }) => h.metadata.wiremockUi.version)).toEqual([1])
-  expect((await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 1 }, asSession(other)), { id: dup.id })).status).toBe(403)
-  expect((await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 1 }, { ...asSession(s), 'Content-Type': 'text/plain' }), { id: dup.id })).status).toBe(415)
+    expect((await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 1 }, { ...asSession(s), 'Content-Type': 'text/plain' }), { id: dup.id })).status).toBe(415)
   expect((await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 'x' }, asSession(s)), { id: dup.id })).status).toBe(400)
   expect((await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 7 }, asSession(s)), { id: dup.id })).status).toBe(404)
   const restored = await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 1 }, asSession(s)), { id: dup.id })
@@ -302,13 +278,12 @@ test('duplicate, history, restore and reset-mine over HTTP', async () => {
   expect(reset.status).toBe(200)
   expect(await reset.json()).toEqual({ deleted: before.length })
   expect(await (await listMocks(rt, req('/api/mocks?owner=me', 'GET', undefined, asSession(s)))).json()).toEqual([])
-  expect((await resetMine(rt, new Request(`${URL_}/api/mocks/reset-mine`, { method: 'POST', headers: asSession(viewer) }))).status).toBe(403)
   expect(await served('/h/x-base')).toBe(200)
 })
 
 // Last: stops WireMock.
 test('a body id/uuid cannot target another stub (create, update, duplicate, restore)', async () => {
-  const s = await userSession('uuid-tester', 'tester')
+  const s = await userSession('uuid-tester')
   const baseId = await seedBaseline('/h/uuid-base')
   const wmBody = async (id: string) => {
     const res = await fetch(`${wm().url}/__admin/mappings/${id}`, { headers: { Authorization: basic(wm().user, wm().password) } })

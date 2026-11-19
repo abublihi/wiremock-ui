@@ -37,8 +37,8 @@ const endpointBody = (extra: Record<string, unknown> = {}) => ({
 beforeAll(async () => {
   env = await startTestRuntime()
   rt = env.rt
-  await rt.users.create({ username: 'dev1', role: 'developer', password: 'password-1' }, 'ui-admin')
-  await rt.users.create({ username: 'tess', role: 'tester', password: 'password-1' }, 'ui-admin')
+  await rt.users.create({ username: 'dev1', password: 'password-1' }, 'ui-admin')
+  await rt.users.create({ username: 'tess', password: 'password-1' }, 'ui-admin')
   admin = await login(rt, 'ui-admin', 'ui-admin-pass')
   developer = await login(rt, 'dev1', 'password-1')
   tester = await login(rt, 'tess', 'password-1')
@@ -51,15 +51,12 @@ afterAll(async () => {
 const putInt = (s: Session, key: string, body: unknown = { name: 'Payments', prefix: '/pay' }) =>
   putIntegration(rt, req(`/api/integrations/${key}`, 'PUT', body, as(s)), { key })
 
-test('roles: tester PUT 403, developer PUT 200, developer DELETE 403, admin DELETE 204', async () => {
-  expect((await putInt(tester, 'roles')).status).toBe(403)
-  const ok = await putInt(developer, 'roles')
+test('any signed-in user writes and deletes catalog entries', async () => {
+  const ok = await putInt(tester, 'roles')
   expect(ok.status).toBe(200)
-  expect(await ok.json()).toMatchObject({ key: 'roles', name: 'Payments', prefix: '/pay', updatedBy: 'dev1' })
-  const devDel = await deleteIntegration(rt, req('/api/integrations/roles', 'DELETE', undefined, as(developer)), { key: 'roles' })
-  expect(devDel.status).toBe(403)
-  const adminDel = await deleteIntegration(rt, req('/api/integrations/roles', 'DELETE', undefined, as(admin)), { key: 'roles' })
-  expect(adminDel.status).toBe(204)
+  expect(await ok.json()).toMatchObject({ key: 'roles', name: 'Payments', prefix: '/pay', updatedBy: 'tess' })
+  const del = await deleteIntegration(rt, req('/api/integrations/roles', 'DELETE', undefined, as(developer)), { key: 'roles' })
+  expect(del.status).toBe(204)
   expect((await listIntegrations(rt, req('/api/integrations', 'GET', undefined, as(tester)))).status).toBe(200)
 })
 
@@ -78,7 +75,6 @@ test('endpoint CRUD over HTTP, body key mismatch → 400, validation → 400, un
   const bad = await putEndpoint(rt, req(path, 'PUT', endpointBody({ path: 'users' }), as(developer)), params)
   expect(bad.status).toBe(400)
   expect(await bad.json()).toEqual({ error: 'path must start with /' })
-  expect((await putEndpoint(rt, req(path, 'PUT', endpointBody(), as(tester)), params)).status).toBe(403)
 
   const created = await putEndpoint(rt, req(path, 'PUT', endpointBody(), as(developer)), params)
   expect(created.status).toBe(200)
@@ -91,8 +87,7 @@ test('endpoint CRUD over HTTP, body key mismatch → 400, validation → 400, un
   const ghost = await putEndpoint(rt, req('/api/integrations/ghost/endpoints/x', 'PUT', endpointBody(), as(developer)), { key: 'ghost', endpoint: 'x' })
   expect(ghost.status).toBe(404)
 
-  expect((await deleteEndpoint(rt, req(path, 'DELETE', undefined, as(developer)), params)).status).toBe(403)
-  expect((await deleteEndpoint(rt, req(path, 'DELETE', undefined, as(admin)), params)).status).toBe(204)
+  expect((await deleteEndpoint(rt, req(path, 'DELETE', undefined, as(developer)), params)).status).toBe(204)
   expect((await getEndpoint(rt, req(path, 'GET', undefined, as(admin)), params)).status).toBe(404)
 })
 

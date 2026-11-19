@@ -9,7 +9,7 @@ import { PrefsProvider } from '@/ui/i18n'
 import { Toaster } from '@/ui/components/ui/sonner'
 
 export const testUser: PublicUser = {
-  id: 'u1', username: 'sara', displayName: 'Sara Q', role: 'tester', disabled: false,
+  id: 'u1', username: 'sara', displayName: 'Sara Q', disabled: false,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 }
 export const testSession: SessionData = { user: testUser, csrfToken: 'csrf-1' }

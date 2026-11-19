@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import type { AuditEntry, AuditLog } from '../../../src/server/audit/log'
-import { AppError, ConflictError, NotFoundError } from '../../../src/server/errors'
+import { ConflictError, NotFoundError } from '../../../src/server/errors'
 import { MockService, type MockInput } from '../../../src/server/mocks/service'
 import { RedisMockStore } from '../../../src/server/store/redis'
 import type { PublicUser } from '../../../src/server/users/types'
@@ -20,8 +20,8 @@ const audit: AuditLog = {
   },
   list: async () => ({ entries: [], nextCursor: null }),
 }
-const user = (username: string, role: PublicUser['role'] = 'tester'): PublicUser => ({
-  id: username, username, displayName: username, role, disabled: false, createdAt: '', updatedAt: '',
+const user = (username: string): PublicUser => ({
+  id: username, username, displayName: username, disabled: false, createdAt: '', updatedAt: '',
 })
 const input = (path: string, status = 200, extra: Partial<MockInput> = {}): MockInput => ({
   request: { method: 'GET', urlPath: path },
@@ -149,19 +149,15 @@ test('restore a deleted mock recreates it with the same id and the next version'
   expect(await store.get(m.id)).toEqual(back)
 })
 
-test("tester cannot restore a colleague's mock; developer can", async () => {
+test("anyone can restore a colleague's mock", async () => {
   const m = await svc.create(input('/rc', 200), user('amy'))
   await svc.update(m.id, input('/rc', 201), 1, user('amy'))
-  const err = await svc.restore(m.id, 1, user('bob')).catch((e) => e)
-  expect(err).toBeInstanceOf(AppError)
-  expect(err.status).toBe(403)
-  expect((await served('/rc')).body).toBe('s201')
-  expect((await svc.restore(m.id, 1, user('dev', 'developer'))).metadata?.wiremockUi?.version).toBe(3)
+  expect((await svc.restore(m.id, 1, user('bob'))).metadata?.wiremockUi?.version).toBe(3)
+  expect((await served('/rc')).body).toBe('s200')
 })
 
-test('restore of a live mock now owned by someone else is 403 and changes nothing', async () => {
+test('restore of a live mock now owned by someone else works for anyone', async () => {
   const m = await svc.create(input('/ro', 200), user('amy'))
-  // Current version is owned by bob (set up directly, bypassing the service).
   const current = {
     ...m,
     response: { status: 203, body: 's203' },
@@ -169,10 +165,9 @@ test('restore of a live mock now owned by someone else is 403 and changes nothin
   }
   await store.save(current, 1)
   await new WireMockClient({ baseUrl: wm.url, user: wm.user, password: wm.password }).importStubs([current], { deleteAllNotInImport: false })
-  const err = await svc.restore(m.id, 1, user('amy')).catch((e) => e)
-  expect(err.status).toBe(403)
-  expect(await store.get(m.id)).toEqual(current)
-  expect((await served('/ro')).body).toBe('s203')
+  const back = await svc.restore(m.id, 1, user('amy'))
+  expect(back.metadata?.wiremockUi?.version).toBe(3)
+  expect((await served('/ro')).body).toBe('s200')
 })
 
 test('restore of a live mock that moved meanwhile is 409', async () => {
