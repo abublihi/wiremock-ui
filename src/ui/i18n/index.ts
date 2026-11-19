@@ -1,26 +1,12 @@
 import { createContext, createElement, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import { Direction } from 'radix-ui'
 import { en } from './en'
-import { ar } from './ar'
 import { THEME_COOKIE, type Theme } from '../theme'
 
-export type Locale = 'en' | 'ar'
-export type Dir = 'ltr' | 'rtl'
+// English only: strings still live in one file so copy stays reviewable in one place.
 export type MessageKey = keyof typeof en
-export type Prefs = { locale: Locale; theme: Theme }
+export type Prefs = { theme: Theme }
 
-export const LOCALE_COOKIE = 'wmui_lang'
 const ONE_YEAR = 60 * 60 * 24 * 365
-
-const messages: Record<Locale, Record<MessageKey, string>> = { en, ar }
-
-export function isLocale(value: unknown): value is Locale {
-  return value === 'en' || value === 'ar'
-}
-
-export function dirOf(locale: Locale): Dir {
-  return locale === 'ar' ? 'rtl' : 'ltr'
-}
 
 /** Reads one cookie from a `Cookie` header (or `document.cookie`) string. */
 export function readCookie(header: string | null | undefined, name: string): string | undefined {
@@ -41,46 +27,23 @@ export function writePrefCookie(name: string, value: string): void {
   document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${ONE_YEAR}; SameSite=Lax`
 }
 
-export function localeFromCookies(header: string | null | undefined): Locale {
-  const value = readCookie(header, LOCALE_COOKIE)
-  return isLocale(value) ? value : 'en'
-}
-
-export function getLocaleFromRequest(request: Request): Locale {
-  return localeFromCookies(request.headers.get('cookie'))
-}
-
-export function translate(locale: Locale, key: MessageKey, vars?: Record<string, string | number>): string {
-  const template = messages[locale][key] ?? en[key]
+export function translate(key: MessageKey, vars?: Record<string, string | number>): string {
+  const template = en[key]
   if (!vars) return template
   return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match))
 }
 
-/**
- * The app's live preferences: each change writes its cookie (so the next server render matches)
- * and re-renders at once. `onLocaleChanged` lets the root reload route data for the new locale.
- */
-export function usePrefsState(initial: Prefs, onLocaleChanged?: (locale: Locale) => void) {
+/** The app's live theme preference: each change writes its cookie (so the next server render matches). */
+export function usePrefsState(initial: Prefs) {
   const [prefs, setPrefs] = useState<Prefs>(initial)
-  const setLocale = useCallback(
-    (locale: Locale) => {
-      writePrefCookie(LOCALE_COOKIE, locale)
-      setPrefs((p) => ({ ...p, locale }))
-      onLocaleChanged?.(locale)
-    },
-    [onLocaleChanged],
-  )
   const setTheme = useCallback((theme: Theme) => {
     writePrefCookie(THEME_COOKIE, theme)
-    setPrefs((p) => ({ ...p, theme }))
+    setPrefs({ theme })
   }, [])
-  return { prefs, setLocale, setTheme }
+  return { prefs, setTheme }
 }
 
-type PrefsContextValue = Prefs & {
-  setLocale: (locale: Locale) => void
-  setTheme: (theme: Theme) => void
-}
+type PrefsContextValue = Prefs & { setTheme: (theme: Theme) => void }
 
 export const PrefsContext = createContext<PrefsContextValue | null>(null)
 
@@ -90,38 +53,20 @@ export function usePrefs(): PrefsContextValue {
   return value
 }
 
-/**
- * Locale + theme for the whole app, and the document direction for Radix primitives.
- * The owner (the root route) persists changes; tests pass no-op handlers.
- */
+/** The theme for the whole app. The owner (the root route) persists changes; tests pass a no-op. */
 export function PrefsProvider({
   prefs,
-  onLocaleChange,
   onThemeChange,
   children,
 }: {
   prefs: Prefs
-  onLocaleChange: (locale: Locale) => void
   onThemeChange: (theme: Theme) => void
   children: ReactNode
 }) {
-  const value = useMemo(
-    () => ({ ...prefs, setLocale: onLocaleChange, setTheme: onThemeChange }),
-    [prefs, onLocaleChange, onThemeChange],
-  )
-  return createElement(
-    PrefsContext.Provider,
-    { value },
-    createElement(Direction.Provider, { dir: dirOf(prefs.locale) }, children),
-  )
-}
-
-export function useLocale(): { locale: Locale; dir: Dir; setLocale: (locale: Locale) => void } {
-  const { locale, setLocale } = usePrefs()
-  return { locale, dir: dirOf(locale), setLocale }
+  const value = useMemo(() => ({ ...prefs, setTheme: onThemeChange }), [prefs, onThemeChange])
+  return createElement(PrefsContext.Provider, { value }, children)
 }
 
 export function useT(): (key: MessageKey, vars?: Record<string, string | number>) => string {
-  const { locale } = usePrefs()
-  return useCallback((key, vars) => translate(locale, key, vars), [locale])
+  return translate
 }

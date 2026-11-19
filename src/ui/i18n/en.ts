@@ -1,4 +1,4 @@
-// English messages. Every key here must also exist in ar.ts (enforced by tests/ui/i18n.test.ts).
+// English messages: every user-visible string lives here and goes through t().
 export const en = {
   'app.name': 'wiremock-ui',
   'hazard.label': 'Test environment — mocks only, never real data',
@@ -14,10 +14,6 @@ export const en = {
   'shell.skipToContent': 'Skip to content',
   'shell.openNav': 'Open navigation',
   'common.close': 'Close',
-
-  'locale.change': 'Change language',
-  'locale.en': 'English',
-  'locale.ar': 'العربية',
 
   'theme.label': 'Theme',
   'theme.light': 'Light',

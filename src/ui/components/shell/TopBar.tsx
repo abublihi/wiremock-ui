@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LanguagesIcon, MenuIcon, MonitorIcon, MoonIcon, SunIcon, WaypointsIcon } from 'lucide-react'
+import { MenuIcon, MonitorIcon, MoonIcon, SunIcon, WaypointsIcon } from 'lucide-react'
 import type { PublicUser } from '@/server/users/types'
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/ui/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/ui/components/ui/sheet'
-import { isLocale, useLocale, useT } from '@/ui/i18n'
+import { useT } from '@/ui/i18n'
 import { THEMES, isTheme, useTheme, type Theme } from '@/ui/theme'
 import { Rail, type NavItem } from './Rail'
 
@@ -27,30 +27,6 @@ export function Brand() {
       </span>
       {t('app.name')}
     </span>
-  )
-}
-
-function LanguageMenu() {
-  const t = useT()
-  const { locale, setLocale } = useLocale()
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={t('locale.change')}>
-          <LanguagesIcon />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
-        <DropdownMenuRadioGroup value={locale} onValueChange={(v) => isLocale(v) && setLocale(v)}>
-          <DropdownMenuRadioItem value="en" lang="en" dir="ltr">
-            {t('locale.en')}
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="ar" lang="ar" dir="rtl">
-            {t('locale.ar')}
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }
 
@@ -101,7 +77,6 @@ export function TopBar({ nav, user }: { nav: NavItem[]; user: PublicUser | null 
       </Sheet>
       <Brand />
       <div className="ms-auto flex items-center gap-1">
-        <LanguageMenu />
         <ThemeMenu />
         {user && (
           <div className="flex items-center gap-2 ps-2" title={t('user.signedInAs', { name: user.displayName })}>

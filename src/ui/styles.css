@@ -2,14 +2,11 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* Fonts: Plex Sans (Latin) + Plex Sans Arabic share one stack; Condensed for page titles; Mono for
+/* Fonts: Plex Sans; Condensed for page titles; Mono for
    URLs, ids, JSON and header names. */
 @import "@fontsource/ibm-plex-sans/latin-400.css";
 @import "@fontsource/ibm-plex-sans/latin-500.css";
 @import "@fontsource/ibm-plex-sans/latin-600.css";
-@import "@fontsource/ibm-plex-sans-arabic/arabic-400.css";
-@import "@fontsource/ibm-plex-sans-arabic/arabic-500.css";
-@import "@fontsource/ibm-plex-sans-arabic/arabic-600.css";
 @import "@fontsource/ibm-plex-sans-condensed/latin-600.css";
 @import "@fontsource/ibm-plex-mono/latin-400.css";
 @import "@fontsource/ibm-plex-mono/latin-500.css";
@@ -105,8 +102,8 @@
 }
 
 @theme inline {
-  --font-sans: "IBM Plex Sans", "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
-  --font-condensed: "IBM Plex Sans Condensed", "IBM Plex Sans Arabic", ui-sans-serif, sans-serif;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-condensed: "IBM Plex Sans Condensed", ui-sans-serif, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   /* Type scale: 12 / 14 (base) / 16 / 20 / 28 px. */

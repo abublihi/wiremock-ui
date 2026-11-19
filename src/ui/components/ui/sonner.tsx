@@ -1,16 +1,13 @@
-import { useLocale } from "@/ui/i18n"
 import { useTheme } from "@/ui/theme"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme } = useTheme()
-  const { dir } = useLocale()
 
   return (
     <Sonner
       theme={theme}
-      dir={dir}
       className="toaster group"
       icons={{
         success: (
