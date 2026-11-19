@@ -1,4 +1,4 @@
-import { ConfigError } from '../errors'
+import { ConfigError, UpstreamError } from '../errors'
 import type { WireMockClient } from './client'
 
 export async function assertWireMockReady(
@@ -6,12 +6,18 @@ export async function assertWireMockReady(
   baseUrl: string,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
-  const open = await fetchFn(`${baseUrl.replace(/\/+$/, '')}/__admin/mappings?limit=1`)
+  const root = baseUrl.replace(/\/+$/, '')
+  let open: Response
+  try {
+    open = await fetchFn(`${root}/__admin/mappings?limit=1`)
+  } catch (err) {
+    throw new UpstreamError(`WireMock unreachable at ${baseUrl}: ${(err as Error).message}`)
+  }
   if (open.status === 200) {
     throw new ConfigError('WireMock admin API answers without auth; start WireMock with --admin-api-basic-auth')
   }
-  const version = await client.version().catch(() => null)
-  if (version === null) throw new ConfigError('WireMock admin credentials rejected')
+  // version() throws ConfigError on 401/403 and UpstreamError on 5xx/network.
+  const version = await client.version()
   const major = Number.parseInt(version, 10)
   if (!(major >= 3)) throw new ConfigError(`WireMock 3.x is required, found ${version}`)
   if (!(await client.ping())) throw new ConfigError('WireMock admin credentials rejected')

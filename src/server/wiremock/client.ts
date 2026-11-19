@@ -1,4 +1,4 @@
-import { UpstreamError, ValidationError } from '../errors'
+import { ConfigError, UpstreamError, ValidationError } from '../errors'
 import type { StubMapping } from './types'
 
 const PAGE = 1000
@@ -27,6 +27,7 @@ export class WireMockClient {
   }
 
   private async fail(res: Response, what: string): Promise<never> {
+    if (res.status === 401 || res.status === 403) throw new ConfigError('WireMock admin credentials rejected')
     const body = await res.text().catch(() => '')
     if (res.status >= 400 && res.status < 500) throw new ValidationError(body || `${what} rejected (${res.status})`)
     throw new UpstreamError(`WireMock ${what} failed: ${res.status} ${body}`.trim())

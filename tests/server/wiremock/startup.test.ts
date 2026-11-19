@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
+import { UpstreamError } from '../../../src/server/errors'
 import { WireMockClient } from '../../../src/server/wiremock/client'
 import { assertWireMockReady } from '../../../src/server/wiremock/startup'
 import { startWireMock, type WireMockHandle } from '../../helpers/containers'
@@ -43,4 +44,23 @@ test('refuses WireMock 2.x', async () => {
   await expect(assertWireMockReady(client, 'http://wm', fake)).rejects.toThrow(
     'WireMock 3.x is required, found 2.35.0',
   )
+})
+
+test('unreachable WireMock is an UpstreamError, not a raw TypeError', async () => {
+  const down = (async () => {
+    throw new TypeError('fetch failed')
+  }) as unknown as typeof fetch
+  const client = new WireMockClient({ baseUrl: 'http://wm', user: 'a', password: 'b', fetch: down })
+  const err = await assertWireMockReady(client, 'http://wm', down).catch((e) => e)
+  expect(err).toBeInstanceOf(UpstreamError)
+  expect(err.message).toBe('WireMock unreachable at http://wm: fetch failed')
+})
+
+test('a 500 from the authenticated version call propagates as UpstreamError, not credentials rejected', async () => {
+  const fake = (async (input: RequestInfo | URL) =>
+    String(input).includes('/__admin/version')
+      ? new Response('boom', { status: 500 })
+      : new Response('unauthorized', { status: 401 })) as typeof fetch
+  const client = new WireMockClient({ baseUrl: 'http://wm', user: 'a', password: 'b', fetch: fake })
+  await expect(assertWireMockReady(client, 'http://wm', fake)).rejects.toBeInstanceOf(UpstreamError)
 })
