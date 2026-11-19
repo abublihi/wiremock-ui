@@ -1,0 +1,12 @@
+node_modules
+dist
+.output
+.tanstack
+.git
+.superpowers
+docs
+tests
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
