@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { AuditLog } from '../audit/log'
+import { safeRecord, type AuditLog } from '../audit/log'
 import { longestPrefixMatch } from '../catalog/prefix'
 import { validateEndpoint, validateIntegration, type CatalogService } from '../catalog/service'
 import { ValidationError } from '../errors'
@@ -108,14 +108,25 @@ export async function importBundle(
     mocks.set(id, stub)
   })
 
-  // Phase 2: write.
-  for (const i of integrations) await deps.catalog.upsertIntegration(i, opts.actor)
-  for (const e of endpoints) await deps.catalog.upsertEndpoint(e, opts.actor)
+  // Phase 2: write. Catalog entries equal to the stored copy (ignoring updatedAt/updatedBy) are left alone.
+  const storedIntegrations = new Map((await deps.catalog.listIntegrations()).map((i) => [i.key, i]))
+  let upsertedIntegrations = 0
+  for (const i of integrations) {
+    if (sameCatalogEntry(storedIntegrations.get(i.key), i)) continue
+    await deps.catalog.upsertIntegration(i, opts.actor)
+    upsertedIntegrations++
+  }
+  let upsertedEndpoints = 0
+  for (const e of endpoints) {
+    if (sameCatalogEntry(await deps.catalog.findEndpoint(e.integration, e.key), e)) continue
+    await deps.catalog.upsertEndpoint(e, opts.actor)
+    upsertedEndpoints++
+  }
 
   const source = opts.source
   const report: ImportReport = {
-    integrations: integrations.length,
-    endpoints: endpoints.length,
+    integrations: upsertedIntegrations,
+    endpoints: upsertedEndpoints,
     created: 0,
     updated: 0,
     unchanged: 0,
@@ -152,12 +163,14 @@ export async function importBundle(
     }
   }
 
-  try {
-    await deps.audit.record({ actor: opts.actor, action: 'import', target: 'bundle', details: { ...report } })
-  } catch (err) {
-    logger.error({ err }, 'audit record failed')
-  }
+  await safeRecord(deps.audit, { actor: opts.actor, action: 'import', target: 'bundle', details: { ...report } })
   return report
+}
+
+function sameCatalogEntry(stored: { updatedAt: string; updatedBy: string } | null | undefined, incoming: object): boolean {
+  if (!stored) return false
+  const { updatedAt: _at, updatedBy: _by, ...rest } = stored
+  return canonicalJson(rest) === canonicalJson(incoming)
 }
 
 function nameOf(raw: unknown, field: string): string {

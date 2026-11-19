@@ -137,3 +137,20 @@ test('prune is skipped when the seed had unreadable entries', async () => {
   expect(r.pruned).toBe(0)
   expect(await env.rt.store.get('00000000-0000-4000-8000-0000000000e1')).not.toBeNull()
 })
+
+test('re-importing the same catalog writes nothing and reports only changed entries', async () => {
+  const integration = { key: 'idem', name: 'Idem', prefix: '/idem' }
+  const endpoint = {
+    integration: 'idem', key: 'get', name: 'Get', method: 'GET', path: '/x', pathType: 'exact',
+    contentType: 'json', exampleResponses: {}, allowedStatuses: [],
+  }
+  expect(await run({ integrations: [integration], catalog: [endpoint] })).toMatchObject({ integrations: 1, endpoints: 1 })
+  const before = (await env.rt.audit.list({ limit: 500 })).entries.filter((e) => e.action.startsWith('catalog.')).length
+  const stored = await env.rt.catalog.getEndpoint('idem', 'get')
+  expect(await run({ integrations: [integration], catalog: [endpoint] }, false, 'someone-else')).toMatchObject({ integrations: 0, endpoints: 0 })
+  const after = (await env.rt.audit.list({ limit: 500 })).entries.filter((e) => e.action.startsWith('catalog.')).length
+  expect(after).toBe(before)
+  expect(await env.rt.catalog.getEndpoint('idem', 'get')).toEqual(stored)
+  expect(await run({ integrations: [integration], catalog: [{ ...endpoint, name: 'Get v2' }] })).toMatchObject({ integrations: 0, endpoints: 1 })
+  expect((await env.rt.catalog.getEndpoint('idem', 'get')).name).toBe('Get v2')
+})

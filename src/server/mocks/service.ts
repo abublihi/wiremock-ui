@@ -1,4 +1,4 @@
-import type { AuditLog } from '../audit/log'
+import { safeRecord, type AuditLog } from '../audit/log'
 import { canEditMock } from '../auth/permissions'
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../errors'
 import { logger } from '../logger'
@@ -231,18 +231,8 @@ export class MockService {
     return stub
   }
 
-  // The write already committed; a failing audit log must not turn it into an error.
-  private async record(entry: {
-    actor: string
-    action: string
-    target: string
-    details?: Record<string, unknown>
-  }): Promise<void> {
-    try {
-      await this.audit.record(entry)
-    } catch (err) {
-      logger.error({ err, ...entry }, 'audit record failed')
-    }
+  private record(entry: { actor: string; action: string; target: string; details?: Record<string, unknown> }): Promise<void> {
+    return safeRecord(this.audit, entry)
   }
 
   private assertCanEdit(actor: PublicUser, owner: string): void {

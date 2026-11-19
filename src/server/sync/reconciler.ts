@@ -1,4 +1,4 @@
-import type { AuditLog } from '../audit/log'
+import { safeRecord, type AuditLog } from '../audit/log'
 import { logger } from '../logger'
 import type { MockStore } from '../store/types'
 import type { WireMockClient } from '../wiremock/client'
@@ -113,9 +113,7 @@ export class Reconciler {
       this._lastError = null
       logger.info({ stubs: snapshot.length }, 'full sync done')
       if (opts.audit) {
-        await this.audit
-          ?.record({ actor: 'system', action: 'sync', details: { stubs: snapshot.length } })
-          .catch((err) => logger.error({ err }, 'audit record failed'))
+        await safeRecord(this.audit, { actor: 'system', action: 'sync', details: { stubs: snapshot.length } })
       }
       return 'synced'
     } catch (err) {

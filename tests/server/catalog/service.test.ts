@@ -5,6 +5,7 @@ import { CatalogService } from '../../../src/server/catalog/service'
 import { RedisCatalogStore } from '../../../src/server/catalog/store'
 import { createRedis } from '../../../src/server/store/connection'
 import type { MockStore } from '../../../src/server/store/types'
+import type { StubMapping } from '../../../src/server/wiremock/types'
 import { startRedis } from '../../helpers/containers'
 
 let handle: Awaited<ReturnType<typeof startRedis>>
@@ -12,7 +13,10 @@ let redis: Redis
 let audit: RedisAuditLog
 let svc: CatalogService
 let mockCount = 0
-const mocks = { list: async () => Array.from({ length: mockCount }) } as unknown as MockStore
+let endpointMocks: StubMapping[] = []
+const mocks = {
+  list: async () => [...Array.from({ length: mockCount }, () => ({ request: {}, response: {} })), ...endpointMocks],
+} as unknown as MockStore
 
 beforeAll(async () => {
   handle = await startRedis()
@@ -27,6 +31,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await redis.flushdb()
   mockCount = 0
+  endpointMocks = []
 })
 
 const integration = (extra: Record<string, unknown> = {}) => ({ key: 'payments', name: 'Payments', prefix: '/pay', ...extra })
@@ -155,4 +160,26 @@ test('audit entries for each mutation', async () => {
     ['dev', 'catalog.endpoint.delete', 'payments/get-user'],
     ['admin', 'catalog.integration.delete', 'payments'],
   ])
+})
+
+test('deleting an endpoint that mocks were built from → 409 and nothing removed', async () => {
+  await svc.upsertIntegration(integration(), 'a')
+  await svc.upsertEndpoint(endpoint(), 'a')
+  await svc.upsertEndpoint(endpoint({ key: 'other' }), 'a')
+  endpointMocks = [
+    { id: 'm1', request: {}, response: {}, metadata: { wiremockUi: { integration: 'payments', endpoint: 'get-user' } } } as StubMapping,
+  ]
+  await expect(svc.deleteEndpoint('payments', 'get-user', 'a')).rejects.toMatchObject({ status: 409, message: 'Endpoint still has mocks' })
+  expect((await svc.listEndpoints('payments')).map((e) => e.key)).toEqual(['get-user', 'other'])
+  await svc.deleteEndpoint('payments', 'other', 'a')
+  expect((await svc.listEndpoints('payments')).map((e) => e.key)).toEqual(['get-user'])
+})
+
+test('a failing audit log does not fail a committed catalog write', async () => {
+  const broken = { record: async () => Promise.reject(new Error('audit down')), list: audit.list.bind(audit) }
+  const svc2 = new CatalogService({ catalog: new RedisCatalogStore(redis), audit: broken, mocks })
+  await expect(svc2.upsertIntegration(integration(), 'a')).resolves.toMatchObject({ key: 'payments' })
+  await expect(svc2.upsertEndpoint(endpoint(), 'a')).resolves.toMatchObject({ key: 'get-user' })
+  await expect(svc2.deleteEndpoint('payments', 'get-user', 'a')).resolves.toBeUndefined()
+  expect((await svc2.listIntegrations()).map((i) => i.key)).toEqual(['payments'])
 })

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { AuditLog } from '../audit/log'
+import { safeRecord, type AuditLog } from '../audit/log'
 import { ConflictError, NotFoundError, ValidationError } from '../errors'
 import type { MockStore } from '../store/types'
 import type { CatalogStore, Endpoint, Integration } from './types'
@@ -147,7 +147,7 @@ export class CatalogService {
     const parsed = validateIntegration(input)
     const stored: Integration = { ...parsed, updatedAt: this.now().toISOString(), updatedBy: actor }
     await this.catalog.putIntegration(stored)
-    await this.audit.record({ actor, action: 'catalog.integration.upsert', target: stored.key })
+    await safeRecord(this.audit, { actor, action: 'catalog.integration.upsert', target: stored.key })
     return stored
   }
 
@@ -155,12 +155,17 @@ export class CatalogService {
     await this.getIntegration(key)
     if ((await this.mocks.list({ integration: key })).length > 0) throw new ConflictError('Integration still has mocks')
     await this.catalog.deleteIntegration(key)
-    await this.audit.record({ actor, action: 'catalog.integration.delete', target: key })
+    await safeRecord(this.audit, { actor, action: 'catalog.integration.delete', target: key })
   }
 
   async listEndpoints(integration: string): Promise<Endpoint[]> {
     await this.getIntegration(integration)
     return this.catalog.listEndpoints(integration)
+  }
+
+  /** Stored endpoint or null, without checking the integration. */
+  findEndpoint(integration: string, key: string): Promise<Endpoint | null> {
+    return this.catalog.getEndpoint(integration, key)
   }
 
   async getEndpoint(integration: string, key: string): Promise<Endpoint> {
@@ -173,13 +178,17 @@ export class CatalogService {
     await this.getIntegration(parsed.integration)
     const stored: Endpoint = { ...parsed, updatedAt: this.now().toISOString(), updatedBy: actor }
     await this.catalog.putEndpoint(stored)
-    await this.audit.record({ actor, action: 'catalog.endpoint.upsert', target: `${stored.integration}/${stored.key}` })
+    await safeRecord(this.audit, { actor, action: 'catalog.endpoint.upsert', target: `${stored.integration}/${stored.key}` })
     return stored
   }
 
   async deleteEndpoint(integration: string, key: string, actor: string): Promise<void> {
     await this.getEndpoint(integration, key)
+    const built = (await this.mocks.list({ integration })).some(
+      (m) => m.metadata?.wiremockUi?.integration === integration && m.metadata?.wiremockUi?.endpoint === key,
+    )
+    if (built) throw new ConflictError('Endpoint still has mocks')
     await this.catalog.deleteEndpoint(integration, key)
-    await this.audit.record({ actor, action: 'catalog.endpoint.delete', target: `${integration}/${key}` })
+    await safeRecord(this.audit, { actor, action: 'catalog.endpoint.delete', target: `${integration}/${key}` })
   }
 }

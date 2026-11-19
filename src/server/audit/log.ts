@@ -1,5 +1,6 @@
 import type { Redis } from 'ioredis'
 import { ValidationError } from '../errors'
+import { logger } from '../logger'
 
 export type AuditEntry = {
   at: string
@@ -85,5 +86,15 @@ export class RedisAuditLog implements AuditLog {
       entries: page.map((r) => JSON.parse(r.member.slice(r.member.indexOf('{'))) as AuditEntry),
       nextCursor: rows.length > limit && last ? encodeCursor(last.score, last.member) : null,
     }
+  }
+}
+
+/** Records an audit entry for a change that already happened: a failing audit log is logged, never thrown. */
+export async function safeRecord(audit: AuditLog | undefined, entry: Omit<AuditEntry, 'at'>): Promise<void> {
+  if (!audit) return
+  try {
+    await audit.record(entry)
+  } catch (err) {
+    logger.error({ err, action: entry.action, target: entry.target }, 'audit record failed')
   }
 }

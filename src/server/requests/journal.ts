@@ -1,4 +1,4 @@
-import type { AuditLog } from '../audit/log'
+import { safeRecord, type AuditLog } from '../audit/log'
 import { longestPrefixMatch } from '../catalog/prefix'
 import type { CatalogService } from '../catalog/service'
 import { NotFoundError } from '../errors'
@@ -108,7 +108,7 @@ export class RequestJournal {
 
   async clear(actor: string): Promise<void> {
     await this.deps.wiremock.clearRequests()
-    await this.deps.audit.record({ actor, action: 'requests.clear' })
+    await safeRecord(this.deps.audit, { actor, action: 'requests.clear' })
   }
 
   count(pattern: Record<string, unknown>): Promise<number> {
