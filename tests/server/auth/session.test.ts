@@ -36,7 +36,7 @@ test('Set-Cookie has HttpOnly; SameSite=Lax; Path=/; Max-Age=43200 and Secure on
 test('clientIp ignores X-Forwarded-For unless trustProxy', () => {
   const req = new Request('http://x/', { headers: { 'x-forwarded-for': '1.2.3.4, 5.6.7.8' } })
   expect(clientIp(req, cfg())).toBe('unknown')
-  expect(clientIp(req, cfg({ trustProxy: true }))).toBe('1.2.3.4')
+  expect(clientIp(req, cfg({ trustProxy: true }))).toBe('5.6.7.8')
   const withIp = Object.assign(new Request('http://x/'), { ip: '9.9.9.9' })
   expect(clientIp(withIp, cfg())).toBe('9.9.9.9')
 })

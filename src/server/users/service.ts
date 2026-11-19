@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type { AuditLog } from '../audit/log'
-import { LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS, SESSION_TTL_SECONDS } from '../auth/session'
+import { LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS, SESSION_TTL_SECONDS, tooManyAttempts } from '../auth/session'
 import type { Config } from '../config'
-import { AppError, NotFoundError, ValidationError } from '../errors'
-import { hashPassword, verifyPassword } from './passwords'
+import { AppError, ConfigError, NotFoundError, ValidationError } from '../errors'
+import { hashPassword, verifyPassword, verifyPasswordOrDummy } from './passwords'
 import { toPublicUser } from './types'
 import type { PublicUser, Role, Session, User, UserStore } from './types'
 
@@ -36,7 +36,6 @@ export class UserService {
   private readonly audit: AuditLog
   private readonly now: () => Date
   private readonly hashCost?: number
-  private dummyHash?: Promise<string>
 
   constructor(deps: { users: UserStore; audit: AuditLog; now?: () => Date; hashCost?: number }) {
     this.users = deps.users
@@ -67,7 +66,17 @@ export class UserService {
 
   async ensureFirstAdmin(username: string, password: string): Promise<'created' | 'exists'> {
     if ((await this.users.countUsers()) > 0) return 'exists'
-    const name = normalizeUsername(username)
+    let name: string
+    try {
+      name = normalizeUsername(username)
+    } catch (err) {
+      throw new ConfigError(`ADMIN_USER is invalid: ${(err as Error).message}`)
+    }
+    try {
+      checkPassword(password)
+    } catch (err) {
+      throw new ConfigError(`ADMIN_PASSWORD is invalid: ${(err as Error).message}`)
+    }
     const ts = this.now().toISOString()
     try {
       await this.users.createUser({
@@ -84,17 +93,16 @@ export class UserService {
       if (err instanceof AppError && err.status === 409) return 'exists'
       throw err
     }
+    await this.audit.record({ actor: 'system', action: 'user.create', target: name, details: { role: 'admin', bootstrap: true } })
     return 'created'
   }
 
   async login(username: string, password: string, ip: string, _config: Config): Promise<{ user: PublicUser; session: Session }> {
     if ((await this.users.hitRateLimit(ip, LOGIN_WINDOW_SECONDS)) > LOGIN_MAX_ATTEMPTS) {
-      throw new AppError('Too many attempts, try again later', 429)
+      throw tooManyAttempts()
     }
     const user = await this.users.getUserByName(String(username ?? ''))
-    // Always run one bcrypt comparison so unknown users cost the same as wrong passwords.
-    this.dummyHash ??= this.hash('dummy-password')
-    const ok = await verifyPassword(String(password ?? ''), user?.passwordHash ?? (await this.dummyHash))
+    const ok = await verifyPasswordOrDummy(String(password ?? ''), user?.passwordHash)
     if (!user || !ok || user.disabled) throw invalidLogin()
     const session = await this.users.createSession(user.id, SESSION_TTL_SECONDS)
     return { user: toPublicUser(user), session }
@@ -166,10 +174,13 @@ export class UserService {
     await this.audit.record({ actor, action: 'user.delete', target: user.username })
   }
 
-  async changeOwnPassword(userId: string, current: string, next: string): Promise<void> {
+  async changeOwnPassword(userId: string, current: string, next: string, keepSessionId?: string): Promise<void> {
     const user = await this.load(userId)
     if (!(await verifyPassword(String(current ?? ''), user.passwordHash))) throw new ValidationError('Current password is incorrect')
     checkPassword(next)
     await this.users.updateUser({ ...user, passwordHash: await this.hash(next), updatedAt: this.now().toISOString() })
+    if (keepSessionId) await this.users.deleteOtherSessions(userId, keepSessionId)
+    else await this.users.deleteSessionsOf(userId)
+    await this.audit.record({ actor: user.username, action: 'user.password', target: user.username })
   }
 }

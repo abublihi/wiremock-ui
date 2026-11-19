@@ -121,3 +121,15 @@ test('updating a nonexistent user throws NotFoundError and creates nothing', asy
   await expect(store.updateUser(mk('9', 'ghost'))).rejects.toBeInstanceOf(NotFoundError)
   expect(await redis.keys('*')).toEqual([])
 })
+
+test('peekRateLimit reads without incrementing; deleteOtherSessions keeps one', async () => {
+  expect(await store.peekRateLimit('9.9.9.9')).toBe(0)
+  await store.hitRateLimit('9.9.9.9', 900)
+  expect(await store.peekRateLimit('9.9.9.9')).toBe(1)
+  expect(await store.peekRateLimit('9.9.9.9')).toBe(1)
+  const a = await store.createSession('u', 60)
+  const b = await store.createSession('u', 60)
+  await store.deleteOtherSessions('u', a.id)
+  expect(await store.getSession(a.id)).not.toBeNull()
+  expect(await store.getSession(b.id)).toBeNull()
+})

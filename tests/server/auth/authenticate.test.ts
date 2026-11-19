@@ -84,10 +84,16 @@ test('disabled user → 401 for both session and basic', async () => {
   await expect(authenticate(basic('alice', 'password1'), deps())).rejects.toMatchObject({ status: 401 })
 })
 
-test('rate limit: 11th basic attempt within window → 429 even with correct password', async () => {
+test('basic auth counts only failed attempts: 12 successes pass; 10 failures then a correct password → 429', async () => {
   await mk()
-  for (let i = 0; i < 10; i++) await authenticate(basic('alice', 'password1'), deps())
-  await expect(authenticate(basic('alice', 'password1'), deps())).rejects.toMatchObject({ status: 429 })
+  for (let i = 0; i < 12; i++) await authenticate(basic('alice', 'password1'), deps())
+  await redis.flushdb()
+  await mk()
+  for (let i = 0; i < 10; i++) await authenticate(basic('alice', 'wrong'), deps()).catch(() => {})
+  await expect(authenticate(basic('alice', 'password1'), deps())).rejects.toMatchObject({
+    status: 429,
+    message: 'Too many login attempts; try again later',
+  })
 })
 
 test('session-cookie requests do not count toward the rate limit', async () => {

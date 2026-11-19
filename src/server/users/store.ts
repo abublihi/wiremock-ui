@@ -134,6 +134,19 @@ export class RedisUserStore implements UserStore {
     await m.exec()
   }
 
+  async peekRateLimit(ip: string): Promise<number> {
+    return Number((await this.redis.get(rateKey(ip))) ?? 0)
+  }
+
+  async deleteOtherSessions(userId: string, keepId: string): Promise<void> {
+    const ids = (await this.redis.smembers(userSessionsKey(userId))).filter((id) => id !== keepId)
+    if (ids.length === 0) return
+    const m = this.redis.multi()
+    for (const id of ids) m.del(sessionKey(id))
+    m.srem(userSessionsKey(userId), ...ids)
+    await m.exec()
+  }
+
   async hitRateLimit(ip: string, windowSeconds: number): Promise<number> {
     return (await this.redis.eval(HIT_LUA, 1, rateKey(ip), windowSeconds)) as number
   }

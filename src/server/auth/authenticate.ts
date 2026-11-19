@@ -1,9 +1,9 @@
 import { AppError } from '../errors'
 import type { Config } from '../config'
-import { verifyPassword } from '../users/passwords'
+import { verifyPasswordOrDummy } from '../users/passwords'
 import { toPublicUser } from '../users/types'
 import type { PublicUser, Session, UserStore } from '../users/types'
-import { LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS, clientIp, readSessionCookie, safeEqual } from './session'
+import { LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS, clientIp, readSessionCookie, safeEqual, tooManyAttempts } from './session'
 
 export type Principal = { user: PublicUser; via: 'session' | 'basic'; session?: Session }
 export class AuthDeps {
@@ -28,14 +28,19 @@ async function viaSession(request: Request, deps: AuthDeps): Promise<Principal |
 async function viaBasic(request: Request, deps: AuthDeps): Promise<Principal | null> {
   const header = request.headers.get('authorization')
   if (!header || !/^basic\s/i.test(header)) return null
-  const hits = await deps.users.hitRateLimit(clientIp(request, deps.config), LOGIN_WINDOW_SECONDS)
-  if (hits > LOGIN_MAX_ATTEMPTS) throw new AppError('Too many attempts, try again later', 429)
+  const ip = clientIp(request, deps.config)
+  // Only failed attempts count: peek first, increment on failure.
+  if ((await deps.users.peekRateLimit(ip)) >= LOGIN_MAX_ATTEMPTS) throw tooManyAttempts()
+  const fail = async () => {
+    await deps.users.hitRateLimit(ip, LOGIN_WINDOW_SECONDS)
+    return null
+  }
   const decoded = Buffer.from(header.slice(6).trim(), 'base64').toString('utf8')
   const colon = decoded.indexOf(':')
-  if (colon === -1) return null
+  if (colon === -1) return fail()
   const user = await deps.users.getUserByName(decoded.slice(0, colon))
-  if (!user || user.disabled) return null
-  if (!(await verifyPassword(decoded.slice(colon + 1), user.passwordHash))) return null
+  const ok = await verifyPasswordOrDummy(decoded.slice(colon + 1), user?.passwordHash)
+  if (!user || user.disabled || !ok) return fail()
   return { user: toPublicUser(user), via: 'basic' }
 }
 

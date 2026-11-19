@@ -40,6 +40,10 @@ export interface UserStore {
   deleteSessionsOf(userId: string): Promise<void>
   /** INCR ratelimit:login:{ip}; EXPIRE windowSeconds on first hit. Returns the new count. */
   hitRateLimit(ip: string, windowSeconds: number): Promise<number>
+  /** Current attempt count for ip without incrementing. */
+  peekRateLimit(ip: string): Promise<number>
+  /** Deletes all of the user's sessions except keepId. */
+  deleteOtherSessions(userId: string, keepId: string): Promise<void>
 }
 
 export function toPublicUser(user: User): PublicUser {

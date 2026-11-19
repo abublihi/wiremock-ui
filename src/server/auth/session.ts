@@ -1,9 +1,11 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { Config } from '../config'
+import { AppError } from '../errors'
 
 export const SESSION_TTL_SECONDS = 43200
 export const LOGIN_WINDOW_SECONDS = 900
 export const LOGIN_MAX_ATTEMPTS = 10
+export const tooManyAttempts = () => new AppError('Too many login attempts; try again later', 429)
 export const SESSION_COOKIE = 'wmui_session'
 
 const sign = (id: string, secret: string) => createHmac('sha256', secret).update(id).digest('base64url')
@@ -59,8 +61,9 @@ export function isSecureRequest(request: Request, config: Config): boolean {
 
 export function clientIp(request: Request, config: Config): string {
   if (config.trustProxy) {
-    const first = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    if (first) return first
+    // Rightmost entry = the address our one trusted proxy saw; earlier entries are client-controlled.
+    const last = request.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim()
+    if (last) return last
   }
   // srvx's node adapter exposes the socket address as `request.ip`.
   return (request as Request & { ip?: string }).ip || 'unknown'

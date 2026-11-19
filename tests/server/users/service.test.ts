@@ -59,7 +59,7 @@ test('disabled user cannot log in (same 401)', async () => {
 test('rate limit: 11th login attempt → 429 even with right password', async () => {
   await admin()
   for (let i = 0; i < 10; i++) await svc.login('root', 'rootpass1', '2.2.2.2', config)
-  await expect(svc.login('root', 'rootpass1', '2.2.2.2', config)).rejects.toMatchObject({ status: 429 })
+  await expect(svc.login('root', 'rootpass1', '2.2.2.2', config)).rejects.toMatchObject({ status: 429, message: 'Too many login attempts; try again later' })
   await svc.login('root', 'rootpass1', '3.3.3.3', config)
 })
 
@@ -84,6 +84,25 @@ test('password change and disable end existing sessions', async () => {
   const s2 = (await svc.login('bob', 'newpass123', '1.1.1.1', config)).session
   await svc.update(u.id, { disabled: true }, 'root')
   expect(await store.getSession(s2.id)).toBeNull()
+})
+
+test('ensureFirstAdmin rejects bad ADMIN_USER / ADMIN_PASSWORD and audits creation as system', async () => {
+  await expect(svc.ensureFirstAdmin('root', 'short')).rejects.toMatchObject({ status: 500, message: expect.stringContaining('ADMIN_PASSWORD') })
+  await expect(svc.ensureFirstAdmin('baseline', 'rootpass1')).rejects.toMatchObject({ message: expect.stringContaining('ADMIN_USER') })
+  await admin()
+  expect(await audit.list()).toMatchObject([{ actor: 'system', action: 'user.create', target: 'root' }])
+})
+
+test('changeOwnPassword keeps the current session, ends others, and audits user.password', async () => {
+  await admin()
+  const a = await svc.login('root', 'rootpass1', '1.1.1.1', config)
+  const b = await svc.login('root', 'rootpass1', '1.1.1.1', config)
+  await svc.changeOwnPassword(a.user.id, 'rootpass1', 'brandnew12', a.session.id)
+  expect(await store.getSession(a.session.id)).not.toBeNull()
+  expect(await store.getSession(b.session.id)).toBeNull()
+  const entries = await audit.list()
+  expect(entries.some((e) => e.action === 'user.password' && e.target === 'root')).toBe(true)
+  expect(JSON.stringify(entries)).not.toContain('brandnew12')
 })
 
 test('logout deletes the session; changeOwnPassword checks the current one', async () => {
@@ -113,7 +132,7 @@ test('audit entries written for create/update/delete without password values', a
   const u = await svc.create({ username: 'bob', role: 'tester', password: 'bobpass12' }, 'root')
   await svc.update(u.id, { password: 'newpass123', displayName: 'Bob' }, 'root')
   await svc.remove(u.id, 'root')
-  const entries = await audit.list()
+  const entries = (await audit.list()).filter((e) => e.actor === 'root')
   expect(entries.map((e) => e.action).sort()).toEqual(['user.create', 'user.delete', 'user.update'])
   const text = JSON.stringify(entries)
   expect(text).not.toContain('bobpass12')
