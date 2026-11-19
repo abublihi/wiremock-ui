@@ -1,5 +1,6 @@
 import { ValidationError } from '../../errors'
-import { json, readJson, requireJson, withAuth } from '../wrap'
+import { buildStub, simpleMockSchema } from '../../catalog/build'
+import { json, parse, readJson, requireJson, withAuth, type AuthContext } from '../wrap'
 
 const need = (value: string | undefined, name: string) => {
   if (!value) throw new ValidationError(`${name} is required`)
@@ -50,3 +51,17 @@ export const deleteEndpoint = withAuth('catalog.delete', async ({ rt, params, pr
   await rt.catalog.deleteEndpoint(need(params.key, 'key'), need(params.endpoint, 'endpoint'), principal.user.username)
   return noContent()
 })
+
+async function buildFromRequest({ rt, request, params }: AuthContext) {
+  requireJson(request)
+  const input = parse(simpleMockSchema, await readJson(request))
+  const integration = need(params.key, 'key')
+  const endpoint = await rt.catalog.getEndpoint(integration, need(params.endpoint, 'endpoint'))
+  return buildStub(await rt.catalog.getIntegration(integration), endpoint, input)
+}
+
+export const previewMock = withAuth('mocks.read', async (ctx) => json(await buildFromRequest(ctx)))
+
+export const createCatalogMock = withAuth('mocks.create', async (ctx) =>
+  json(await ctx.rt.mocks.create(await buildFromRequest(ctx), ctx.principal.user), 201),
+)

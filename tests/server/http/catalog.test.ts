@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import {
+  createCatalogMock,
   deleteEndpoint,
   deleteIntegration,
   getEndpoint,
   listEndpoints,
   listIntegrations,
   putEndpoint,
+  previewMock,
   putIntegration,
 } from '../../../src/server/http/handlers/catalog'
 import { createMock } from '../../../src/server/http/handlers/mocks'
@@ -113,4 +115,30 @@ test('deleting an integration that still has mocks → 409', async () => {
 test('audit entries are written through the HTTP path', async () => {
   const actions = (await rt.audit.list()).map((e) => e.action)
   expect(actions).toEqual(expect.arrayContaining(['catalog.integration.upsert', 'catalog.integration.delete', 'catalog.endpoint.upsert', 'catalog.endpoint.delete']))
+})
+
+test('preview and create mocks from an endpoint over HTTP', async () => {
+  expect((await putInt(developer, 'bld', { name: 'Build', prefix: '/b' })).status).toBe(200)
+  const params = { key: 'bld', endpoint: 'get-user' }
+  const base = '/api/integrations/bld/endpoints/get-user'
+  expect((await putEndpoint(rt, req(base, 'PUT', endpointBody(), as(developer)), params)).status).toBe(200)
+  const form = { keyValue: '7', status: 200, body: '{"id":7}' }
+
+  const preview = await previewMock(rt, req(`${base}/preview`, 'POST', form, as(tester)), params)
+  expect(preview.status).toBe(200)
+  expect(await preview.json()).toMatchObject({ priority: 5, request: { urlPathTemplate: '/b/users/{id}' } })
+
+  expect((await createCatalogMock(rt, req(`${base}/mocks`, 'POST', form, as(tester)), params)).status).toBe(201)
+  const created = await createCatalogMock(rt, req(`${base}/mocks`, 'POST', form, as(developer)), params)
+  expect(created.status).toBe(201)
+  expect(await created.json()).toMatchObject({ response: { jsonBody: { id: 7 } }, metadata: { wiremockUi: { integration: 'bld', endpoint: 'get-user' } } })
+
+  const bad = await createCatalogMock(rt, req(`${base}/mocks`, 'POST', { ...form, status: 500 }, as(developer)), params)
+  expect(bad.status).toBe(400)
+  expect(await bad.json()).toEqual({ error: 'status 500 is not allowed for this endpoint' })
+  expect((await createCatalogMock(rt, req(`${base}/mocks`, 'POST', { ...form, nope: 1 }, as(developer)), params)).status).toBe(400)
+  const missing = await createCatalogMock(rt, req('/api/integrations/bld/endpoints/zzz/mocks', 'POST', form, as(developer)), { key: 'bld', endpoint: 'zzz' })
+  expect(missing.status).toBe(404)
+  const text = await previewMock(rt, req(`${base}/preview`, 'POST', JSON.stringify(form), { ...as(tester), 'Content-Type': 'text/plain' }), params)
+  expect(text.status).toBe(415)
 })

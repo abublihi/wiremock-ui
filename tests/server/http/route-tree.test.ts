@@ -19,3 +19,8 @@ test('catalog routes resolve to their own files', () => {
   expect(leaf('/api/integrations/pay/endpoints')).toBe('/api/integrations/$key/endpoints')
   expect(leaf('/api/integrations/pay/endpoints/get-user')).toBe('/api/integrations/$key/endpoints/$endpoint')
 })
+
+test('catalog build routes resolve to their own files', () => {
+  expect(leaf('/api/integrations/pay/endpoints/get-user/mocks')).toBe('/api/integrations/$key/endpoints/$endpoint/mocks')
+  expect(leaf('/api/integrations/pay/endpoints/get-user/preview')).toBe('/api/integrations/$key/endpoints/$endpoint/preview')
+})

@@ -25,6 +25,8 @@ import { Route as ApiMocksIdDuplicateRouteImport } from './routes/api/mocks.$id.
 import { Route as ApiMocksIdHistoryRouteImport } from './routes/api/mocks.$id.history'
 import { Route as ApiMocksIdRestoreRouteImport } from './routes/api/mocks.$id.restore'
 import { Route as ApiIntegrationsKeyEndpointsEndpointRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint'
+import { Route as ApiIntegrationsKeyEndpointsEndpointMocksRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint.mocks'
+import { Route as ApiIntegrationsKeyEndpointsEndpointPreviewRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint.preview'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -108,6 +110,18 @@ const ApiIntegrationsKeyEndpointsEndpointRoute =
     path: '/$endpoint',
     getParentRoute: () => ApiIntegrationsKeyEndpointsRoute,
   } as any)
+const ApiIntegrationsKeyEndpointsEndpointMocksRoute =
+  ApiIntegrationsKeyEndpointsEndpointMocksRouteImport.update({
+    id: '/mocks',
+    path: '/mocks',
+    getParentRoute: () => ApiIntegrationsKeyEndpointsEndpointRoute,
+  } as any)
+const ApiIntegrationsKeyEndpointsEndpointPreviewRoute =
+  ApiIntegrationsKeyEndpointsEndpointPreviewRouteImport.update({
+    id: '/preview',
+    path: '/preview',
+    getParentRoute: () => ApiIntegrationsKeyEndpointsEndpointRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -125,7 +139,9 @@ export interface FileRoutesByFullPath {
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
-  '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRoute
+  '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRouteWithChildren
+  '/api/integrations/$key/endpoints/$endpoint/mocks': typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
+  '/api/integrations/$key/endpoints/$endpoint/preview': typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -143,7 +159,9 @@ export interface FileRoutesByTo {
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
-  '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRoute
+  '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRouteWithChildren
+  '/api/integrations/$key/endpoints/$endpoint/mocks': typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
+  '/api/integrations/$key/endpoints/$endpoint/preview': typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -162,7 +180,9 @@ export interface FileRoutesById {
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
-  '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRoute
+  '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRouteWithChildren
+  '/api/integrations/$key/endpoints/$endpoint/mocks': typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
+  '/api/integrations/$key/endpoints/$endpoint/preview': typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -183,6 +203,8 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
     | '/api/integrations/$key/endpoints/$endpoint'
+    | '/api/integrations/$key/endpoints/$endpoint/mocks'
+    | '/api/integrations/$key/endpoints/$endpoint/preview'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -201,6 +223,8 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
     | '/api/integrations/$key/endpoints/$endpoint'
+    | '/api/integrations/$key/endpoints/$endpoint/mocks'
+    | '/api/integrations/$key/endpoints/$endpoint/preview'
   id:
     | '__root__'
     | '/'
@@ -219,6 +243,8 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
     | '/api/integrations/$key/endpoints/$endpoint'
+    | '/api/integrations/$key/endpoints/$endpoint/mocks'
+    | '/api/integrations/$key/endpoints/$endpoint/preview'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -344,17 +370,49 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIntegrationsKeyEndpointsEndpointRouteImport
       parentRoute: typeof ApiIntegrationsKeyEndpointsRoute
     }
+    '/api/integrations/$key/endpoints/$endpoint/mocks': {
+      id: '/api/integrations/$key/endpoints/$endpoint/mocks'
+      path: '/mocks'
+      fullPath: '/api/integrations/$key/endpoints/$endpoint/mocks'
+      preLoaderRoute: typeof ApiIntegrationsKeyEndpointsEndpointMocksRouteImport
+      parentRoute: typeof ApiIntegrationsKeyEndpointsEndpointRoute
+    }
+    '/api/integrations/$key/endpoints/$endpoint/preview': {
+      id: '/api/integrations/$key/endpoints/$endpoint/preview'
+      path: '/preview'
+      fullPath: '/api/integrations/$key/endpoints/$endpoint/preview'
+      preLoaderRoute: typeof ApiIntegrationsKeyEndpointsEndpointPreviewRouteImport
+      parentRoute: typeof ApiIntegrationsKeyEndpointsEndpointRoute
+    }
   }
 }
 
+interface ApiIntegrationsKeyEndpointsEndpointRouteChildren {
+  ApiIntegrationsKeyEndpointsEndpointMocksRoute: typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
+  ApiIntegrationsKeyEndpointsEndpointPreviewRoute: typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
+}
+
+const ApiIntegrationsKeyEndpointsEndpointRouteChildren: ApiIntegrationsKeyEndpointsEndpointRouteChildren =
+  {
+    ApiIntegrationsKeyEndpointsEndpointMocksRoute:
+      ApiIntegrationsKeyEndpointsEndpointMocksRoute,
+    ApiIntegrationsKeyEndpointsEndpointPreviewRoute:
+      ApiIntegrationsKeyEndpointsEndpointPreviewRoute,
+  }
+
+const ApiIntegrationsKeyEndpointsEndpointRouteWithChildren =
+  ApiIntegrationsKeyEndpointsEndpointRoute._addFileChildren(
+    ApiIntegrationsKeyEndpointsEndpointRouteChildren,
+  )
+
 interface ApiIntegrationsKeyEndpointsRouteChildren {
-  ApiIntegrationsKeyEndpointsEndpointRoute: typeof ApiIntegrationsKeyEndpointsEndpointRoute
+  ApiIntegrationsKeyEndpointsEndpointRoute: typeof ApiIntegrationsKeyEndpointsEndpointRouteWithChildren
 }
 
 const ApiIntegrationsKeyEndpointsRouteChildren: ApiIntegrationsKeyEndpointsRouteChildren =
   {
     ApiIntegrationsKeyEndpointsEndpointRoute:
-      ApiIntegrationsKeyEndpointsEndpointRoute,
+      ApiIntegrationsKeyEndpointsEndpointRouteWithChildren,
   }
 
 const ApiIntegrationsKeyEndpointsRouteWithChildren =

@@ -86,6 +86,9 @@ function checkEndpoint(e: z.infer<typeof endpointSchema>): void {
     if (location === 'jsonPath' && !expression.startsWith('$')) fail('lookup.expression for jsonPath must start with $')
     if (location === 'xPath' && !expression.startsWith('/')) fail('lookup.expression for xPath must start with /')
   }
+  e.links?.forEach((link, i) => {
+    if (!/^https?:\/\/\S+$/i.test(link.url)) fail(`links.${i}.url must be an http(s) URL`)
+  })
   for (const s of e.allowedStatuses) if (s < 100 || s > 599) fail('allowedStatuses must be between 100 and 599')
   for (const status of Object.keys(e.exampleResponses)) {
     if (!/^[1-5]\d\d$/.test(status)) fail(`exampleResponses key "${status}" must be a 3-digit status`)

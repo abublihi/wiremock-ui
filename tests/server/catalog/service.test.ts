@@ -79,6 +79,8 @@ describe('endpoint validation', () => {
     ['json request not parseable', { exampleRequest: 'x' }, 'exampleRequest must be valid JSON'],
     ['unknown method', { method: 'FETCH' }, 'method'],
     ['unknown contentType', { contentType: 'yaml' }, 'contentType'],
+    ['javascript: link', { links: [{ label: 'ok', url: 'https://a.test' }, { label: 'x', url: 'javascript:alert(1)' }] }, 'links.1.url must be an http(s) URL'],
+    ['relative link', { links: [{ label: 'x', url: '/docs' }] }, 'links.0.url must be an http(s) URL'],
   ]
   beforeEach(async () => {
     await svc.upsertIntegration(integration(), 'a')
@@ -89,6 +91,9 @@ describe('endpoint validation', () => {
   test('empty json examples and non-json text examples are accepted', async () => {
     await svc.upsertEndpoint(endpoint({ exampleRequest: '', exampleResponses: { '204': '' } }), 'a')
     await svc.upsertEndpoint(endpoint({ key: 'txt', contentType: 'text', exampleRequest: 'plain', exampleResponses: { '200': 'not json' } }), 'a')
+  })
+  test('http and https links are accepted', async () => {
+    await svc.upsertEndpoint(endpoint({ links: [{ label: 'a', url: 'http://a.test/x' }, { label: 'b', url: 'https://b.test' }] }), 'a')
   })
   test('endpoint under an unknown integration → 404', async () => {
     await expect(svc.upsertEndpoint(endpoint({ integration: 'ghost' }), 'a')).rejects.toMatchObject({ status: 404 })
