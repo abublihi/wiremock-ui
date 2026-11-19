@@ -101,14 +101,22 @@ export async function bootRuntime(
     const mocks = new MockService({ wiremock, store, audit })
     const catalog = new CatalogService({ catalog: stores.catalog, audit, mocks: store })
     const requests = new RequestJournal({ wiremock, catalog, audit })
+    const reconciler = new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000 })
     if (config.seedPath) {
       try {
         const { bundle, skipped } = await readBundleFromPath(config.seedPath)
         for (const entry of skipped) logger.warn({ entry, seedPath: config.seedPath }, 'seed entry skipped: unreadable (dangling symlink?)')
         if (skipped.length > 0 && config.seedPrune) logger.warn({ skipped: skipped.length }, 'prune skipped: seed folder had unreadable entries')
+        const idless = bundle.mocks.filter((m) => m.id === undefined && m.uuid === undefined).length
+        if (idless > 0 && !config.seedPrune) {
+          logger.warn(
+            { count: idless, seedPath: config.seedPath },
+            'seed mocks without an id get a content-derived id, so an edited one is added next to its old version; give seed mocks fixed ids or set SEED_PRUNE=true',
+          )
+        }
         const report = await importBundle(
           bundle,
-          { catalog, mocks, store, audit },
+          { catalog, mocks, store, audit, reposition: () => reconciler.repositionPersonMocks() },
           { actor: 'system', prune: config.seedPrune, source: 'seed', unreadable: skipped.length },
         )
         logger.info({ report, seedPath: config.seedPath }, 'seed imported')
@@ -116,7 +124,6 @@ export async function bootRuntime(
         throw new ConfigError(`Seed import from ${config.seedPath} failed: ${(err as Error).message}`)
       }
     }
-    const reconciler = new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000 })
     await reconciler.start()
     return { config, wiremock, store, stores, users, audit, mocks, catalog, requests, reconciler }
   } catch (err) {
