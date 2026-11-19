@@ -182,10 +182,11 @@ test('restore of a live mock that moved meanwhile is 409', async () => {
   const stale = await store.get(m.id)
   await svc.update(m.id, input('/rs', 203), 3, user('amy'))
   // The restore reads version 3 but the mock is already at 4.
+  let first = true
   const racing = new MockService({
     audit,
     wiremock: new WireMockClient({ baseUrl: wm.url, user: wm.user, password: wm.password }),
-    store: Object.assign(Object.create(store), { get: async () => stale }),
+    store: Object.assign(Object.create(store), { get: async (id: string) => (first ? ((first = false), stale) : store.get(id)) }),
   })
   const err = await racing.restore(m.id, 1, user('amy')).catch((e) => e)
   expect(err).toBeInstanceOf(ConflictError)
