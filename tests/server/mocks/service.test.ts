@@ -24,15 +24,19 @@ const input = (status: number, extra: Partial<MockInput> = {}): MockInput => ({
   ...extra,
 })
 
-function failingStore(real: MockStore): MockStore {
+function failingStore(real: MockStore, fail: 'save' | 'delete' = 'save'): MockStore {
   return {
     get: (id) => real.get(id),
     list: (f) => real.list(f),
     listAll: () => real.listAll(),
-    save: async () => {
-      throw new Error('redis down')
+    save: async (stub, v) => {
+      if (fail === 'save') throw new Error('redis down')
+      return real.save(stub, v)
     },
-    delete: (id, v) => real.delete(id, v),
+    delete: async (id, v) => {
+      if (fail === 'delete') throw new Error('redis down')
+      return real.delete(id, v)
+    },
     history: (id) => real.history(id),
     acquireLock: (n, t) => real.acquireLock(n, t),
     releaseLock: (n, t) => real.releaseLock(n, t),
@@ -130,7 +134,19 @@ test('bodyFileName is rejected before WireMock is called', async () => {
 test('concurrent edits: second gets ConflictError, WireMock serves the winner', async () => {
   const m = await svc.create(input(200), 'admin')
   await svc.update(m.id, input(201), 1, 'sara')
-  await expect(svc.update(m.id, input(202), 1, 'omar')).rejects.toBeInstanceOf(ConflictError)
+  let calls = 0
+  const spy = new WireMockClient({
+    baseUrl: wm.url,
+    user: wm.user,
+    password: wm.password,
+    fetch: (...a) => {
+      calls++
+      return fetch(...a)
+    },
+  })
+  const stale = new MockService({ wiremock: spy, store })
+  await expect(stale.update(m.id, input(202), 1, 'omar')).rejects.toBeInstanceOf(ConflictError)
+  expect(calls).toBe(0)
   expect((await fetch(`${wm.url}/t`)).status).toBe(201)
 })
 
@@ -164,4 +180,12 @@ test('delete with stale version is ConflictError and stub still served', async (
   await svc.update(m.id, input(201), 1, 'sara')
   await expect(svc.delete(m.id, 1, 'omar')).rejects.toBeInstanceOf(ConflictError)
   expect((await fetch(`${wm.url}/t`)).status).toBe(201)
+})
+
+test('rolls back delete when the store delete fails: stub still served and stored', async () => {
+  const m = await svc.create(input(200), 'admin')
+  const s = new MockService({ wiremock: client, store: failingStore(store, 'delete') })
+  await expect(s.delete(m.id, 1, 'admin')).rejects.toThrow('redis down')
+  expect((await fetch(`${wm.url}/t`)).status).toBe(200)
+  expect(await store.get(m.id)).not.toBeNull()
 })

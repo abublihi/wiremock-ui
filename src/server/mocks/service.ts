@@ -2,9 +2,9 @@ import { ConflictError, NotFoundError, ValidationError } from '../errors'
 import { logger } from '../logger'
 import type { MockStore } from '../store/types'
 import type { WireMockClient } from '../wiremock/client'
-import type { StubMapping, WireMockUiMeta } from '../wiremock/types'
+import type { StubBase, StubMapping, WireMockUiMeta } from '../wiremock/types'
 
-export type MockInput = Omit<StubMapping, 'id' | 'metadata'> & {
+export type MockInput = Omit<StubBase, 'id' | 'metadata'> & {
   metadata?: { wiremockUi?: Partial<Pick<WireMockUiMeta, 'integration' | 'endpoint'>> } & Record<
     string,
     unknown
@@ -54,7 +54,17 @@ export class MockService {
       throw new ConflictError()
     }
     await this.wiremock.deleteStub(id)
-    await this.store.delete(id, expectedVersion)
+    try {
+      await this.store.delete(id, expectedVersion)
+    } catch (err) {
+      try {
+        const latest = (await this.store.get(id).catch(() => null)) ?? current
+        await this.wiremock.importStubs([latest], { deleteAllNotInImport: false })
+      } catch (rollbackErr) {
+        logger.error({ err: rollbackErr, id }, 'WireMock rollback failed')
+      }
+      throw err
+    }
   }
 
   async get(id: string): Promise<StubMapping> {
@@ -68,8 +78,7 @@ export class MockService {
   }
 
   private validate(input: MockInput): void {
-    const response = input.response as Record<string, unknown> | undefined
-    if (response && 'bodyFileName' in response) {
+    if ('bodyFileName' in input.response) {
       throw new ValidationError('bodyFileName is not supported; put the body inline')
     }
   }
@@ -92,12 +101,12 @@ export class MockService {
       updatedBy: user,
       source: 'ui',
     }
-    const stub = {
+    const stub: StubMapping = {
       ...input,
       id,
       persistent: false,
       metadata: { ...input.metadata, wiremockUi },
-    } as StubMapping
+    }
 
     await this.wiremock.importStubs([stub], { deleteAllNotInImport: false })
     try {

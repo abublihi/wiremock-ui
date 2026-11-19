@@ -8,7 +8,7 @@ export type WireMockUiMeta = {
   source: 'ui' | 'import' | 'seed' | 'recording' | 'marker'
 }
 
-export type StubMapping = {
+export type StubBase = {
   id: string
   name?: string
   priority?: number
@@ -16,4 +16,6 @@ export type StubMapping = {
   request: Record<string, unknown>
   response: Record<string, unknown>
   metadata?: { wiremockUi?: WireMockUiMeta } & Record<string, unknown>
-} & Record<string, unknown>
+}
+
+export type StubMapping = StubBase & Record<string, unknown>
