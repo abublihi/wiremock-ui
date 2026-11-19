@@ -150,6 +150,7 @@ export class MockService {
     const owner = ownerOf(target)
     this.assertCanEdit(actor, owner)
     const current = await this.store.get(id)
+    if (current) this.assertCanEdit(actor, ownerOf(current))
     let stub: StubMapping
     if (current) {
       stub = await this.save(id, target as MockInput, current.metadata?.wiremockUi?.version ?? 0, actor.username, current)

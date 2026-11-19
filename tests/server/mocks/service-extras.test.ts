@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 import type { AuditEntry, AuditLog } from '../../../src/server/audit/log'
-import { AppError, NotFoundError } from '../../../src/server/errors'
+import { AppError, ConflictError, NotFoundError } from '../../../src/server/errors'
 import { MockService, type MockInput } from '../../../src/server/mocks/service'
 import { RedisMockStore } from '../../../src/server/store/redis'
 import type { PublicUser } from '../../../src/server/users/types'
@@ -157,4 +157,38 @@ test("tester cannot restore a colleague's mock; developer can", async () => {
   expect(err.status).toBe(403)
   expect((await served('/rc')).body).toBe('s201')
   expect((await svc.restore(m.id, 1, user('dev', 'developer'))).metadata?.wiremockUi?.version).toBe(3)
+})
+
+test('restore of a live mock now owned by someone else is 403 and changes nothing', async () => {
+  const m = await svc.create(input('/ro', 200), user('amy'))
+  // Current version is owned by bob (set up directly, bypassing the service).
+  const current = {
+    ...m,
+    response: { status: 203, body: 's203' },
+    metadata: { wiremockUi: { ...m.metadata!.wiremockUi!, owner: 'bob', version: 2 } },
+  }
+  await store.save(current, 1)
+  await new WireMockClient({ baseUrl: wm.url, user: wm.user, password: wm.password }).importStubs([current], { deleteAllNotInImport: false })
+  const err = await svc.restore(m.id, 1, user('amy')).catch((e) => e)
+  expect(err.status).toBe(403)
+  expect(await store.get(m.id)).toEqual(current)
+  expect((await served('/ro')).body).toBe('s203')
+})
+
+test('restore of a live mock that moved meanwhile is 409', async () => {
+  const m = await svc.create(input('/rs', 200), user('amy'))
+  await svc.update(m.id, input('/rs', 201), 1, user('amy'))
+  await svc.update(m.id, input('/rs', 202), 2, user('amy'))
+  const stale = await store.get(m.id)
+  await svc.update(m.id, input('/rs', 203), 3, user('amy'))
+  // The restore reads version 3 but the mock is already at 4.
+  const racing = new MockService({
+    audit,
+    wiremock: new WireMockClient({ baseUrl: wm.url, user: wm.user, password: wm.password }),
+    store: Object.assign(Object.create(store), { get: async () => stale }),
+  })
+  const err = await racing.restore(m.id, 1, user('amy')).catch((e) => e)
+  expect(err).toBeInstanceOf(ConflictError)
+  expect((await store.get(m.id))?.metadata?.wiremockUi?.version).toBe(4)
+  expect((await served('/rs')).body).toBe('s203')
 })
