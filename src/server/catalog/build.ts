@@ -13,7 +13,8 @@ export const simpleMockSchema = z.strictObject(
       .number({ error: 'status must be a number' })
       .int('status must be an integer')
       .min(100, 'status must be between 100 and 599')
-      .max(599, 'status must be between 100 and 599'),
+      .max(599, 'status must be between 100 and 599')
+      .optional(),
     body: z.string({ error: 'body must be a string' }).optional(),
     headers: z
       .record(z.string().min(1, 'headers: names must not be empty'), z.string({ error: 'headers values must be strings' }), {
@@ -88,16 +89,22 @@ function responseFor(endpoint: Endpoint, input: SimpleMockInput): Record<string,
 /** Turns a catalog endpoint plus a simple form into a WireMock stub definition. */
 export function buildStub(integration: Integration, endpoint: Endpoint, input: SimpleMockInput): MockInput {
   const isDefault = input.isDefault === true
+  const keyValue = isDefault ? undefined : input.keyValue?.trim()
+  const name = input.name?.trim()
   if (!isDefault) {
     if (!endpoint.lookup) throw new ValidationError('this endpoint has no lookup; only a default mock can be created')
-    if (!input.keyValue) throw new ValidationError('keyValue is required')
+    if (!keyValue) throw new ValidationError('keyValue is required')
   }
-  if (endpoint.allowedStatuses.length > 0 && !endpoint.allowedStatuses.includes(input.status)) {
-    throw new ValidationError(`status ${input.status} is not allowed for this endpoint`)
+  if (name === '') throw new ValidationError('name must not be empty')
+  // A fault mock sends no status, so neither the status nor the allowed list applies to it.
+  if (!input.fault) {
+    if (input.status === undefined) throw new ValidationError('status is required')
+    if (endpoint.allowedStatuses.length > 0 && !endpoint.allowedStatuses.includes(input.status)) {
+      throw new ValidationError(`status ${input.status} is not allowed for this endpoint`)
+    }
   }
-  const keyValue = isDefault ? undefined : input.keyValue
   return {
-    name: input.name ?? `${endpoint.name} — ${isDefault ? 'default' : keyValue}`,
+    name: name ?? `${endpoint.name} — ${isDefault ? 'default' : keyValue}`,
     priority: isDefault ? 10 : 5,
     request: requestFor(integration, endpoint, keyValue),
     response: responseFor(endpoint, input),

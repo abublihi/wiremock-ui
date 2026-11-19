@@ -176,3 +176,22 @@ describe('simpleMockSchema', () => {
     expect(simpleMockSchema.safeParse(body).success).toBe(false)
   })
 })
+
+describe('fault mocks, trimming', () => {
+  test('status is optional when fault is set, required otherwise', () => {
+    expect(simpleMockSchema.safeParse({ keyValue: 'a', fault: 'EMPTY_RESPONSE' }).success).toBe(true)
+    expect(build({}, { status: undefined, fault: 'EMPTY_RESPONSE' }).response).toEqual({ fault: 'EMPTY_RESPONSE' })
+    expect(failure(() => build({}, { status: undefined }))).toEqual({ status: 400, message: 'status is required' })
+  })
+  test('allowedStatuses are not enforced for fault mocks', () => {
+    expect(build({ allowedStatuses: [200] }, { status: 500, fault: 'EMPTY_RESPONSE' }).response).toEqual({ fault: 'EMPTY_RESPONSE' })
+    expect(build({ allowedStatuses: [200] }, { status: undefined, fault: 'CONNECTION_RESET_BY_PEER' }).response.fault).toBe('CONNECTION_RESET_BY_PEER')
+  })
+  test('keyValue and name are trimmed; empty after trim is 400', () => {
+    const s = build({}, { keyValue: '  k9 ', name: '  Mine  ' })
+    expect(s.request.bodyPatterns).toEqual([{ matchesJsonPath: { expression: '$.idNo', equalTo: 'k9' } }])
+    expect(s.name).toBe('Mine')
+    expect(failure(() => build({}, { keyValue: '   ' }))).toEqual({ status: 400, message: 'keyValue is required' })
+    expect(failure(() => build({}, { name: ' \t' }))).toEqual({ status: 400, message: 'name must not be empty' })
+  })
+})
