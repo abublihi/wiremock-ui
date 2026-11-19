@@ -91,7 +91,7 @@ export async function bootRuntime(
     if (config.seedPath) {
       try {
         const bundle = await readBundleFromPath(config.seedPath)
-        const report = await importBundle(bundle, { catalog, mocks, store, audit }, { actor: 'system', prune: config.seedPrune })
+        const report = await importBundle(bundle, { catalog, mocks, store, audit }, { actor: 'system', prune: config.seedPrune, source: 'seed' })
         logger.info({ report, seedPath: config.seedPath }, 'seed imported')
       } catch (err) {
         throw new ConfigError(`Seed import from ${config.seedPath} failed: ${(err as Error).message}`)

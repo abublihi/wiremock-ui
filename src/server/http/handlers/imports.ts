@@ -28,6 +28,7 @@ export const runImport = withAuth('import.run', async ({ rt, request, principal 
   const report = await importBundle(bundle, { catalog: rt.catalog, mocks: rt.mocks, store: rt.store, audit: rt.audit }, {
     actor: principal.user.username,
     prune,
+    source: 'import',
   })
   return json(report)
 })

@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ValidationError } from '../errors'
 import type { StubMapping } from '../wiremock/types'
@@ -39,14 +39,20 @@ export function parseBundle(json: unknown, source: string): Bundle {
   throw new ValidationError(`${source}: unrecognised bundle shape (expected a bundle, a WireMock export, a stub or an array of stubs)`)
 }
 
-async function jsonFiles(dir: string, rel = ''): Promise<string[]> {
+async function jsonFiles(dir: string, rel = '', seen = new Set<string>()): Promise<string[]> {
+  const real = await realpath(join(dir, rel))
+  if (seen.has(real)) return []
+  seen.add(real)
   const entries = await readdir(join(dir, rel), { withFileTypes: true })
   const out: string[] = []
   for (const e of entries) {
     if (e.name.startsWith('.')) continue
     const path = rel ? `${rel}/${e.name}` : e.name
-    if (e.isDirectory()) out.push(...(await jsonFiles(dir, path)))
-    else if (e.isFile() && e.name.endsWith('.json')) out.push(path)
+    // Dirents use lstat; follow symlinks (e.g. Kubernetes ConfigMap volumes) with stat.
+    const info = e.isSymbolicLink() ? await stat(join(dir, path)).catch(() => null) : e
+    if (!info) continue
+    if (info.isDirectory()) out.push(...(await jsonFiles(dir, path, seen)))
+    else if (info.isFile() && e.name.endsWith('.json')) out.push(path)
   }
   return out
 }
@@ -68,6 +74,7 @@ export async function readBundleFromPath(path: string): Promise<Bundle> {
   if (!info.isDirectory()) return readFileBundle(path, path)
   const merged = emptyBundle()
   const files = (await jsonFiles(path)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  if (files.length === 0) throw new ValidationError(`SEED_PATH ${path} contains no .json files`)
   for (const rel of files) {
     const part = await readFileBundle(join(path, rel), join(path, rel))
     merged.integrations.push(...part.integrations)

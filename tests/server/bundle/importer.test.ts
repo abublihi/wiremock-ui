@@ -31,7 +31,7 @@ beforeEach(async () => {
 
 const deps = () => ({ catalog: env.rt.catalog, mocks: env.rt.mocks, store: env.rt.store, audit: env.rt.audit })
 const run = (b: Partial<Bundle>, prune = false, actor = 'ui-admin') =>
-  importBundle({ ...emptyBundle(), ...b }, deps(), { actor, prune })
+  importBundle({ ...emptyBundle(), ...b }, deps(), { actor, prune, source: 'import' })
 const stub = (path: string, extra: Record<string, unknown> = {}) =>
   ({ request: { method: 'GET', urlPath: path }, response: { status: 200, body: path }, ...extra }) as unknown as StubMapping
 const serve = async (path: string) => {
@@ -122,4 +122,11 @@ test('counts ignored oidc identities and audits one import entry', async () => {
   const r = await run({ oidcIdentities: [{}, {}] })
   expect(r.ignoredOidcIdentities).toBe(2)
   expect((await env.rt.audit.list({ limit: 1 }))[0]).toMatchObject({ action: 'import', actor: 'ui-admin' })
+})
+
+test('metadata that is not an object is rejected before any write', async () => {
+  await expect(
+    run({ integrations: [{ key: 'm1', name: 'M', prefix: '/m' }], mocks: [stub('/imp/m', { metadata: 'x' })] }),
+  ).rejects.toThrow(/mocks\[0\].*metadata must be an object/)
+  expect(await env.rt.catalog.listIntegrations()).toEqual([])
 })

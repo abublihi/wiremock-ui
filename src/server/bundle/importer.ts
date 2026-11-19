@@ -60,7 +60,7 @@ const invalid = <T>(what: string, fn: () => T): T => {
 export async function importBundle(
   bundle: Bundle,
   deps: Deps,
-  opts: { actor: string; prune: boolean },
+  opts: { actor: string; prune: boolean; source: 'import' | 'seed' },
 ): Promise<ImportReport> {
   // Phase 1: validate everything; nothing is written until the whole bundle passes.
   const integrations = bundle.integrations.map((raw, i) =>
@@ -86,6 +86,9 @@ export async function importBundle(
   bundle.mocks.forEach((raw, i) => {
     const label = `mocks[${i}]${nameOf(raw, 'id')}`
     invalid(label, () => assertValidStub(raw))
+    if ('metadata' in raw && raw.metadata !== undefined && (typeof raw.metadata !== 'object' || raw.metadata === null || Array.isArray(raw.metadata))) {
+      throw new ValidationError(`${label}: metadata must be an object`)
+    }
     const given = raw.id ?? raw.uuid
     if (given !== undefined && (typeof given !== 'string' || given === '')) {
       throw new ValidationError(`${label}: id must be a non-empty string`)
@@ -109,7 +112,7 @@ export async function importBundle(
   for (const i of integrations) await deps.catalog.upsertIntegration(i, opts.actor)
   for (const e of endpoints) await deps.catalog.upsertEndpoint(e, opts.actor)
 
-  const source = opts.actor === 'system' ? 'seed' : 'import'
+  const source = opts.source
   const report: ImportReport = {
     integrations: integrations.length,
     endpoints: endpoints.length,
