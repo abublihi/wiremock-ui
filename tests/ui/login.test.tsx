@@ -46,6 +46,24 @@ describe('login page', () => {
     },
   )
 
+  it('never sends the user back to /login', async () => {
+    server.use(signIn)
+    const { router } = await renderApp(<LoginPage next="/login?next=%2Fmocks" />, { session: null })
+    await fillAndSubmit()
+    await screen.findByText('mocks page')
+    expect(router.state.location.pathname).toBe('/mocks')
+  })
+
+  it("signing in as another user leaves nothing cached from the previous one", async () => {
+    server.use(signIn)
+    const { queryClient } = await renderApp(<LoginPage />, { session: null })
+    queryClient.setQueryData(['mocks'], [{ id: 'user-a-mock' }])
+    await fillAndSubmit()
+    await screen.findByText('mocks page')
+    expect(queryClient.getQueryData(['mocks'])).toBeUndefined()
+    expect(queryClient.getQueryData(SESSION_KEY)).toEqual(testSession)
+  })
+
   it('goes to /mocks when there is no next', async () => {
     server.use(signIn)
     await renderApp(<LoginPage />, { session: null })

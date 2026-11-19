@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { ApiError } from '@/ui/api/client'
 import { useLogin } from '@/ui/api/queries'
-import { safeNext } from '@/ui/auth/session'
+import { redirectIfSignedIn, safeNext } from '@/ui/auth/session'
 import { HazardStrip } from '@/ui/components/shell/HazardStrip'
 import { Brand } from '@/ui/components/shell/TopBar'
 import { Alert, AlertDescription } from '@/ui/components/ui/alert'
@@ -15,6 +15,7 @@ import { useT, type MessageKey } from '@/ui/i18n'
 export const Route = createFileRoute('/login')({
   validateSearch: (search: Record<string, unknown>): { next?: string } =>
     typeof search.next === 'string' ? { next: search.next } : {},
+  beforeLoad: ({ context }) => redirectIfSignedIn(context.queryClient),
   component: () => <LoginPage next={Route.useSearch().next} />,
 })
 

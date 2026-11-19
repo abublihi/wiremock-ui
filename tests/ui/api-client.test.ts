@@ -94,6 +94,18 @@ describe('apiFetch', () => {
     }
   })
 
+  it('clears the whole cache on a 401 before redirecting (router wiring)', async () => {
+    const { getRouter } = await import('@/router')
+    const router = getRouter()
+    const client = router.options.context.queryClient
+    client.setQueryData(['mocks'], [{ id: 'user-a-mock' }])
+    client.setQueryData(SESSION_KEY, testSession)
+    server.use(http.get('http://localhost:3000/api/echo', () => HttpResponse.json({ error: 'Authentication required' }, { status: 401 })))
+    await expect(apiFetch('/api/echo')).rejects.toMatchObject({ status: 401 })
+    expect(client.getQueryData(['mocks'])).toBeUndefined()
+    expect(client.getQueryData(SESSION_KEY)).toBeUndefined()
+  })
+
   it('does not redirect on a 401 the caller expects (sign-in)', async () => {
     server.use(http.post('http://localhost:3000/api/echo', () => HttpResponse.json({ error: 'nope' }, { status: 401 })))
     const onUnauthorized = vi.fn()

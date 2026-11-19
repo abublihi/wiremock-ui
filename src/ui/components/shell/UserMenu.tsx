@@ -63,7 +63,7 @@ function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const [next, setNext] = useState('')
   const [touched, setTouched] = useState(false)
 
-  const nextInvalid = next.length < 8 || next.length > 72
+  const nextInvalid = next.length < 8 || new TextEncoder().encode(next).length > 72
   const currentInvalid = current === ''
 
   function close(value: boolean) {

@@ -38,6 +38,7 @@ export const en = {
   'user.menu': 'Account menu',
   'user.changePassword': 'Change password',
   'user.signOut': 'Sign out',
+  'user.signOutFailed': 'Could not sign out. Try again.',
 
   'password.title': 'Change password',
   'password.description': 'Your other signed-in devices will be signed out.',

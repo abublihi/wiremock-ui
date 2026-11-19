@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { ApiError, SESSION_KEY } from '@/ui/api/client'
-import { requireSession, safeNext } from '@/ui/auth/session'
+import { redirectIfSignedIn, requireSession, safeNext } from '@/ui/auth/session'
 import { UserMenu } from '@/ui/components/shell/UserMenu'
 import { renderApp, testSession, testUser } from './helpers'
 
@@ -45,10 +45,25 @@ describe('requireSession', () => {
   })
 })
 
+describe('redirectIfSignedIn', () => {
+  it('redirects a signed-in user to /mocks', async () => {
+    const error = await redirectIfSignedIn(new QueryClient(), async () => testSession).catch((e: unknown) => e)
+    expect(error).toMatchObject({ options: { to: '/mocks' } })
+  })
+
+  it('lets a signed-out user see the form', async () => {
+    await expect(
+      redirectIfSignedIn(new QueryClient(), async () => {
+        throw new ApiError(401, 'Authentication required')
+      }),
+    ).resolves.toBeUndefined()
+  })
+})
+
 describe('safeNext', () => {
   it('keeps same-origin paths and falls back to /mocks otherwise', () => {
     expect(safeNext('/requests?x=1#a')).toBe('/requests?x=1#a')
-    for (const bad of [undefined, '', 'mocks', 'https://evil.example', '//evil.example', '/\\evil']) expect(safeNext(bad)).toBe('/mocks')
+    for (const bad of ['/login', '/login?next=%2Fmocks', '/login/', '/login#x', undefined, '', 'mocks', 'https://evil.example', '//evil.example', '/\\evil']) expect(safeNext(bad)).toBe('/mocks')
   })
 })
 
@@ -78,6 +93,18 @@ describe('user menu: sign out', () => {
   })
 })
 
+describe('user menu: sign out failure', () => {
+  it('shows an error toast and stays signed in', async () => {
+    server.use(http.delete('http://localhost:3000/api/session', () => HttpResponse.json({ error: 'Internal error' }, { status: 500 })))
+    const { router, queryClient } = await renderApp(<UserMenu user={testUser} />)
+    const ue = await openMenu()
+    await ue.click(await screen.findByRole('menuitem', { name: 'Sign out' }))
+    expect(await screen.findByText('Internal error')).toBeTruthy()
+    expect(router.state.location.pathname).toBe('/')
+    expect(queryClient.getQueryData(SESSION_KEY)).toEqual(testSession)
+  })
+})
+
 describe('user menu: change password', () => {
   async function openDialog() {
     const ue = await openMenu()
@@ -100,6 +127,19 @@ describe('user menu: change password', () => {
     await ue.type(within(dialog).getByLabelText('New password'), 'x'.repeat(73))
     await ue.click(within(dialog).getByRole('button', { name: 'Change password' }))
     expect(within(dialog).getByText('Use between 8 and 72 characters.')).toBeTruthy()
+    expect(called).toBe(false)
+  })
+
+  it('counts the upper bound in bytes, like the server', async () => {
+    let called = false
+    server.use(http.post('http://localhost:3000/api/session/password', () => ((called = true), new HttpResponse(null, { status: 204 }))))
+    await renderApp(<UserMenu user={testUser} />)
+    const { ue, dialog } = await openDialog()
+    await ue.type(within(dialog).getByLabelText('Current password'), 'old-password')
+    // 40 two-byte characters: 40 characters but 80 bytes
+    await ue.type(within(dialog).getByLabelText('New password'), 'é'.repeat(40))
+    await ue.click(within(dialog).getByRole('button', { name: 'Change password' }))
+    expect(await within(dialog).findByText('Use between 8 and 72 characters.')).toBeTruthy()
     expect(called).toBe(false)
   })
 

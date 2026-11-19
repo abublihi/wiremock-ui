@@ -46,8 +46,22 @@ export async function requireSession(
   }
 }
 
-/** Only same-origin absolute paths are followed after sign-in; anything else (open redirect) goes to /mocks. */
+/** Only same-origin absolute paths are followed after sign-in; anything else (open redirect, or /login itself) goes to /mocks. */
 export function safeNext(next: unknown): string {
   if (typeof next !== 'string' || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return '/mocks'
+  if (/^\/login\/?([?#]|$)/.test(next)) return '/mocks'
   return next
+}
+
+/** `beforeLoad` guard for /login: someone who is already signed in goes straight to the app. */
+export async function redirectIfSignedIn(
+  queryClient: QueryClient,
+  fetchSession: () => Promise<SessionData> = loadSession,
+): Promise<void> {
+  try {
+    await queryClient.ensureQueryData(sessionQueryOptions(fetchSession))
+  } catch {
+    return // not signed in (or the check failed): show the form
+  }
+  throw redirect({ to: '/mocks' })
 }

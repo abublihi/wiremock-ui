@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 import { createRouter } from '@tanstack/react-router'
 import { setupRouterSsrQueryIntegration } from '@tanstack/react-router-ssr-query'
-import { SESSION_KEY, registerQueryClient, setOnUnauthorized } from '@/ui/api/client'
+import { registerQueryClient, setOnUnauthorized } from '@/ui/api/client'
 import { routeTree } from './routeTree.gen'
 
 export function getRouter() {
@@ -12,7 +12,8 @@ export function getRouter() {
   if (typeof window !== 'undefined') {
     registerQueryClient(queryClient)
     setOnUnauthorized((next) => {
-      queryClient.removeQueries({ queryKey: SESSION_KEY })
+      // Nothing cached for the expired user may show to whoever signs in next.
+      queryClient.clear()
       void router.navigate({ to: '/login', search: { next } })
     })
   }
