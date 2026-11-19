@@ -339,4 +339,8 @@ Ship in five steps, each usable on its own; QA can start using it after step 2.
 
 **A7 — English only (Milestone 2B).** Arabic UI strings and RTL support are not required. UI strings stay centralised in one English message file so a translation can be added later.
 
+**A8 — Sign-in without authorization (Milestone 2B).** Users still sign in (local accounts, sessions, CSRF, rate-limited login, Basic auth for scripts), but every signed-in user can do everything: no roles in the UI or the API, no ownership restrictions, baseline mocks editable by anyone. Mocks still record `owner`, and imports still never touch person-owned mocks. Roles may return later.
+
+**A9 — Works without Redis (pulled forward from Milestone 5).** The SQLite store driver ships in Milestone 2 using Node's built-in `node:sqlite` (no native build). `STORE_DRIVER` defaults to `redis` when `REDIS_URL` is set and to `sqlite` otherwise; `SQLITE_PATH` defaults to `./data/wiremock-ui.db` (`/data/wiremock-ui.db` in the image).
+
 **A3 — Milestone 1 API protection.** Users, roles and sessions arrive in Milestone 2. Until then `/api/*` is protected by HTTP basic auth checked against `ADMIN_USER` / `ADMIN_PASSWORD`, and every write is recorded as made by `ADMIN_USER`.
