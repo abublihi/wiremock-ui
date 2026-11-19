@@ -10,33 +10,62 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HealthzRouteImport } from './routes/healthz'
+import { Route as ApiMocksRouteImport } from './routes/api/mocks'
+import { Route as ApiMocksIdRouteImport } from './routes/api/mocks.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HealthzRoute = HealthzRouteImport.update({
+  id: '/healthz',
+  path: '/healthz',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMocksRoute = ApiMocksRouteImport.update({
+  id: '/api/mocks',
+  path: '/api/mocks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMocksIdRoute = ApiMocksIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiMocksRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/healthz': typeof HealthzRoute
+  '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/mocks/$id': typeof ApiMocksIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/healthz': typeof HealthzRoute
+  '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/mocks/$id': typeof ApiMocksIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/healthz': typeof HealthzRoute
+  '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/mocks/$id': typeof ApiMocksIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/healthz' | '/api/mocks' | '/api/mocks/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/healthz' | '/api/mocks' | '/api/mocks/$id'
+  id: '__root__' | '/' | '/healthz' | '/api/mocks' | '/api/mocks/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HealthzRoute: typeof HealthzRoute
+  ApiMocksRoute: typeof ApiMocksRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +77,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/healthz': {
+      id: '/healthz'
+      path: '/healthz'
+      fullPath: '/healthz'
+      preLoaderRoute: typeof HealthzRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/mocks': {
+      id: '/api/mocks'
+      path: '/api/mocks'
+      fullPath: '/api/mocks'
+      preLoaderRoute: typeof ApiMocksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/mocks/$id': {
+      id: '/api/mocks/$id'
+      path: '/$id'
+      fullPath: '/api/mocks/$id'
+      preLoaderRoute: typeof ApiMocksIdRouteImport
+      parentRoute: typeof ApiMocksRoute
+    }
   }
 }
 
+interface ApiMocksRouteChildren {
+  ApiMocksIdRoute: typeof ApiMocksIdRoute
+}
+
+const ApiMocksRouteChildren: ApiMocksRouteChildren = {
+  ApiMocksIdRoute: ApiMocksIdRoute,
+}
+
+const ApiMocksRouteWithChildren = ApiMocksRoute._addFileChildren(
+  ApiMocksRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HealthzRoute: HealthzRoute,
+  ApiMocksRoute: ApiMocksRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
