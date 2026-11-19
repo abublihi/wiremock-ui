@@ -57,7 +57,9 @@ test('clear: tester 403 and log intact; admin clears', async () => {
   expect((await rt.requests.list({})).length).toBeGreaterThan(0)
   // testers may still read
   expect((await listRequests(rt, req('/api/requests', 'GET', undefined, as))).status).toBe(200)
-  expect((await clearRequests(rt, req('/api/requests', 'DELETE'))).status).toBe(200)
+  const cleared = await clearRequests(rt, req('/api/requests', 'DELETE'))
+  expect(cleared.status).toBe(204)
+  expect(await cleared.text()).toBe('')
   expect(await rt.requests.list({})).toEqual([])
   expect((await listRequests(rt, req('/api/requests', 'GET', undefined, {}))).status).toBe(401)
 })

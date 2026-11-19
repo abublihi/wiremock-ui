@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
+import { getSession } from '../../../src/server/http/handlers/session'
 import { createUser, deleteUser, listUsers, updateUser } from '../../../src/server/http/handlers/users'
 import type { Runtime } from '../../../src/server/runtime'
 import { login, req, startTestRuntime } from '../../helpers/http'
@@ -66,4 +67,20 @@ test('PATCH rejects unknown fields and empty patches', async () => {
   const empty = await updateUser(rt, req(`/api/users/${u.id}`, 'PATCH', {}, as(admin)), { id: u.id })
   expect(empty.status).toBe(400)
   expect(await empty.json()).toEqual({ error: 'patch must change at least one field' })
+})
+
+test("admin resetting their own password keeps the current session and drops the others; another user's reset drops all", async () => {
+  await rt.users.create({ username: 'admin-two', role: 'admin', password: 'password-1' }, 'ui-admin')
+  const a = await login(rt, 'admin-two', 'password-1')
+  const b = await login(rt, 'admin-two', 'password-1')
+  const me = (await (await getSession(rt, req('/api/session', 'GET', undefined, { Cookie: a.cookie }))).json()).user
+  const res = await updateUser(rt, req(`/api/users/${me.id}`, 'PATCH', { password: 'password-2' }, as(a)), { id: me.id })
+  expect(res.status).toBe(200)
+  expect((await getSession(rt, req('/api/session', 'GET', undefined, { Cookie: a.cookie }))).status).toBe(200)
+  expect((await getSession(rt, req('/api/session', 'GET', undefined, { Cookie: b.cookie }))).status).toBe(401)
+
+  const c = await login(rt, 'admin-two', 'password-2')
+  await updateUser(rt, req(`/api/users/${me.id}`, 'PATCH', { password: 'password-3' }, as(admin)), { id: me.id })
+  expect((await getSession(rt, req('/api/session', 'GET', undefined, { Cookie: a.cookie }))).status).toBe(401)
+  expect((await getSession(rt, req('/api/session', 'GET', undefined, { Cookie: c.cookie }))).status).toBe(401)
 })

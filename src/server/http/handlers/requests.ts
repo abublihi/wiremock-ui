@@ -38,7 +38,7 @@ export const nearMisses = withAuth('requests.read', async ({ rt, params }) => js
 
 export const clearRequests = withAuth('requests.clear', async ({ rt, principal }) => {
   await rt.requests.clear(principal.user.username)
-  return json({ ok: true })
+  return new Response(null, { status: 204 })
 })
 
 const countBody = z.object(

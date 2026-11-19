@@ -35,7 +35,9 @@ export const updateUser = withAuth('users.manage', async ({ rt, request, params,
   requireJson(request)
   const body = parse(updateBody, await readJson(request))
   if (Object.values(body).every((v) => v === undefined)) throw new ValidationError('patch must change at least one field')
-  return json(await rt.users.update(idOf(params), { ...body, role: body.role as Role | undefined }, principal.user.username))
+  const id = idOf(params)
+  const keepSessionId = id === principal.user.id ? principal.session?.id : undefined
+  return json(await rt.users.update(id, { ...body, role: body.role as Role | undefined }, principal.user.username, { keepSessionId }))
 })
 
 export const deleteUser = withAuth('users.manage', async ({ rt, params, principal }) => {

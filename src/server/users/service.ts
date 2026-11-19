@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { AuditLog } from '../audit/log'
+import { safeRecord, type AuditLog } from '../audit/log'
 import { SESSION_TTL_SECONDS, limitLoginAttempts } from '../auth/session'
 import type { Config } from '../config'
 import { AppError, ConfigError, NotFoundError, ValidationError } from '../errors'
@@ -93,7 +93,7 @@ export class UserService {
       if (err instanceof AppError && err.status === 409) return 'exists'
       throw err
     }
-    await this.audit.record({ actor: 'system', action: 'user.create', target: name, details: { role: 'admin', bootstrap: true } })
+    await safeRecord(this.audit, { actor: 'system', action: 'user.create', target: name, details: { role: 'admin', bootstrap: true } })
     return 'created'
   }
 
@@ -132,7 +132,7 @@ export class UserService {
       updatedAt: ts,
     }
     await this.users.createUser(user)
-    await this.audit.record({ actor, action: 'user.create', target: username, details: { role: user.role } })
+    await safeRecord(this.audit, { actor, action: 'user.create', target: username, details: { role: user.role } })
     return toPublicUser(user)
   }
 
@@ -140,6 +140,7 @@ export class UserService {
     id: string,
     patch: { displayName?: string; role?: Role; password?: string; disabled?: boolean },
     actor: string,
+    opts: { keepSessionId?: string } = {},
   ): Promise<PublicUser> {
     const current = await this.load(id)
     if (patch.role !== undefined) checkRole(patch.role)
@@ -154,8 +155,11 @@ export class UserService {
     }
     if (isActiveAdmin(current) && !isActiveAdmin(next)) await this.guardLastAdmin(current)
     await this.users.updateUser(next)
-    if (patch.password !== undefined || (patch.disabled === true && !current.disabled)) {
-      await this.users.deleteSessionsOf(id)
+    if (next.disabled && !current.disabled) await this.users.deleteSessionsOf(id)
+    else if (patch.password !== undefined) {
+      // An admin resetting their own password keeps the session they did it from (like changeOwnPassword).
+      if (opts.keepSessionId) await this.users.deleteOtherSessions(id, opts.keepSessionId)
+      else await this.users.deleteSessionsOf(id)
     }
     const changed = [
       patch.displayName !== undefined && 'displayName',
@@ -163,7 +167,7 @@ export class UserService {
       patch.password !== undefined && 'password',
       patch.disabled !== undefined && 'disabled',
     ].filter(Boolean)
-    await this.audit.record({ actor, action: 'user.update', target: current.username, details: { changed } })
+    await safeRecord(this.audit, { actor, action: 'user.update', target: current.username, details: { changed } })
     return toPublicUser(next)
   }
 
@@ -171,7 +175,7 @@ export class UserService {
     const user = await this.load(id)
     await this.guardLastAdmin(user)
     await this.users.deleteUser(id)
-    await this.audit.record({ actor, action: 'user.delete', target: user.username })
+    await safeRecord(this.audit, { actor, action: 'user.delete', target: user.username })
   }
 
   async changeOwnPassword(userId: string, current: string, next: string, keepSessionId?: string): Promise<void> {
@@ -181,6 +185,6 @@ export class UserService {
     await this.users.updateUser({ ...user, passwordHash: await this.hash(next), updatedAt: this.now().toISOString() })
     if (keepSessionId) await this.users.deleteOtherSessions(userId, keepSessionId)
     else await this.users.deleteSessionsOf(userId)
-    await this.audit.record({ actor: user.username, action: 'user.password', target: user.username })
+    await safeRecord(this.audit, { actor: user.username, action: 'user.password', target: user.username })
   }
 }
