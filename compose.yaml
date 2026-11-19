@@ -1,0 +1,46 @@
+services:
+  wiremock:
+    image: wiremock/wiremock:3.13.1
+    command:
+      - --admin-api-basic-auth
+      - ${WIREMOCK_ADMIN_USER:?set WIREMOCK_ADMIN_USER in .env}:${WIREMOCK_ADMIN_PASSWORD:?set WIREMOCK_ADMIN_PASSWORD in .env}
+      - --max-request-journal-entries
+      - "5000"
+    ports:
+      - "${WIREMOCK_PORT:-8080}:8080"
+    healthcheck:
+      # The admin API is locked, so a 401 on /__admin/version proves WireMock is up.
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/__admin/version | grep -q 401"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  ui:
+    build: .
+    env_file: .env
+    environment:
+      PORT: "3000"
+      WIREMOCK_URL: http://wiremock:8080
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    depends_on:
+      wiremock:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis-data:
