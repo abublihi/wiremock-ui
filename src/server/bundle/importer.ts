@@ -20,7 +20,14 @@ export type ImportReport = {
   ignoredOidcIdentities: number
 }
 
-type Deps = { catalog: CatalogService; mocks: MockService; store: MockStore; audit: AuditLog }
+type Deps = {
+  catalog: CatalogService
+  mocks: MockService
+  store: MockStore
+  audit: AuditLog
+  /** Re-adds person-owned mocks above baseline ones; called when the import wrote any baseline mock. */
+  reposition?: () => Promise<void>
+}
 
 const URL_FIELDS = ['url', 'urlPath', 'urlPathTemplate'] as const
 
@@ -133,6 +140,15 @@ export async function importBundle(
       if ((stub.metadata?.wiremockUi?.owner ?? 'baseline') !== 'baseline' || mocks.has(stub.id)) continue
       await deps.mocks.deleteImported(stub.id)
       report.pruned++
+    }
+  }
+
+  // A baseline stub WireMock adds lands above person-owned stubs with the same priority; put them back on top.
+  if (deps.reposition && report.created + report.updated > 0) {
+    try {
+      await deps.reposition()
+    } catch (err) {
+      logger.error({ err }, 'repositioning person-owned mocks after import failed')
     }
   }
 

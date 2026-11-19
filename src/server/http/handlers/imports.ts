@@ -25,7 +25,13 @@ export const runImport = withAuth('import.run', async ({ rt, request, principal 
   }
   const bundle = parseBundle(body, 'request body')
   const prune = new URL(request.url).searchParams.get('prune') === 'true'
-  const report = await importBundle(bundle, { catalog: rt.catalog, mocks: rt.mocks, store: rt.store, audit: rt.audit }, {
+  const report = await importBundle(bundle, {
+    catalog: rt.catalog,
+    mocks: rt.mocks,
+    store: rt.store,
+    audit: rt.audit,
+    reposition: () => rt.reconciler.repositionPersonMocks(),
+  }, {
     actor: principal.user.username,
     prune,
     source: 'import',
