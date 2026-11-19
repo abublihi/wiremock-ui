@@ -52,3 +52,12 @@ test('entries with identical content are kept separately', async () => {
   await log.record({ actor: 'sara', action: 'same' })
   expect(await log.list()).toHaveLength(2)
 })
+
+test('entries written in the same millisecond list exactly newest-first', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date(Date.UTC(2026, 10, 1)))
+  for (let i = 0; i < 20; i++) await log.record({ actor: 'sara', action: `a${i}` })
+  vi.useRealTimers()
+  const actions = (await log.list()).map((e) => e.action)
+  expect(actions).toEqual(Array.from({ length: 20 }, (_, i) => `a${19 - i}`))
+})

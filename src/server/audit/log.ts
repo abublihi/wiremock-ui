@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import type { Redis } from 'ioredis'
 
 export type AuditEntry = {
@@ -16,6 +15,7 @@ export interface AuditLog {
 }
 
 const KEY = 'audit:log'
+const SEQ_KEY = 'audit:seq'
 const RETENTION_MS = 2_592_000_000 // 30 days
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 500
@@ -26,8 +26,10 @@ export class RedisAuditLog implements AuditLog {
   async record(entry: Omit<AuditEntry, 'at'>): Promise<void> {
     const now = Date.now()
     const full: AuditEntry = { at: new Date(now).toISOString(), ...entry }
-    // A random prefix keeps identical entries from collapsing into one sorted-set member.
-    const member = `${randomUUID()}${JSON.stringify(full)}`
+    // A zero-padded sequence keeps identical entries distinct and, as same-score members sort
+    // lexicographically, makes entries from the same millisecond come back in write order.
+    const seq = await this.redis.incr(SEQ_KEY)
+    const member = `${String(seq).padStart(16, '0')}${JSON.stringify(full)}`
     const m = this.redis.multi()
     m.zadd(KEY, now, member)
     m.zremrangebyscore(KEY, '-inf', `(${now - RETENTION_MS}`)
