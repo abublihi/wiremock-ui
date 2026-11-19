@@ -274,8 +274,10 @@ export class MockService {
       updatedBy: user,
       source: override?.source ?? 'ui',
     }
+    // WireMock treats `id` and `uuid` as one field (last wins): a body value could retarget another stub.
+    const { id: _id, uuid: _uuid, ...body } = input as MockInput & { id?: unknown; uuid?: unknown }
     const stub: StubMapping = {
-      ...input,
+      ...body,
       id,
       persistent: false,
       metadata: { ...input.metadata, wiremockUi },

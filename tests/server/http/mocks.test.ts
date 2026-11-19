@@ -307,6 +307,37 @@ test('duplicate, history, restore and reset-mine over HTTP', async () => {
 })
 
 // Last: stops WireMock.
+test('a body id/uuid cannot target another stub (create, update, duplicate, restore)', async () => {
+  const s = await userSession('uuid-tester', 'tester')
+  const baseId = await seedBaseline('/h/uuid-base')
+  const wmBody = async (id: string) => {
+    const res = await fetch(`${wm().url}/__admin/mappings/${id}`, { headers: { Authorization: basic(wm().user, wm().password) } })
+    return res.status === 200 ? (await res.json()).request : res.status
+  }
+  const spoof = { id: baseId, uuid: baseId }
+  const created = await createMock(rt, req('/api/mocks', 'POST', { ...mockBody('/h/uuid-mine'), ...spoof }, asSession(s)))
+  expect(created.status).toBe(201)
+  const mine = await created.json()
+  expect(mine.id).not.toBe(baseId)
+  expect(mine.uuid).toBeUndefined()
+  const uuidOnly = await createMock(rt, req('/api/mocks', 'POST', { ...mockBody('/h/uuid-only'), uuid: baseId }, asSession(s)))
+  expect(uuidOnly.status).toBe(201)
+  const upd = await updateMock(rt, req(`/api/mocks/${mine.id}`, 'PUT', { stub: { ...input('/h/uuid-mine2'), ...spoof }, version: 1 }, asSession(s)), { id: mine.id })
+  expect(upd.status).toBe(200)
+  expect((await upd.json()).uuid).toBeUndefined()
+  const dup = await duplicateMock(rt, req(`/api/mocks/${mine.id}/duplicate`, 'POST', {}, asSession(s)), { id: mine.id })
+  expect(dup.status).toBe(201)
+  const restored = await restoreMock(rt, req(`/api/mocks/${mine.id}/restore`, 'POST', { version: 1 }, asSession(s)), { id: mine.id })
+  expect(restored.status).toBe(200)
+
+  expect(await wmBody(baseId)).toMatchObject({ urlPath: '/h/uuid-base' })
+  expect(await served('/h/uuid-base')).toBe(200)
+  expect((await rt.store.get(baseId))?.metadata?.wiremockUi?.owner).toBe('baseline')
+  // Store and WireMock agree on the number of stubs, so the sync count check holds.
+  expect((await rt.wiremock.listStubIds()).length).toBe((await rt.store.listAll()).length + 1)
+})
+
+
 test('healthz 200 with lastSyncAt set; 503 with wiremock:"error" after WireMock stops', async () => {
   const ok = await healthz(rt, new Request(`${URL_}/healthz`))
   expect(ok.status).toBe(200)
