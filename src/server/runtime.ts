@@ -4,6 +4,7 @@ import { logger } from './logger'
 import { importBundle } from './bundle/importer'
 import { readBundleFromPath } from './bundle/parse'
 import { CatalogService } from './catalog/service'
+import { RequestJournal } from './requests/journal'
 import { MockService } from './mocks/service'
 import type { AuditLog } from './audit/log'
 import { createStores, type MockStore, type Stores } from './store'
@@ -21,6 +22,7 @@ export type Runtime = {
   audit: AuditLog
   mocks: MockService
   catalog: CatalogService
+  requests: RequestJournal
   reconciler: Reconciler
 }
 
@@ -88,6 +90,7 @@ export async function bootRuntime(
     await users.ensureFirstAdmin(config.adminUser, config.adminPassword)
     const mocks = new MockService({ wiremock, store, audit })
     const catalog = new CatalogService({ catalog: stores.catalog, audit, mocks: store })
+    const requests = new RequestJournal({ wiremock, catalog, audit })
     if (config.seedPath) {
       try {
         const bundle = await readBundleFromPath(config.seedPath)
@@ -99,7 +102,7 @@ export async function bootRuntime(
     }
     const reconciler = new Reconciler({ wiremock, store, intervalMs: config.syncIntervalSeconds * 1000 })
     await reconciler.start()
-    return { config, wiremock, store, stores, users, audit, mocks, catalog, reconciler }
+    return { config, wiremock, store, stores, users, audit, mocks, catalog, requests, reconciler }
   } catch (err) {
     await stores?.close().catch(() => {})
     logger.error({ err }, 'runtime boot failed')

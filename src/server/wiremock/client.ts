@@ -1,5 +1,5 @@
 import { ConfigError, UpstreamError, ValidationError } from '../errors'
-import type { StubMapping } from './types'
+import type { LoggedEvent, NearMiss, StubMapping } from './types'
 
 const PAGE = 1000
 
@@ -90,6 +90,46 @@ export class WireMockClient {
       ids.push(...mappings.map((m) => m.id))
       if (mappings.length < PAGE) return ids
     }
+  }
+
+  async listRequests(opts: { limit: number; since?: string }): Promise<LoggedEvent[]> {
+    const q = new URLSearchParams({ limit: String(opts.limit) })
+    if (opts.since) q.set('since', opts.since)
+    const res = await this.request(`/__admin/requests?${q}`)
+    if (!res.ok) await this.fail(res, 'list requests')
+    return ((await res.json()) as { requests: LoggedEvent[] }).requests
+  }
+
+  async getRequest(id: string): Promise<LoggedEvent | null> {
+    const res = await this.request(`/__admin/requests/${encodeURIComponent(id)}`)
+    if (res.status === 404) return null
+    if (!res.ok) await this.fail(res, 'get request')
+    return (await res.json()) as LoggedEvent
+  }
+
+  async clearRequests(): Promise<void> {
+    const res = await this.request('/__admin/requests', { method: 'DELETE' })
+    if (!res.ok) await this.fail(res, 'clear requests')
+  }
+
+  async countRequests(pattern: Record<string, unknown>): Promise<number> {
+    const res = await this.request('/__admin/requests/count', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pattern),
+    })
+    if (!res.ok) await this.fail(res, 'count requests')
+    return ((await res.json()) as { count: number }).count
+  }
+
+  async nearMisses(loggedRequest: Record<string, unknown>): Promise<NearMiss[]> {
+    const res = await this.request('/__admin/near-misses/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(loggedRequest),
+    })
+    if (!res.ok) await this.fail(res, 'near misses')
+    return ((await res.json()) as { nearMisses: NearMiss[] }).nearMisses
   }
 
   async version(): Promise<string> {

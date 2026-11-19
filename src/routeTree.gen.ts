@@ -14,11 +14,14 @@ import { Route as HealthzRouteImport } from './routes/healthz'
 import { Route as ApiImportRouteImport } from './routes/api/import'
 import { Route as ApiIntegrationsRouteImport } from './routes/api/integrations'
 import { Route as ApiMocksRouteImport } from './routes/api/mocks'
+import { Route as ApiRequestsRouteImport } from './routes/api/requests'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
 import { Route as ApiUsersRouteImport } from './routes/api/users'
 import { Route as ApiIntegrationsKeyRouteImport } from './routes/api/integrations.$key'
 import { Route as ApiMocksIdRouteImport } from './routes/api/mocks.$id'
 import { Route as ApiMocksResetMineRouteImport } from './routes/api/mocks.reset-mine'
+import { Route as ApiRequestsIdRouteImport } from './routes/api/requests.$id'
+import { Route as ApiRequestsCountRouteImport } from './routes/api/requests.count'
 import { Route as ApiSessionPasswordRouteImport } from './routes/api/session.password'
 import { Route as ApiUsersIdRouteImport } from './routes/api/users.$id'
 import { Route as ApiIntegrationsKeyEndpointsRouteImport } from './routes/api/integrations.$key.endpoints'
@@ -54,6 +57,11 @@ const ApiMocksRoute = ApiMocksRouteImport.update({
   path: '/api/mocks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRequestsRoute = ApiRequestsRouteImport.update({
+  id: '/api/requests',
+  path: '/api/requests',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSessionRoute = ApiSessionRouteImport.update({
   id: '/api/session',
   path: '/api/session',
@@ -78,6 +86,16 @@ const ApiMocksResetMineRoute = ApiMocksResetMineRouteImport.update({
   id: '/reset-mine',
   path: '/reset-mine',
   getParentRoute: () => ApiMocksRoute,
+} as any)
+const ApiRequestsIdRoute = ApiRequestsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiRequestsRoute,
+} as any)
+const ApiRequestsCountRoute = ApiRequestsCountRouteImport.update({
+  id: '/count',
+  path: '/count',
+  getParentRoute: () => ApiRequestsRoute,
 } as any)
 const ApiSessionPasswordRoute = ApiSessionPasswordRouteImport.update({
   id: '/password',
@@ -135,11 +153,14 @@ export interface FileRoutesByFullPath {
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
+  '/api/requests/$id': typeof ApiRequestsIdRoute
+  '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
@@ -156,11 +177,14 @@ export interface FileRoutesByTo {
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
+  '/api/requests/$id': typeof ApiRequestsIdRoute
+  '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
@@ -178,11 +202,14 @@ export interface FileRoutesById {
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
+  '/api/requests/$id': typeof ApiRequestsIdRoute
+  '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
@@ -201,11 +228,14 @@ export interface FileRouteTypes {
     | '/api/import'
     | '/api/integrations'
     | '/api/mocks'
+    | '/api/requests'
     | '/api/session'
     | '/api/users'
     | '/api/integrations/$key'
     | '/api/mocks/$id'
     | '/api/mocks/reset-mine'
+    | '/api/requests/$id'
+    | '/api/requests/count'
     | '/api/session/password'
     | '/api/users/$id'
     | '/api/integrations/$key/endpoints'
@@ -222,11 +252,14 @@ export interface FileRouteTypes {
     | '/api/import'
     | '/api/integrations'
     | '/api/mocks'
+    | '/api/requests'
     | '/api/session'
     | '/api/users'
     | '/api/integrations/$key'
     | '/api/mocks/$id'
     | '/api/mocks/reset-mine'
+    | '/api/requests/$id'
+    | '/api/requests/count'
     | '/api/session/password'
     | '/api/users/$id'
     | '/api/integrations/$key/endpoints'
@@ -243,11 +276,14 @@ export interface FileRouteTypes {
     | '/api/import'
     | '/api/integrations'
     | '/api/mocks'
+    | '/api/requests'
     | '/api/session'
     | '/api/users'
     | '/api/integrations/$key'
     | '/api/mocks/$id'
     | '/api/mocks/reset-mine'
+    | '/api/requests/$id'
+    | '/api/requests/count'
     | '/api/session/password'
     | '/api/users/$id'
     | '/api/integrations/$key/endpoints'
@@ -265,6 +301,7 @@ export interface RootRouteChildren {
   ApiImportRoute: typeof ApiImportRoute
   ApiIntegrationsRoute: typeof ApiIntegrationsRouteWithChildren
   ApiMocksRoute: typeof ApiMocksRouteWithChildren
+  ApiRequestsRoute: typeof ApiRequestsRouteWithChildren
   ApiSessionRoute: typeof ApiSessionRouteWithChildren
   ApiUsersRoute: typeof ApiUsersRouteWithChildren
 }
@@ -306,6 +343,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMocksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/requests': {
+      id: '/api/requests'
+      path: '/api/requests'
+      fullPath: '/api/requests'
+      preLoaderRoute: typeof ApiRequestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/session': {
       id: '/api/session'
       path: '/api/session'
@@ -340,6 +384,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/mocks/reset-mine'
       preLoaderRoute: typeof ApiMocksResetMineRouteImport
       parentRoute: typeof ApiMocksRoute
+    }
+    '/api/requests/$id': {
+      id: '/api/requests/$id'
+      path: '/$id'
+      fullPath: '/api/requests/$id'
+      preLoaderRoute: typeof ApiRequestsIdRouteImport
+      parentRoute: typeof ApiRequestsRoute
+    }
+    '/api/requests/count': {
+      id: '/api/requests/count'
+      path: '/count'
+      fullPath: '/api/requests/count'
+      preLoaderRoute: typeof ApiRequestsCountRouteImport
+      parentRoute: typeof ApiRequestsRoute
     }
     '/api/session/password': {
       id: '/api/session/password'
@@ -494,6 +552,20 @@ const ApiMocksRouteWithChildren = ApiMocksRoute._addFileChildren(
   ApiMocksRouteChildren,
 )
 
+interface ApiRequestsRouteChildren {
+  ApiRequestsIdRoute: typeof ApiRequestsIdRoute
+  ApiRequestsCountRoute: typeof ApiRequestsCountRoute
+}
+
+const ApiRequestsRouteChildren: ApiRequestsRouteChildren = {
+  ApiRequestsIdRoute: ApiRequestsIdRoute,
+  ApiRequestsCountRoute: ApiRequestsCountRoute,
+}
+
+const ApiRequestsRouteWithChildren = ApiRequestsRoute._addFileChildren(
+  ApiRequestsRouteChildren,
+)
+
 interface ApiSessionRouteChildren {
   ApiSessionPasswordRoute: typeof ApiSessionPasswordRoute
 }
@@ -524,6 +596,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiImportRoute: ApiImportRoute,
   ApiIntegrationsRoute: ApiIntegrationsRouteWithChildren,
   ApiMocksRoute: ApiMocksRouteWithChildren,
+  ApiRequestsRoute: ApiRequestsRouteWithChildren,
   ApiSessionRoute: ApiSessionRouteWithChildren,
   ApiUsersRoute: ApiUsersRouteWithChildren,
 }

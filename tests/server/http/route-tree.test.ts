@@ -28,3 +28,9 @@ test('catalog build routes resolve to their own files', () => {
 test('import route resolves', () => {
   expect(leaf('/api/import')).toBe('/api/import')
 })
+
+test('/api/requests/count is not captured by /api/requests/$id', () => {
+  expect(leaf('/api/requests')).toBe('/api/requests')
+  expect(leaf('/api/requests/count')).toBe('/api/requests/count')
+  expect(leaf('/api/requests/abc')).toBe('/api/requests/$id')
+})

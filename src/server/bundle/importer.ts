@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { AuditLog } from '../audit/log'
+import { longestPrefixMatch } from '../catalog/prefix'
 import { validateEndpoint, validateIntegration, type CatalogService } from '../catalog/service'
 import { ValidationError } from '../errors'
 import { logger } from '../logger'
@@ -36,16 +37,8 @@ export function deterministicId(stub: Record<string, unknown>): string {
 }
 
 function guessIntegration(stub: StubMapping, prefixes: { key: string; prefix: string }[]): string | undefined {
-  let best: { key: string; prefix: string } | undefined
-  for (const field of URL_FIELDS) {
-    const url = stub.request[field]
-    if (typeof url !== 'string') continue
-    for (const p of prefixes) {
-      const matches = p.prefix === '/' || url === p.prefix || url.startsWith(`${p.prefix}/`) || url.startsWith(`${p.prefix}?`)
-      if (matches && (!best || p.prefix.length > best.prefix.length)) best = p
-    }
-  }
-  return best?.key
+  const urls = URL_FIELDS.map((f) => stub.request[f]).filter((u): u is string => typeof u === 'string')
+  return longestPrefixMatch(urls, prefixes)
 }
 
 const invalid = <T>(what: string, fn: () => T): T => {
