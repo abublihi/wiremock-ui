@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { MenuIcon, MonitorIcon, MoonIcon, SunIcon, WaypointsIcon } from 'lucide-react'
 import type { PublicUser } from '@/server/users/types'
-import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
 import {
   DropdownMenu,
@@ -15,6 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/ui
 import { useT } from '@/ui/i18n'
 import { THEMES, isTheme, useTheme, type Theme } from '@/ui/theme'
 import { Rail, type NavItem } from './Rail'
+import { UserMenu } from './UserMenu'
 
 const THEME_ICON: Record<Theme, typeof SunIcon> = { light: SunIcon, dark: MoonIcon, system: MonitorIcon }
 
@@ -72,18 +72,13 @@ export function TopBar({ nav, user }: { nav: NavItem[]; user: PublicUser | null 
               <Brand />
             </SheetTitle>
           </SheetHeader>
-          <Rail nav={nav} user={user} onNavigate={() => setNavOpen(false)} />
+          <Rail nav={nav} onNavigate={() => setNavOpen(false)} />
         </SheetContent>
       </Sheet>
       <Brand />
       <div className="ms-auto flex items-center gap-1">
         <ThemeMenu />
-        {user && (
-          <div className="flex items-center gap-2 ps-2" title={t('user.signedInAs', { name: user.displayName })}>
-            <span className="hidden max-w-40 truncate font-medium sm:inline">{user.displayName}</span>
-            <Badge variant="secondary">{t(`role.${user.role}`)}</Badge>
-          </div>
-        )}
+        {user && <UserMenu user={user} />}
       </div>
     </header>
   )

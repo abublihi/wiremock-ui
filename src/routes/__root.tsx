@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { type ReactNode } from 'react'
-import { HeadContent, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
+import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router'
+import type { QueryClient } from '@tanstack/react-query'
 import { createIsomorphicFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { Toaster } from '@/ui/components/ui/sonner'
@@ -19,7 +20,7 @@ const loadPrefs = createIsomorphicFn()
   .server((): Prefs => prefsFromRequest(getRequest()))
   .client((): Prefs => ({ theme: themeFromCookies(document.cookie) }))
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   beforeLoad: () => ({ prefs: loadPrefs() }),
   head: () => ({
     meta: [

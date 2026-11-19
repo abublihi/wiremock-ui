@@ -1,4 +1,5 @@
 import { readdirSync } from 'node:fs'
+import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter } from '@tanstack/react-router'
 import { afterAll, beforeAll, expect, test, vi } from 'vitest'
 import type { Runtime } from '../../../src/server/runtime'
@@ -26,7 +27,7 @@ const PUBLIC = new Set(['POST /api/session'])
 
 async function apiRoutes() {
   const { routeTree } = await import('../../../src/routeTree.gen')
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ['/'] }) })
+  const router = createRouter({ routeTree, context: { queryClient: new QueryClient() }, history: createMemoryHistory({ initialEntries: ['/'] }) })
   return Object.values(router.routesById as unknown as Record<string, { id: string; options: { server?: { handlers?: Record<string, ServerHandler> } } }>)
     .filter((r) => r.id.startsWith('/api/'))
     .flatMap((r) => Object.entries(r.options.server?.handlers ?? {}).map(([method, handler]) => ({ path: r.id, method, handler })))

@@ -1,21 +1,14 @@
 import { Link } from '@tanstack/react-router'
 import type { LucideIcon } from 'lucide-react'
-import { can, type Permission } from '@/server/auth/permissions'
-import type { PublicUser } from '@/server/users/types'
 import { useT, type MessageKey } from '@/ui/i18n'
 
-export type NavItem = { to: string; label: MessageKey; icon: LucideIcon; permission?: Permission }
+export type NavItem = { to: string; label: MessageKey; icon: LucideIcon }
 
-/** Items without a permission are always shown; the rest only to roles that hold it. */
-export function visibleNav(nav: NavItem[], user: PublicUser | null): NavItem[] {
-  return nav.filter((item) => !item.permission || (user !== null && can(user.role, item.permission)))
-}
-
-export function Rail({ nav, user, onNavigate }: { nav: NavItem[]; user: PublicUser | null; onNavigate?: () => void }) {
+export function Rail({ nav, onNavigate }: { nav: NavItem[]; onNavigate?: () => void }) {
   const t = useT()
   return (
     <nav aria-label={t('nav.label')} className="flex flex-col gap-1 p-3">
-      {visibleNav(nav, user).map((item) => (
+      {nav.map((item) => (
         <Link
           key={item.to}
           // NavItem.to is a plain string so the nav can be declared before every route exists.

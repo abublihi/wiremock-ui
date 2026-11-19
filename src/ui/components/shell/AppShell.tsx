@@ -8,14 +8,14 @@ import { TopBar } from './TopBar'
 
 export type { NavItem } from './Rail'
 
-/** The app's navigation; entries with a permission are hidden from roles without it. */
+/** The app's navigation: every signed-in user sees every entry. */
 export const APP_NAV: NavItem[] = [
-  { to: '/mocks', label: 'nav.mocks', icon: ListIcon, permission: 'mocks.read' },
-  { to: '/requests', label: 'nav.requests', icon: ScrollTextIcon, permission: 'requests.read' },
-  { to: '/catalog', label: 'nav.catalog', icon: DatabaseIcon, permission: 'catalog.read' },
-  { to: '/users', label: 'nav.users', icon: UsersIcon, permission: 'users.manage' },
-  { to: '/audit', label: 'nav.audit', icon: FileClockIcon, permission: 'audit.read' },
-  { to: '/import', label: 'nav.import', icon: UploadIcon, permission: 'import.run' },
+  { to: '/mocks', label: 'nav.mocks', icon: ListIcon },
+  { to: '/requests', label: 'nav.requests', icon: ScrollTextIcon },
+  { to: '/catalog', label: 'nav.catalog', icon: DatabaseIcon },
+  { to: '/users', label: 'nav.users', icon: UsersIcon },
+  { to: '/audit', label: 'nav.audit', icon: FileClockIcon },
+  { to: '/import', label: 'nav.import', icon: UploadIcon },
 ]
 
 export function AppShell({ nav, user, children }: { nav: NavItem[]; user: PublicUser | null; children: ReactNode }) {
@@ -32,7 +32,7 @@ export function AppShell({ nav, user, children }: { nav: NavItem[]; user: Public
       <TopBar nav={nav} user={user} />
       <div className="flex flex-1">
         <aside className="hidden w-56 shrink-0 border-e bg-surface md:block">
-          <Rail nav={nav} user={user} />
+          <Rail nav={nav} />
         </aside>
         <main id="main" tabIndex={-1} className="min-w-0 flex-1 p-4 md:p-6">
           {children}

@@ -20,10 +20,6 @@ export const en = {
   'theme.dark': 'Dark',
   'theme.system': 'System',
 
-  'role.viewer': 'Viewer',
-  'role.tester': 'Tester',
-  'role.developer': 'Developer',
-  'role.admin': 'Admin',
   'user.signedInAs': 'Signed in as {name}',
 
   'login.title': 'Sign in',
@@ -35,6 +31,25 @@ export const en = {
   'login.wrongCredentials': 'Wrong username or password',
   'login.rateLimited': 'Too many sign-in attempts from this network. Try again in 15 minutes.',
 
-  'preview.title': 'Shell preview',
-  'preview.body': 'The pages arrive in the next tasks. Use the navigation, the language and the theme toggles to check the shell.',
+
+  'error.generic': 'Something went wrong. Try again.',
+  'common.cancel': 'Cancel',
+
+  'user.menu': 'Account menu',
+  'user.changePassword': 'Change password',
+  'user.signOut': 'Sign out',
+
+  'password.title': 'Change password',
+  'password.description': 'Your other signed-in devices will be signed out.',
+  'password.current': 'Current password',
+  'password.next': 'New password',
+  'password.hint': 'Between 8 and 72 characters.',
+  'password.length': 'Use between 8 and 72 characters.',
+  'password.required': 'Enter your current password.',
+  'password.submit': 'Change password',
+  'password.submitting': 'Changing…',
+  'password.changed': 'Password changed',
+
+  'mocks.placeholderTitle': 'Mocks',
+  'mocks.placeholderBody': 'Mocks arrive in the next task',
 } as const

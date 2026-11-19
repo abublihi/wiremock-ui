@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { renderToString } from 'react-dom/server'
@@ -14,16 +15,19 @@ const user = (role: Role): PublicUser => ({
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 
+const queryClient = new QueryClient()
 const enPrefs: Prefs = { theme: 'system' }
 
 async function renderShell(u: PublicUser | null, prefs: Prefs = enPrefs) {
   const rootRoute = createRootRoute({
     component: () => (
-      <PrefsProvider prefs={prefs} onThemeChange={() => {}}>
-        <AppShell nav={APP_NAV} user={u}>
-          <p>page content</p>
-        </AppShell>
-      </PrefsProvider>
+      <QueryClientProvider client={queryClient}>
+        <PrefsProvider prefs={prefs} onThemeChange={() => {}}>
+          <AppShell nav={APP_NAV} user={u}>
+            <p>page content</p>
+          </AppShell>
+        </PrefsProvider>
+      </QueryClientProvider>
     ),
   })
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/'] }) })
@@ -49,13 +53,8 @@ describe('HazardStrip', () => {
 })
 
 describe('AppShell', () => {
-  it('hides nav items the role lacks (viewer sees no Users/Audit/Import)', async () => {
+  it('shows every nav item to a signed-in user, whatever the role field says', async () => {
     await renderShell(user('viewer'))
-    expect(navLabels()).toEqual(['Mocks', 'Request log', 'Catalog'])
-  })
-
-  it('shows Users, Audit and Import to an admin', async () => {
-    await renderShell(user('admin'))
     expect(navLabels()).toEqual(['Mocks', 'Request log', 'Catalog', 'Users', 'Audit', 'Import'])
   })
 
@@ -90,11 +89,13 @@ describe('preference toggles and the mobile nav', () => {
       const { prefs, setTheme } = usePrefsState({ theme: 'light' })
       return (
         <div data-testid="document" className={prefs.theme}>
-          <PrefsProvider prefs={prefs} onThemeChange={setTheme}>
-            <AppShell nav={APP_NAV} user={user('tester')}>
-              <p>page content</p>
-            </AppShell>
-          </PrefsProvider>
+          <QueryClientProvider client={queryClient}>
+            <PrefsProvider prefs={prefs} onThemeChange={setTheme}>
+              <AppShell nav={APP_NAV} user={user('tester')}>
+                <p>page content</p>
+              </AppShell>
+            </PrefsProvider>
+          </QueryClientProvider>
         </div>
       )
     }
