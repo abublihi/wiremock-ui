@@ -121,7 +121,7 @@ test('invalid entries abort before any write', async () => {
 test('counts ignored oidc identities and audits one import entry', async () => {
   const r = await run({ oidcIdentities: [{}, {}] })
   expect(r.ignoredOidcIdentities).toBe(2)
-  expect((await env.rt.audit.list({ limit: 1 }))[0]).toMatchObject({ action: 'import', actor: 'ui-admin' })
+  expect((await env.rt.audit.list({ limit: 1 })).entries[0]).toMatchObject({ action: 'import', actor: 'ui-admin' })
 })
 
 test('metadata that is not an object is rejected before any write', async () => {

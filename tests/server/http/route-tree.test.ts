@@ -35,3 +35,7 @@ test('/api/requests/count is not captured by /api/requests/$id', () => {
   expect(leaf('/api/requests/abc')).toBe('/api/requests/$id')
   expect(leaf('/api/requests/abc/near-misses')).toBe('/api/requests/$id/near-misses')
 })
+
+test('audit route resolves', () => {
+  expect(leaf('/api/audit')).toBe('/api/audit')
+})

@@ -148,7 +148,7 @@ test('audit entries for each mutation', async () => {
   await svc.upsertEndpoint(endpoint(), 'dev')
   await svc.deleteEndpoint('payments', 'get-user', 'dev')
   await svc.deleteIntegration('payments', 'admin')
-  const entries = (await audit.list()).reverse().map((e) => [e.actor, e.action, e.target])
+  const entries = (await audit.list()).entries.reverse().map((e) => [e.actor, e.action, e.target])
   expect(entries).toEqual([
     ['dev', 'catalog.integration.upsert', 'payments'],
     ['dev', 'catalog.endpoint.upsert', 'payments/get-user'],

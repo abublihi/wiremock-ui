@@ -283,7 +283,7 @@ test('a mock deleted during the sync is not resurrected', async () => {
 test('audit entry after a marker-triggered full sync, none for a plain fullSync', async () => {
   await fill(3)
   const entries: { actor: string; action: string; details?: Record<string, unknown> }[] = []
-  const audit = { record: async (e: (typeof entries)[number]) => void entries.push(e), list: async () => [] }
+  const audit = { record: async (e: (typeof entries)[number]) => void entries.push(e), list: async () => ({ entries: [], nextCursor: null }) }
   const rec = new Reconciler({ wiremock: client, store, intervalMs: 60_000, audit })
   reconcilers.push(rec)
   await rec.fullSync()
@@ -294,7 +294,7 @@ test('audit entry after a marker-triggered full sync, none for a plain fullSync'
 })
 
 test('an audit failure does not fail the sync', async () => {
-  const audit = { record: async () => Promise.reject(new Error('redis down')), list: async () => [] }
+  const audit = { record: async () => Promise.reject(new Error('redis down')), list: async () => ({ entries: [], nextCursor: null }) }
   const rec = new Reconciler({ wiremock: client, store, intervalMs: 60_000, audit })
   reconcilers.push(rec)
   await client.deleteStub(MARKER_ID)

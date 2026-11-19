@@ -223,7 +223,7 @@ test('mock create/update/delete write audit entries with actor and target', asyn
   const m = await (await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/audit'), asSession(s)))).json()
   await updateMock(rt, req(`/api/mocks/${m.id}`, 'PUT', { stub: input('/h/audit'), version: 1 }, asSession(s)), { id: m.id })
   await deleteMock(rt, req(`/api/mocks/${m.id}`, 'DELETE', undefined, asSession(s)), { id: m.id })
-  const entries = (await rt.audit.list({ limit: 500 })).filter((e) => e.target === m.id)
+  const entries = (await rt.audit.list({ limit: 500 })).entries.filter((e) => e.target === m.id)
   expect(entries.map((e) => e.action).sort()).toEqual(['mock.create', 'mock.delete', 'mock.update'])
   expect(entries.every((e) => e.actor === 'audited')).toBe(true)
 })

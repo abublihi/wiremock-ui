@@ -91,7 +91,7 @@ test('ensureFirstAdmin rejects bad ADMIN_USER / ADMIN_PASSWORD and audits creati
   await expect(svc.ensureFirstAdmin('root', 'short')).rejects.toMatchObject({ status: 500, message: expect.stringContaining('ADMIN_PASSWORD') })
   await expect(svc.ensureFirstAdmin('baseline', 'rootpass1')).rejects.toMatchObject({ message: expect.stringContaining('ADMIN_USER') })
   await admin()
-  expect(await audit.list()).toMatchObject([{ actor: 'system', action: 'user.create', target: 'root' }])
+  expect((await audit.list()).entries).toMatchObject([{ actor: 'system', action: 'user.create', target: 'root' }])
 })
 
 test('changeOwnPassword keeps the current session, ends others, and audits user.password', async () => {
@@ -101,7 +101,7 @@ test('changeOwnPassword keeps the current session, ends others, and audits user.
   await svc.changeOwnPassword(a.user.id, 'rootpass1', 'brandnew12', a.session.id)
   expect(await store.getSession(a.session.id)).not.toBeNull()
   expect(await store.getSession(b.session.id)).toBeNull()
-  const entries = await audit.list()
+  const entries = (await audit.list()).entries
   expect(entries.some((e) => e.action === 'user.password' && e.target === 'root')).toBe(true)
   expect(JSON.stringify(entries)).not.toContain('brandnew12')
 })
@@ -133,7 +133,7 @@ test('audit entries written for create/update/delete without password values', a
   const u = await svc.create({ username: 'bob', role: 'tester', password: 'bobpass12' }, 'root')
   await svc.update(u.id, { password: 'newpass123', displayName: 'Bob' }, 'root')
   await svc.remove(u.id, 'root')
-  const entries = (await audit.list()).filter((e) => e.actor === 'root')
+  const entries = (await audit.list()).entries.filter((e) => e.actor === 'root')
   expect(entries.map((e) => e.action).sort()).toEqual(['user.create', 'user.delete', 'user.update'])
   const text = JSON.stringify(entries)
   expect(text).not.toContain('bobpass12')

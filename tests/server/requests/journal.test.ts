@@ -86,5 +86,5 @@ test('count and clear (clear is audited)', async () => {
   expect(await rt.requests.count({ method: 'GET', urlPath: '/x' })).toBe(2)
   await rt.requests.clear('ui-admin')
   expect(await rt.requests.list({})).toEqual([])
-  expect((await rt.audit.list()).some((a) => a.action === 'requests.clear' && a.actor === 'ui-admin')).toBe(true)
+  expect((await rt.audit.list()).entries.some((a) => a.action === 'requests.clear' && a.actor === 'ui-admin')).toBe(true)
 })

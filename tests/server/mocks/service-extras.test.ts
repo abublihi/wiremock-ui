@@ -18,7 +18,7 @@ const audit: AuditLog = {
   record: async (e) => {
     entries.push(e)
   },
-  list: async () => [],
+  list: async () => ({ entries: [], nextCursor: null }),
 }
 const user = (username: string, role: PublicUser['role'] = 'tester'): PublicUser => ({
   id: username, username, displayName: username, role, disabled: false, createdAt: '', updatedAt: '',

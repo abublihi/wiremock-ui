@@ -15,7 +15,7 @@ let store: RedisMockStore
 let redis: Redis
 let client: WireMockClient
 let svc: MockService
-const audit: AuditLog = { record: async () => {}, list: async () => [] }
+const audit: AuditLog = { record: async () => {}, list: async () => ({ entries: [], nextCursor: null }) }
 const actor = (username: string): PublicUser => ({
   id: username,
   username,

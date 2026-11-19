@@ -113,7 +113,7 @@ test('deleting an integration that still has mocks → 409', async () => {
 })
 
 test('audit entries are written through the HTTP path', async () => {
-  const actions = (await rt.audit.list()).map((e) => e.action)
+  const actions = (await rt.audit.list()).entries.map((e) => e.action)
   expect(actions).toEqual(expect.arrayContaining(['catalog.integration.upsert', 'catalog.integration.delete', 'catalog.endpoint.upsert', 'catalog.endpoint.delete']))
 })
 
