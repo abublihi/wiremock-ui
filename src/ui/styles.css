@@ -1,0 +1,171 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Fonts: Plex Sans (Latin) + Plex Sans Arabic share one stack; Condensed for page titles; Mono for
+   URLs, ids, JSON and header names. */
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-sans-arabic/arabic-400.css";
+@import "@fontsource/ibm-plex-sans-arabic/arabic-500.css";
+@import "@fontsource/ibm-plex-sans-arabic/arabic-600.css";
+@import "@fontsource/ibm-plex-sans-condensed/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+
+/* Dark mode: forced by <html class="dark">, or by the OS when <html class="system">. */
+@custom-variant dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(.system, .system *) {
+      @slot;
+    }
+  }
+}
+
+/* ── Design tokens (the only place raw colours live) ─────────────────────────── */
+:root {
+  color-scheme: light;
+  --canvas: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #17202e;
+  --muted-ink: #5b6676;
+  --signal: #0b7a75;
+  --hazard: #f0a202;
+  --mismatch: #c8402b;
+  --match: #2e8b57;
+
+  /* derived tints */
+  --tint: #e9edf2;
+  --line: #d8dee6;
+  --signal-tint: #e1efee;
+  --on-signal: #ffffff;
+}
+
+.dark {
+  color-scheme: dark;
+  --canvas: #0f141b;
+  --surface: #161d27;
+  --ink: #e6eaf0;
+  --muted-ink: #9aa5b4;
+  --signal: #3fb8af;
+  --hazard: #f0a202;
+  --mismatch: #e46a55;
+  --match: #4cc38a;
+  --tint: #1e2733;
+  --line: #2a3546;
+  --signal-tint: #163130;
+  --on-signal: #0f141b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .system {
+    color-scheme: dark;
+    --canvas: #0f141b;
+    --surface: #161d27;
+    --ink: #e6eaf0;
+    --muted-ink: #9aa5b4;
+    --signal: #3fb8af;
+    --hazard: #f0a202;
+    --mismatch: #e46a55;
+    --match: #4cc38a;
+    --tint: #1e2733;
+    --line: #2a3546;
+    --signal-tint: #163130;
+    --on-signal: #0f141b;
+  }
+}
+
+/* shadcn's variables mapped onto the tokens. */
+:root {
+  --radius: 0.5rem;
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--signal);
+  --primary-foreground: var(--on-signal);
+  --secondary: var(--tint);
+  --secondary-foreground: var(--ink);
+  --muted: var(--tint);
+  --muted-foreground: var(--muted-ink);
+  --accent: var(--signal-tint);
+  --accent-foreground: var(--ink);
+  --destructive: var(--mismatch);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--signal);
+}
+
+@theme inline {
+  --font-sans: "IBM Plex Sans", "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  --font-condensed: "IBM Plex Sans Condensed", "IBM Plex Sans Arabic", ui-sans-serif, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Type scale: 12 / 14 (base) / 16 / 20 / 28 px. */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 2.125rem;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted-ink: var(--muted-ink);
+  --color-signal: var(--signal);
+  --color-hazard: var(--hazard);
+  --color-mismatch: var(--mismatch);
+  --color-match: var(--match);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* The signature hazard hatching (45° amber/ink). Used only by the test-environment strip and the
+   request log's "No match" stamp. */
+@utility hatch {
+  background-image: repeating-linear-gradient(45deg, var(--hazard) 0 10px, var(--ink) 10px 20px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans text-sm antialiased;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+}
