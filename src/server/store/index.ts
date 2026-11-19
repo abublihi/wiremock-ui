@@ -1,5 +1,7 @@
 import type { Config } from '../config'
 import { type AuditLog, RedisAuditLog } from '../audit/log'
+import { RedisCatalogStore } from '../catalog/store'
+import type { CatalogStore } from '../catalog/types'
 import { RedisUserStore } from '../users/store'
 import type { UserStore } from '../users/types'
 import { createRedis } from './connection'
@@ -17,6 +19,7 @@ export type Stores = {
   mocks: MockStore
   users: UserStore
   audit: AuditLog
+  catalog: CatalogStore
   ping(): Promise<boolean>
   close(): Promise<void>
 }
@@ -29,6 +32,7 @@ export function createStores(config: Config): Stores {
     mocks,
     users: new RedisUserStore(redis),
     audit: new RedisAuditLog(redis),
+    catalog: new RedisCatalogStore(redis),
     ping: () => mocks.ping(),
     async close() {
       await mocks.close()

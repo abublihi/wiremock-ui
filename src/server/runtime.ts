@@ -1,6 +1,7 @@
 import { loadConfig, type Config } from './config'
 import { UpstreamError } from './errors'
 import { logger } from './logger'
+import { CatalogService } from './catalog/service'
 import { MockService } from './mocks/service'
 import type { AuditLog } from './audit/log'
 import { createStores, type MockStore, type Stores } from './store'
@@ -17,6 +18,7 @@ export type Runtime = {
   users: UserService
   audit: AuditLog
   mocks: MockService
+  catalog: CatalogService
   reconciler: Reconciler
 }
 
@@ -83,9 +85,10 @@ export async function bootRuntime(
     const users = new UserService({ users: stores.users, audit })
     await users.ensureFirstAdmin(config.adminUser, config.adminPassword)
     const mocks = new MockService({ wiremock, store, audit })
+    const catalog = new CatalogService({ catalog: stores.catalog, audit, mocks: store })
     const reconciler = new Reconciler({ wiremock, store, intervalMs: config.syncIntervalSeconds * 1000 })
     await reconciler.start()
-    return { config, wiremock, store, stores, users, audit, mocks, reconciler }
+    return { config, wiremock, store, stores, users, audit, mocks, catalog, reconciler }
   } catch (err) {
     await stores?.close().catch(() => {})
     logger.error({ err }, 'runtime boot failed')

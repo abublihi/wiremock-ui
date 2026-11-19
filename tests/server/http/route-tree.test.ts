@@ -12,3 +12,10 @@ test('/api/mocks/reset-mine is not captured by /api/mocks/$id', () => {
   expect(leaf('/api/mocks/abc/history')).toBe('/api/mocks/$id/history')
   expect(leaf('/api/mocks/abc/restore')).toBe('/api/mocks/$id/restore')
 })
+
+test('catalog routes resolve to their own files', () => {
+  expect(leaf('/api/integrations')).toBe('/api/integrations')
+  expect(leaf('/api/integrations/pay')).toBe('/api/integrations/$key')
+  expect(leaf('/api/integrations/pay/endpoints')).toBe('/api/integrations/$key/endpoints')
+  expect(leaf('/api/integrations/pay/endpoints/get-user')).toBe('/api/integrations/$key/endpoints/$endpoint')
+})
