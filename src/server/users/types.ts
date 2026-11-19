@@ -41,3 +41,8 @@ export interface UserStore {
   /** INCR ratelimit:login:{ip}; EXPIRE windowSeconds on first hit. Returns the new count. */
   hitRateLimit(ip: string, windowSeconds: number): Promise<number>
 }
+
+export function toPublicUser(user: User): PublicUser {
+  const { passwordHash: _passwordHash, ...rest } = user
+  return rest
+}
