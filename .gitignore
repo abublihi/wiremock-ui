@@ -8,3 +8,7 @@ dist/
 .env.*
 !.env.example
 *.tsbuildinfo
+
+# Planning and agent working files
+docs/superpowers/
+.claude/
