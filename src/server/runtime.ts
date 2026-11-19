@@ -1,6 +1,8 @@
 import { loadConfig, type Config } from './config'
-import { UpstreamError } from './errors'
+import { ConfigError, UpstreamError } from './errors'
 import { logger } from './logger'
+import { importBundle } from './bundle/importer'
+import { readBundleFromPath } from './bundle/parse'
 import { CatalogService } from './catalog/service'
 import { MockService } from './mocks/service'
 import type { AuditLog } from './audit/log'
@@ -86,6 +88,15 @@ export async function bootRuntime(
     await users.ensureFirstAdmin(config.adminUser, config.adminPassword)
     const mocks = new MockService({ wiremock, store, audit })
     const catalog = new CatalogService({ catalog: stores.catalog, audit, mocks: store })
+    if (config.seedPath) {
+      try {
+        const bundle = await readBundleFromPath(config.seedPath)
+        const report = await importBundle(bundle, { catalog, mocks, store, audit }, { actor: 'system', prune: config.seedPrune })
+        logger.info({ report, seedPath: config.seedPath }, 'seed imported')
+      } catch (err) {
+        throw new ConfigError(`Seed import from ${config.seedPath} failed: ${(err as Error).message}`)
+      }
+    }
     const reconciler = new Reconciler({ wiremock, store, intervalMs: config.syncIntervalSeconds * 1000 })
     await reconciler.start()
     return { config, wiremock, store, stores, users, audit, mocks, catalog, reconciler }

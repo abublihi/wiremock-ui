@@ -33,6 +33,41 @@ function matchesQuery(stub: StubMapping, q: string): boolean {
   )
 }
 
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** Shape and content rules for a stub arriving from a bundle; throws ValidationError. */
+export function assertValidStub(stub: unknown): asserts stub is Record<string, unknown> & Pick<StubBase, 'request' | 'response'> {
+  if (!isObject(stub)) throw new ValidationError('mock must be an object')
+  if (!isObject(stub.request)) throw new ValidationError('mock.request must be an object')
+  if (!isObject(stub.response)) throw new ValidationError('mock.response must be an object')
+  if ('bodyFileName' in stub.response) throw new ValidationError('bodyFileName is not supported; put the body inline')
+}
+
+const IGNORED_META = ['version', 'updatedAt', 'updatedBy', 'source'] as const
+
+/** Canonical JSON (sorted keys, undefined dropped) of a stub minus the fields an import may change. */
+function comparable(stub: StubMapping): string {
+  const { persistent: _p, ...rest } = stub
+  const ui = { ...(stub.metadata?.wiremockUi ?? {}) } as Record<string, unknown>
+  for (const k of IGNORED_META) delete ui[k]
+  return canonicalJson({ ...rest, metadata: { ...stub.metadata, wiremockUi: ui } })
+}
+
+export function canonicalJson(value: unknown): string {
+  const sort = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(sort)
+      : isObject(v)
+        ? Object.fromEntries(
+            Object.keys(v)
+              .sort()
+              .filter((k) => v[k] !== undefined)
+              .map((k) => [k, sort(v[k])]),
+          )
+        : v
+  return JSON.stringify(sort(value))
+}
+
 const ownerOf = (stub: StubMapping) => stub.metadata?.wiremockUi?.owner ?? 'baseline'
 
 export class MockService {
@@ -139,6 +174,40 @@ export class MockService {
     return { deleted }
   }
 
+  /**
+   * Import path: bypasses ownership (the caller decides what may be touched).
+   * Same WireMock-first + rollback write as every other change; no write when nothing changed.
+   */
+  async upsertImported(
+    stub: StubMapping,
+    owner: string,
+    source: 'import' | 'seed',
+    actor: string,
+  ): Promise<'created' | 'updated' | 'unchanged'> {
+    assertValidStub(stub)
+    const { uuid: _uuid, ...clean } = stub
+    const previous = await this.store.get(stub.id)
+    const ui = stub.metadata?.wiremockUi
+    const incoming = {
+      ...clean,
+      metadata: { ...stub.metadata, wiremockUi: { integration: ui?.integration, endpoint: ui?.endpoint, owner } },
+    } as StubMapping
+    if (previous && comparable(previous) === comparable(incoming)) return 'unchanged'
+    const version = previous?.metadata?.wiremockUi?.version ?? 0
+    await this.save(stub.id, incoming as MockInput, previous ? version : 0, actor, previous, {
+      owner,
+      version: version + 1,
+      source,
+    })
+    return previous ? 'updated' : 'created'
+  }
+
+  /** Import prune: removes a mock regardless of owner. */
+  async deleteImported(id: string): Promise<void> {
+    const current = await this.store.get(id)
+    if (current) await this.remove(current, undefined)
+  }
+
   history(id: string): Promise<StubMapping[]> {
     return this.store.history(id)
   }
@@ -192,7 +261,7 @@ export class MockService {
     expectedVersion: number,
     user: string,
     previous: StubMapping | null,
-    override?: { owner: string; version: number },
+    override?: { owner: string; version: number; source?: 'import' | 'seed' },
   ): Promise<StubMapping> {
     this.validate(input)
     const prevMeta = previous?.metadata?.wiremockUi
@@ -203,7 +272,7 @@ export class MockService {
       version: override?.version ?? expectedVersion + 1,
       updatedAt: this.now().toISOString(),
       updatedBy: user,
-      source: 'ui',
+      source: override?.source ?? 'ui',
     }
     const stub: StubMapping = {
       ...input,

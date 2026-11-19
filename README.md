@@ -51,6 +51,18 @@ bash scripts/e2e-restart.sh
 
 It starts a throwaway stack (`WIREMOCK_PORT` and `UI_PORT` override the host ports), saves a stub, restarts WireMock, checks the stub comes back and the admin API still answers 401, then removes everything it created.
 
+## Importing a bundle and seeding baseline mocks
+
+A bundle is JSON in any of these shapes: `{ "integrations": [], "catalog": [], "mocks": [], "oidcIdentities": [] }` (every key optional), a WireMock export `{ "mappings": [...] }`, a single stub, or an array of stubs. Admins can `POST /api/import` (add `?prune=true` to delete baseline mocks that are not in the bundle; bodies over 10 MB get a 413).
+
+Set `SEED_PATH` to a file or a folder to import at boot, as user `system`, before the reconciler starts. A folder is read recursively (every `*.json`, sorted by path, dotfiles ignored), so a WireMock `mappings/` folder works as is. `SEED_PRUNE=true` also prunes baseline mocks missing from the seed. A seed that fails validation stops the boot.
+
+- Mocks without an `id` get a stable UUID derived from their content, so re-imports change nothing.
+- The owner is `metadata.wiremockUi.owner`, else `baseline`. Mocks owned by a person are never touched by an import.
+- A mock without `metadata.wiremockUi.integration` is assigned to the integration with the longest `prefix` that its URL starts with.
+- `oidcIdentities` are counted and ignored for now.
+- The whole bundle is validated before anything is written.
+
 ## Development
 
 ```sh

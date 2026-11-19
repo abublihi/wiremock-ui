@@ -109,6 +109,19 @@ function checkEndpoint(e: z.infer<typeof endpointSchema>): void {
   }
 }
 
+/** Pure validation shared with the bundle importer; throws ValidationError. */
+export function validateIntegration(input: unknown) {
+  const parsed = shape(integrationSchema, input)
+  checkIntegration(parsed)
+  return parsed
+}
+
+export function validateEndpoint(input: unknown) {
+  const parsed = shape(endpointSchema, input)
+  checkEndpoint(parsed)
+  return parsed
+}
+
 export class CatalogService {
   private readonly catalog: CatalogStore
   private readonly audit: AuditLog
@@ -131,8 +144,7 @@ export class CatalogService {
   }
 
   async upsertIntegration(input: unknown, actor: string): Promise<Integration> {
-    const parsed = shape(integrationSchema, input)
-    checkIntegration(parsed)
+    const parsed = validateIntegration(input)
     const stored: Integration = { ...parsed, updatedAt: this.now().toISOString(), updatedBy: actor }
     await this.catalog.putIntegration(stored)
     await this.audit.record({ actor, action: 'catalog.integration.upsert', target: stored.key })
@@ -157,8 +169,7 @@ export class CatalogService {
   }
 
   async upsertEndpoint(input: unknown, actor: string): Promise<Endpoint> {
-    const parsed = shape(endpointSchema, input)
-    checkEndpoint(parsed)
+    const parsed = validateEndpoint(input)
     await this.getIntegration(parsed.integration)
     const stored: Endpoint = { ...parsed, updatedAt: this.now().toISOString(), updatedBy: actor }
     await this.catalog.putEndpoint(stored)
