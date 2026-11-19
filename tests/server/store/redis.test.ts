@@ -146,3 +146,11 @@ test('lock: second acquire gets null, wrong token cannot release', async () => {
   await store.releaseLock('sync:lock', t as string)
   expect(await store.acquireLock('sync:lock', 10_000)).toEqual(expect.any(String))
 })
+
+test('close() leaves an injected connection open', async () => {
+  const shared = new Redis(handle.url)
+  const injected = new RedisMockStore(shared)
+  await injected.close()
+  expect(await shared.ping()).toBe('PONG')
+  await shared.quit()
+})

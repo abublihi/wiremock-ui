@@ -12,10 +12,22 @@ export type Config = {
   sessionSecret: string
   syncIntervalSeconds: number
   bootTimeoutSeconds: number
+  trustProxy: boolean
+  publicUiUrl?: string
+  seedPath?: string
+  seedPrune: boolean
 }
 
 const required = (name: string) =>
   z.string({ error: `${name} is required` }).min(1, `${name} is required`)
+
+const boolean = (name: string) =>
+  z
+    .string()
+    .transform((v) => v.toLowerCase())
+    .pipe(z.enum(['true', 'false', '1', '0'], { error: `${name} must be true, false, 1 or 0` }))
+    .transform((v) => v === 'true' || v === '1')
+    .default(false)
 
 const schema = z.object({
   WIREMOCK_URL: z.string().min(1).default('http://localhost:8080'),
@@ -35,6 +47,10 @@ const schema = z.object({
     .int('BOOT_TIMEOUT_SECONDS must be a positive integer')
     .positive('BOOT_TIMEOUT_SECONDS must be a positive integer')
     .default(60),
+  TRUST_PROXY: boolean('TRUST_PROXY'),
+  PUBLIC_UI_URL: z.string().min(1).optional(),
+  SEED_PATH: z.string().min(1).optional(),
+  SEED_PRUNE: boolean('SEED_PRUNE'),
 })
 
 export function loadConfig(env: Record<string, string | undefined>): Config {
@@ -73,5 +89,9 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     sessionSecret: data.SESSION_SECRET,
     syncIntervalSeconds: data.SYNC_INTERVAL_SECONDS,
     bootTimeoutSeconds: data.BOOT_TIMEOUT_SECONDS,
+    trustProxy: data.TRUST_PROXY,
+    publicUiUrl: data.PUBLIC_UI_URL,
+    seedPath: data.SEED_PATH,
+    seedPrune: data.SEED_PRUNE,
   }
 }
