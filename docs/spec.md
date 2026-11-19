@@ -320,7 +320,7 @@ Ship in five steps, each usable on its own; QA can start using it after step 2.
 ## Decisions (formerly open questions)
 
 - [x] Frontend stack: TanStack Start (React), used full-stack — its server routes are the backend.
-- [ ] Confirm against the pinned WireMock 3.x: admin basic-auth flag, import options (`duplicatePolicy`, `deleteAllNotInImport`), templating opt-in per stub. *(Milestone 1, Task 2 pins these with tests.)*
+- [x] Confirm against the pinned WireMock 3.x: admin basic-auth flag, import options (`duplicatePolicy`, `deleteAllNotInImport`), templating opt-in per stub. *(Milestone 1, Task 2 pins these with tests.)* Confirmed on `wiremock/wiremock:3.13.1`: `--admin-api-basic-auth user:pass` protects `/__admin/*` (401 with wrong credentials, including `/__admin/version`); `POST /__admin/mappings/import` honours `duplicatePolicy: OVERWRITE` and `deleteAllNotInImport` true/false; an invalid regex is rejected on import with a 4xx; `GET /__admin/version` returns `.version` starting `3.`; `GET /__admin/mappings` pages with `limit`/`offset` (1500 stubs listed). Per-stub templating opt-in is not yet exercised (later task).
 - [x] One UI per WireMock instance: one-to-one.
 - [x] Request log is not copied to the store.
 - [x] Licence for wiremock-ui: MIT.
