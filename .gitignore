@@ -12,3 +12,6 @@ dist/
 # Planning and agent working files
 docs/superpowers/
 .claude/
+
+# Default SQLite store (SQLITE_PATH)
+data/

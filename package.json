@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite dev --port 3000",
     "build": "vite build",
-    "start": "node server.mjs",
+    "start": "node --experimental-sqlite --disable-warning=ExperimentalWarning server.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

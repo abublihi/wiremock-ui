@@ -1,6 +1,6 @@
 # wiremock-ui
 
-A web UI and REST API for managing WireMock stubs. Redis is the source of truth: stubs are saved there first and synced into WireMock, so they survive a WireMock restart.
+A web UI and REST API for managing WireMock stubs. The UI's store (Redis, or a SQLite file when Redis is not configured) is the source of truth: stubs are saved there first and synced into WireMock, so they survive a WireMock restart.
 
 > **Test environment only. No real personal data.** Mocks, request payloads and stored values are not protected like production data. Never put real personal data in a stub.
 >
@@ -15,9 +15,27 @@ docker compose up -d --build
 
 The UI listens on http://localhost:3000 and WireMock on http://localhost:8080. Compose sets `WIREMOCK_URL` and `REDIS_URL` for the UI itself; everything else comes from `.env`.
 
+Without Redis (UI + WireMock only, data in a SQLite file on the `ui-data` volume):
+
+```sh
+docker compose -f compose.sqlite.yaml up -d --build
+```
+
+## Store
+
+| Variable | Default | |
+| --- | --- | --- |
+| `STORE_DRIVER` | `redis` when `REDIS_URL` is set, otherwise `sqlite` | `redis` or `sqlite` |
+| `REDIS_URL` | (none) | Required only for `redis`. |
+| `SQLITE_PATH` | `./data/wiremock-ui.db` (`/data/wiremock-ui.db` in the image) | The parent folder is created on start. |
+
+Both drivers keep the same data and behave the same: users and sessions, the login rate limit, mocks with their history (last 20 versions, kept 7 days after a delete), the catalog and the 30-day audit log. SQLite uses Node's built-in `node:sqlite` (no native build) in one file, in WAL mode; expired sessions, rate-limit windows and history are cleared when the data is next read or written. Keep the file on a volume (the image declares `VOLUME /data`) and run one UI instance per file; for several UI instances use Redis.
+
+`node:sqlite` needs Node 22.12 or later. On 22.12 it is behind `--experimental-sqlite`, which `npm start` and the image pass; for `npm run dev` on Node 22.12 set `NODE_OPTIONS=--experimental-sqlite`. Later versions need no flag.
+
 ## Authentication
 
-Accounts live in Redis. On first start the UI creates one admin from `ADMIN_USER` / `ADMIN_PASSWORD` (only when there are no users yet; changing those variables later does not touch existing accounts).
+Accounts live in the store. On first start the UI creates one admin from `ADMIN_USER` / `ADMIN_PASSWORD` (only when there are no users yet; changing those variables later does not touch existing accounts).
 
 There are no roles: every signed-in user can manage everything (mocks, catalog, request log, users, audit log and imports). Sign-in, sessions and CSRF protection stay.
 
@@ -96,8 +114,10 @@ The first start-up sync and any sync caused by a missing marker (WireMock was re
 
 ```sh
 npm ci
-npm run dev        # needs Redis and WireMock reachable per .env
-npm test
+npm run dev        # needs WireMock reachable per .env; Redis only if REDIS_URL is set
+npm test           # needs Docker: store tests run against Redis and SQLite
+./scripts/e2e-restart.sh   # compose end-to-end check with Redis
+./scripts/e2e-sqlite.sh    # the same without Redis, on the SQLite volume
 npm run typecheck
 npm run build && npm start
 ```
