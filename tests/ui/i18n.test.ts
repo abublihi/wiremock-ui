@@ -27,6 +27,7 @@ describe('request preferences', () => {
     expect(getLocaleFromRequest(req())).toBe('en')
     expect(getLocaleFromRequest(req('a=1; wmui_lang=ar'))).toBe('ar')
     expect(getLocaleFromRequest(req('wmui_lang=fr'))).toBe('en')
+    expect(getLocaleFromRequest(req('wmui_lang=%E0%A4%A'))).toBe('en')
   })
 
   it('reads the theme cookie, defaulting to system', () => {

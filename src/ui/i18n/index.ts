@@ -26,7 +26,12 @@ export function dirOf(locale: Locale): Dir {
 export function readCookie(header: string | null | undefined, name: string): string | undefined {
   for (const part of (header ?? '').split(';')) {
     const eq = part.indexOf('=')
-    if (eq !== -1 && part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim())
+    if (eq === -1 || part.slice(0, eq).trim() !== name) continue
+    try {
+      return decodeURIComponent(part.slice(eq + 1).trim())
+    } catch {
+      return undefined // malformed value: fall back to the default rather than fail the render
+    }
   }
   return undefined
 }
