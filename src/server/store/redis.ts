@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { Redis } from 'ioredis'
+import type { Redis } from 'ioredis'
 import { ConflictError } from '../errors'
 import type { StubMapping } from '../wiremock/types'
 import { createRedis, logErrors } from './connection'
