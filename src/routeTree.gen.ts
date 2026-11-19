@@ -28,6 +28,7 @@ import { Route as ApiIntegrationsKeyEndpointsRouteImport } from './routes/api/in
 import { Route as ApiMocksIdDuplicateRouteImport } from './routes/api/mocks.$id.duplicate'
 import { Route as ApiMocksIdHistoryRouteImport } from './routes/api/mocks.$id.history'
 import { Route as ApiMocksIdRestoreRouteImport } from './routes/api/mocks.$id.restore'
+import { Route as ApiRequestsIdNearMissesRouteImport } from './routes/api/requests.$id.near-misses'
 import { Route as ApiIntegrationsKeyEndpointsEndpointRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint'
 import { Route as ApiIntegrationsKeyEndpointsEndpointMocksRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint.mocks'
 import { Route as ApiIntegrationsKeyEndpointsEndpointPreviewRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint.preview'
@@ -128,6 +129,11 @@ const ApiMocksIdRestoreRoute = ApiMocksIdRestoreRouteImport.update({
   path: '/restore',
   getParentRoute: () => ApiMocksIdRoute,
 } as any)
+const ApiRequestsIdNearMissesRoute = ApiRequestsIdNearMissesRouteImport.update({
+  id: '/near-misses',
+  path: '/near-misses',
+  getParentRoute: () => ApiRequestsIdRoute,
+} as any)
 const ApiIntegrationsKeyEndpointsEndpointRoute =
   ApiIntegrationsKeyEndpointsEndpointRouteImport.update({
     id: '/$endpoint',
@@ -159,7 +165,7 @@ export interface FileRoutesByFullPath {
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
-  '/api/requests/$id': typeof ApiRequestsIdRoute
+  '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
@@ -167,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
+  '/api/requests/$id/near-misses': typeof ApiRequestsIdNearMissesRoute
   '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRouteWithChildren
   '/api/integrations/$key/endpoints/$endpoint/mocks': typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
   '/api/integrations/$key/endpoints/$endpoint/preview': typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
@@ -183,7 +190,7 @@ export interface FileRoutesByTo {
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
-  '/api/requests/$id': typeof ApiRequestsIdRoute
+  '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
@@ -191,6 +198,7 @@ export interface FileRoutesByTo {
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
+  '/api/requests/$id/near-misses': typeof ApiRequestsIdNearMissesRoute
   '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRouteWithChildren
   '/api/integrations/$key/endpoints/$endpoint/mocks': typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
   '/api/integrations/$key/endpoints/$endpoint/preview': typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
@@ -208,7 +216,7 @@ export interface FileRoutesById {
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
-  '/api/requests/$id': typeof ApiRequestsIdRoute
+  '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
@@ -216,6 +224,7 @@ export interface FileRoutesById {
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
+  '/api/requests/$id/near-misses': typeof ApiRequestsIdNearMissesRoute
   '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRouteWithChildren
   '/api/integrations/$key/endpoints/$endpoint/mocks': typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
   '/api/integrations/$key/endpoints/$endpoint/preview': typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
@@ -242,6 +251,7 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
+    | '/api/requests/$id/near-misses'
     | '/api/integrations/$key/endpoints/$endpoint'
     | '/api/integrations/$key/endpoints/$endpoint/mocks'
     | '/api/integrations/$key/endpoints/$endpoint/preview'
@@ -266,6 +276,7 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
+    | '/api/requests/$id/near-misses'
     | '/api/integrations/$key/endpoints/$endpoint'
     | '/api/integrations/$key/endpoints/$endpoint/mocks'
     | '/api/integrations/$key/endpoints/$endpoint/preview'
@@ -290,6 +301,7 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
+    | '/api/requests/$id/near-misses'
     | '/api/integrations/$key/endpoints/$endpoint'
     | '/api/integrations/$key/endpoints/$endpoint/mocks'
     | '/api/integrations/$key/endpoints/$endpoint/preview'
@@ -441,6 +453,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMocksIdRestoreRouteImport
       parentRoute: typeof ApiMocksIdRoute
     }
+    '/api/requests/$id/near-misses': {
+      id: '/api/requests/$id/near-misses'
+      path: '/near-misses'
+      fullPath: '/api/requests/$id/near-misses'
+      preLoaderRoute: typeof ApiRequestsIdNearMissesRouteImport
+      parentRoute: typeof ApiRequestsIdRoute
+    }
     '/api/integrations/$key/endpoints/$endpoint': {
       id: '/api/integrations/$key/endpoints/$endpoint'
       path: '/$endpoint'
@@ -552,13 +571,25 @@ const ApiMocksRouteWithChildren = ApiMocksRoute._addFileChildren(
   ApiMocksRouteChildren,
 )
 
+interface ApiRequestsIdRouteChildren {
+  ApiRequestsIdNearMissesRoute: typeof ApiRequestsIdNearMissesRoute
+}
+
+const ApiRequestsIdRouteChildren: ApiRequestsIdRouteChildren = {
+  ApiRequestsIdNearMissesRoute: ApiRequestsIdNearMissesRoute,
+}
+
+const ApiRequestsIdRouteWithChildren = ApiRequestsIdRoute._addFileChildren(
+  ApiRequestsIdRouteChildren,
+)
+
 interface ApiRequestsRouteChildren {
-  ApiRequestsIdRoute: typeof ApiRequestsIdRoute
+  ApiRequestsIdRoute: typeof ApiRequestsIdRouteWithChildren
   ApiRequestsCountRoute: typeof ApiRequestsCountRoute
 }
 
 const ApiRequestsRouteChildren: ApiRequestsRouteChildren = {
-  ApiRequestsIdRoute: ApiRequestsIdRoute,
+  ApiRequestsIdRoute: ApiRequestsIdRouteWithChildren,
   ApiRequestsCountRoute: ApiRequestsCountRoute,
 }
 

@@ -5,6 +5,7 @@ import { NotFoundError } from '../errors'
 import { MARKER_ID } from '../sync/marker'
 import type { WireMockClient } from '../wiremock/client'
 import type { LoggedEvent } from '../wiremock/types'
+import { explainMismatch, type FieldDiff } from './explain'
 
 export type RequestSummary = {
   id: string
@@ -19,6 +20,12 @@ export type RequestSummary = {
   durationMs: number | null
 }
 
+export type NearMissView = {
+  stub: { id: string; name: string | null; owner: string | null; integration: string | null }
+  distance: number
+  diffs: FieldDiff[]
+}
+
 export type RequestFilter = {
   limit?: number
   since?: string
@@ -30,6 +37,7 @@ export type RequestFilter = {
 
 const DEFAULT_LIMIT = 200
 const MAX_LIMIT = 1000
+const NEAR_MISS_LIMIT = 3
 const MARKER_PATH = '/__wiremock-ui/marker'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -72,6 +80,30 @@ export class RequestJournal {
     const event = UUID.test(id) ? await this.deps.wiremock.getRequest(id) : null
     if (!event) throw new NotFoundError('Request not found')
     return event
+  }
+
+  /** The closest stubs for an unmatched request, each with a field-by-field explanation. Matched requests have none. */
+  async nearMisses(id: string): Promise<NearMissView[]> {
+    const event = await this.get(id)
+    if (event.wasMatched) return []
+    const misses = await this.deps.wiremock.nearMisses(event.request)
+    return misses
+      .filter((m) => m.stubMapping.id !== MARKER_ID)
+      .sort((a, b) => a.matchResult.distance - b.matchResult.distance)
+      .slice(0, NEAR_MISS_LIMIT)
+      .map((m) => {
+        const meta = m.stubMapping.metadata?.wiremockUi
+        return {
+          stub: {
+            id: m.stubMapping.id,
+            name: m.stubMapping.name ?? null,
+            owner: meta?.owner ?? null,
+            integration: meta?.integration ?? null,
+          },
+          distance: m.matchResult.distance,
+          diffs: explainMismatch(m.stubMapping, event.request),
+        }
+      })
   }
 
   async clear(actor: string): Promise<void> {

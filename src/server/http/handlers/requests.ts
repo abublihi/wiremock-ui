@@ -34,6 +34,8 @@ export const listRequests = withAuth('requests.read', async ({ rt, request }) =>
 
 export const getRequest = withAuth('requests.read', async ({ rt, params }) => json(await rt.requests.get(idOf(params))))
 
+export const nearMisses = withAuth('requests.read', async ({ rt, params }) => json(await rt.requests.nearMisses(idOf(params))))
+
 export const clearRequests = withAuth('requests.clear', async ({ rt, principal }) => {
   await rt.requests.clear(principal.user.username)
   return json({ ok: true })
