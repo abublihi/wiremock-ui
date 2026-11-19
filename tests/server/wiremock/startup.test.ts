@@ -64,3 +64,11 @@ test('a 500 from the authenticated version call propagates as UpstreamError, not
   const client = new WireMockClient({ baseUrl: 'http://wm', user: 'a', password: 'b', fetch: fake })
   await expect(assertWireMockReady(client, 'http://wm', fake)).rejects.toBeInstanceOf(UpstreamError)
 })
+
+test('401 with no configured user tells the operator to set credentials', async () => {
+  const fake = (async () => new Response('unauthorized', { status: 401 })) as typeof fetch
+  const client = new WireMockClient({ baseUrl: 'http://wm', fetch: fake })
+  await expect(assertWireMockReady(client, 'http://wm', fake)).rejects.toThrow(
+    'WireMock admin API requires credentials; set WIREMOCK_ADMIN_USER and WIREMOCK_ADMIN_PASSWORD',
+  )
+})

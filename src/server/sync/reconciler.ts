@@ -18,8 +18,8 @@ type Deps = {
 const versionOf = (s: StubMapping) => s.metadata?.wiremockUi?.version
 
 export class Reconciler {
-  lastSyncAt: Date | null = null
-  lastError: string | null = null
+  private _lastSyncAt: Date | null = null
+  private _lastError: string | null = null
 
   private readonly wiremock: WireMockClient
   private readonly store: MockStore
@@ -35,6 +35,14 @@ export class Reconciler {
     this.intervalMs = deps.intervalMs
     this.safetyNetMs = deps.safetyNetMs ?? 600_000
     this.batchSize = deps.batchSize ?? 500
+  }
+
+  get lastSyncAt(): Date | null {
+    return this._lastSyncAt
+  }
+
+  get lastError(): string | null {
+    return this._lastError
   }
 
   async check(): Promise<'ok' | 'synced' | 'skipped'> {
@@ -70,12 +78,20 @@ export class Reconciler {
       }
 
       await this.wiremock.importStubs([markerStub()], { deleteAllNotInImport: false })
-      this.lastSyncAt = new Date()
-      this.lastError = null
+      // If WireMock was reset since the last import, the marker would vouch for an empty WireMock.
+      const expected = (await this.store.listAll()).length + 1
+      const actual = (await this.wiremock.listStubIds()).length
+      // More is fine (a save raced the sync); fewer means WireMock lost stubs.
+      if (actual < expected) {
+        await this.wiremock.deleteStub(MARKER_ID)
+        throw new Error(`WireMock changed during sync (expected at least ${expected} stubs, found ${actual}); will re-sync`)
+      }
+      this._lastSyncAt = new Date()
+      this._lastError = null
       logger.info({ stubs: snapshot.length }, 'full sync done')
       return 'synced'
     } catch (err) {
-      this.lastError = (err as Error).message
+      this._lastError = (err as Error).message
       logger.error({ err }, 'full sync failed')
       throw err
     } finally {

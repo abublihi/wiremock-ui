@@ -11,6 +11,7 @@ export type Config = {
   adminPassword: string
   sessionSecret: string
   syncIntervalSeconds: number
+  bootTimeoutSeconds: number
 }
 
 const required = (name: string) =>
@@ -29,6 +30,11 @@ const schema = z.object({
     .number({ error: 'SYNC_INTERVAL_SECONDS must be a positive number' })
     .positive('SYNC_INTERVAL_SECONDS must be a positive number')
     .default(5),
+  BOOT_TIMEOUT_SECONDS: z.coerce
+    .number({ error: 'BOOT_TIMEOUT_SECONDS must be a positive integer' })
+    .int('BOOT_TIMEOUT_SECONDS must be a positive integer')
+    .positive('BOOT_TIMEOUT_SECONDS must be a positive integer')
+    .default(60),
 })
 
 export function loadConfig(env: Record<string, string | undefined>): Config {
@@ -38,6 +44,9 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   const problems: string[] = []
   if (!parsed.success) {
     for (const issue of parsed.error.issues) problems.push(issue.message.startsWith(String(issue.path[0])) ? issue.message : `${String(issue.path[0])}: ${issue.message}`)
+  }
+  if (Boolean(cleaned.WIREMOCK_ADMIN_USER) !== Boolean(cleaned.WIREMOCK_ADMIN_PASSWORD)) {
+    problems.push('WIREMOCK_ADMIN_USER and WIREMOCK_ADMIN_PASSWORD must be set together or both left unset')
   }
   const data = parsed.success ? parsed.data : undefined
 
@@ -63,5 +72,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     adminPassword: data.ADMIN_PASSWORD,
     sessionSecret: data.SESSION_SECRET,
     syncIntervalSeconds: data.SYNC_INTERVAL_SECONDS,
+    bootTimeoutSeconds: data.BOOT_TIMEOUT_SECONDS,
   }
 }

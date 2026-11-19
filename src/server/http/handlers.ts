@@ -60,6 +60,18 @@ function parse<T>(schema: z.ZodType<T>, data: unknown, prefix = ''): T {
   throw new ValidationError(`${prefix}${named}`)
 }
 
+class UnsupportedMediaTypeError extends AppError {
+  constructor() {
+    super('Content-Type must be application/json', 415)
+  }
+}
+
+// Cross-site text/plain POSTs need no CORS preflight, so refuse anything but JSON.
+function requireJson(request: Request): void {
+  const type = (request.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
+  if (type !== 'application/json') throw new UnsupportedMediaTypeError()
+}
+
 async function readJson(request: Request): Promise<unknown> {
   try {
     return await request.json()
@@ -88,6 +100,7 @@ export const listMocks = withErrors(async (rt, request) => {
 
 export const createMock = withErrors(async (rt, request) => {
   const user = requireBasicAuth(request, rt.config)
+  requireJson(request)
   const body = parse(mockInput, await readJson(request))
   return json(await rt.mocks.create(body as MockInput, user), 201)
 })
@@ -99,6 +112,7 @@ export const getMock = withErrors(async (rt, request, params) => {
 
 export const updateMock = withErrors(async (rt, request, params) => {
   const user = requireBasicAuth(request, rt.config)
+  requireJson(request)
   const body = parse(updateBody, await readJson(request))
   return json(await rt.mocks.update(idOf(params), body.stub as MockInput, body.version, user))
 })
@@ -112,7 +126,10 @@ export const deleteMock = withErrors(async (rt, request, params) => {
 
 export const healthz = withErrors(async (rt) => {
   const [store, wiremock] = await Promise.all([
-    rt.store.ping().catch(() => false),
+    Promise.race([
+      rt.store.ping(),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000).unref()),
+    ]).catch(() => false),
     rt.wiremock.ping().catch(() => false),
   ])
   const body = {
@@ -120,7 +137,7 @@ export const healthz = withErrors(async (rt) => {
     store: store ? 'ok' : 'error',
     wiremock: wiremock ? 'ok' : 'error',
     lastSyncAt: rt.reconciler.lastSyncAt?.toISOString() ?? null,
-    lastSyncError: rt.reconciler.lastError,
+    lastSyncError: rt.reconciler.lastError ? 'sync failed; see logs' : null,
   }
   return json(body, store && wiremock ? 200 : 503)
 })

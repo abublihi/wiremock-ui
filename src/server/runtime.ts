@@ -1,5 +1,5 @@
 import { loadConfig, type Config } from './config'
-import { ConfigError } from './errors'
+import { UpstreamError } from './errors'
 import { logger } from './logger'
 import { MockService } from './mocks/service'
 import { createStore, type MockStore } from './store'
@@ -15,18 +15,64 @@ export type Runtime = {
   reconciler: Reconciler
 }
 
-export async function bootRuntime(env: Record<string, string | undefined>): Promise<Runtime> {
+export type BootDeps = {
+  fetch?: typeof fetch
+  createStore?: (config: Config) => MockStore
+  sleep?: (ms: number) => Promise<void>
+}
+
+const BACKOFF_START_MS = 500
+const BACKOFF_CAP_MS = 5000
+
+/** Retries only reachability failures (UpstreamError, store ping false) until the deadline. */
+async function untilReachable<T>(
+  what: string,
+  deadline: number,
+  sleep: (ms: number) => Promise<void>,
+  attempt: () => Promise<T>,
+): Promise<T> {
+  let delay = BACKOFF_START_MS
+  for (;;) {
+    try {
+      return await attempt()
+    } catch (err) {
+      if (!(err instanceof UpstreamError) || Date.now() + delay > deadline) throw err
+      logger.warn({ err: err.message, retryInMs: delay }, `${what} not reachable yet, retrying`)
+      await sleep(delay)
+      delay = Math.min(delay * 2, BACKOFF_CAP_MS)
+    }
+  }
+}
+
+export async function bootRuntime(
+  env: Record<string, string | undefined>,
+  deps: BootDeps = {},
+): Promise<Runtime> {
   let store: MockStore | undefined
   try {
     const config = loadConfig(env)
+    const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+    const deadline = Date.now() + config.bootTimeoutSeconds * 1000
     const wiremock = new WireMockClient({
       baseUrl: config.wiremockUrl,
       user: config.wiremockAdminUser,
       password: config.wiremockAdminPassword,
+      fetch: deps.fetch,
     })
-    await assertWireMockReady(wiremock, config.wiremockUrl)
-    store = createStore(config)
-    if (!(await store.ping())) throw new ConfigError('Store unreachable')
+    await untilReachable('WireMock', deadline, sleep, () =>
+      assertWireMockReady(wiremock, config.wiremockUrl, deps.fetch),
+    )
+    const open = deps.createStore ?? createStore
+    store = await untilReachable('Store', deadline, sleep, async () => {
+      const candidate = open(config)
+      try {
+        if (!(await candidate.ping())) throw new UpstreamError('Store unreachable')
+      } catch (err) {
+        await candidate.close().catch(() => {})
+        throw err instanceof UpstreamError ? err : new UpstreamError(`Store unreachable: ${(err as Error).message}`)
+      }
+      return candidate
+    })
     const mocks = new MockService({ wiremock, store })
     const reconciler = new Reconciler({ wiremock, store, intervalMs: config.syncIntervalSeconds * 1000 })
     await reconciler.start()

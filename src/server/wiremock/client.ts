@@ -7,21 +7,40 @@ export class WireMockClient {
   private readonly baseUrl: string
   private readonly authHeader?: string
   private readonly fetchFn: typeof fetch
+  private readonly timeoutMs: number
+  private readonly importTimeoutMs: number
 
-  constructor(opts: { baseUrl: string; user?: string; password?: string; fetch?: typeof fetch }) {
+  constructor(opts: {
+    baseUrl: string
+    user?: string
+    password?: string
+    fetch?: typeof fetch
+    timeoutMs?: number
+    importTimeoutMs?: number
+  }) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '')
     this.fetchFn = opts.fetch ?? fetch
+    this.timeoutMs = opts.timeoutMs ?? 5000
+    this.importTimeoutMs = opts.importTimeoutMs ?? 30000
     if (opts.user) {
       this.authHeader = `Basic ${Buffer.from(`${opts.user}:${opts.password ?? ''}`).toString('base64')}`
     }
   }
 
-  private async request(path: string, init: RequestInit = {}): Promise<Response> {
+  get hasCredentials(): boolean {
+    return this.authHeader !== undefined
+  }
+
+  private async request(path: string, init: RequestInit = {}, timeoutMs = this.timeoutMs): Promise<Response> {
     const headers: Record<string, string> = { ...(init.headers as Record<string, string>) }
     if (this.authHeader) headers.Authorization = this.authHeader
     try {
-      return await this.fetchFn(`${this.baseUrl}${path}`, { ...init, headers })
+      return await this.fetchFn(`${this.baseUrl}${path}`, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) })
     } catch (err) {
+      const name = (err as Error).name
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        throw new UpstreamError(`WireMock request timed out: ${init.method ?? 'GET'} ${path}`)
+      }
       throw new UpstreamError(`WireMock unreachable: ${(err as Error).message}`)
     }
   }
@@ -34,14 +53,18 @@ export class WireMockClient {
   }
 
   async importStubs(stubs: StubMapping[], opts: { deleteAllNotInImport: boolean }): Promise<void> {
-    const res = await this.request('/__admin/mappings/import', {
+    const res = await this.request(
+      '/__admin/mappings/import',
+      {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         mappings: stubs,
         importOptions: { duplicatePolicy: 'OVERWRITE', deleteAllNotInImport: opts.deleteAllNotInImport },
       }),
-    })
+      },
+      this.importTimeoutMs,
+    )
     if (!res.ok) await this.fail(res, 'import')
   }
 

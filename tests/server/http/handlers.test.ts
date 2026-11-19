@@ -57,6 +57,18 @@ test('401 without credentials, 401 with wrong password', async () => {
   expect(bearer.status).toBe(401)
 })
 
+test('non-JSON content type on writes is 415 and creates nothing', async () => {
+  const before = (await (await listMocks(rt, req('/api/mocks'))).json()).length
+  const res = await createMock(rt, req('/api/mocks', 'POST', JSON.stringify(input('/h/csrf')), { ...auth, 'Content-Type': 'text/plain' }))
+  expect(res.status).toBe(415)
+  expect(await res.json()).toEqual({ error: 'Content-Type must be application/json' })
+  const put = await updateMock(rt, req('/api/mocks/x', 'PUT', JSON.stringify({ stub: input('/x'), version: 1 }), { ...auth, 'Content-Type': 'text/plain' }), { id: 'x' })
+  expect(put.status).toBe(415)
+  expect((await (await listMocks(rt, req('/api/mocks'))).json()).length).toBe(before)
+  const charset = await createMock(rt, req('/api/mocks', 'POST', JSON.stringify(input('/h/csrf-ok')), { ...auth, 'Content-Type': 'application/json; charset=utf-8' }))
+  expect(charset.status).toBe(201)
+})
+
 test('POST then GET then list', async () => {
   const created = await createMock(rt, req('/api/mocks', 'POST', input('/h/one', { metadata: { wiremockUi: { integration: 'billing' } } })))
   expect(created.status).toBe(201)
@@ -136,7 +148,9 @@ test('body validation names the offending field', async () => {
 test('WireMock rejects stub → 400 carrying WireMock reason', async () => {
   const res = await createMock(rt, req('/api/mocks', 'POST', { request: { method: 'GET', urlPath: '/h/bad', bogusField: 1 }, response: { status: 200 } }))
   expect(res.status).toBe(400)
-  expect((await res.json()).error.length).toBeGreaterThan(5)
+  const { error } = await res.json()
+  expect(error).toContain('Unrecognized field')
+  expect(error).toContain('bogusField')
   const file = await createMock(rt, req('/api/mocks', 'POST', input('/h/file', { response: { status: 200, bodyFileName: 'x.json' } })))
   expect(file.status).toBe(400)
   expect(await file.json()).toEqual({ error: 'bodyFileName is not supported; put the body inline' })
@@ -148,6 +162,7 @@ test('healthz 200 with lastSyncAt set; 503 with wiremock:"error" after WireMock 
   expect(ok.status).toBe(200)
   const body = await ok.json()
   expect(body).toMatchObject({ ui: 'ok', store: 'ok', wiremock: 'ok', lastSyncError: null })
+  expect(body.lastSyncError).toBeNull()
   expect(typeof body.lastSyncAt).toBe('string')
 
   await wm.stop()

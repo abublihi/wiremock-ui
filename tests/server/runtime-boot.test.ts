@@ -1,0 +1,72 @@
+import { expect, test } from 'vitest'
+import { ConfigError } from '../../src/server/errors'
+import { bootRuntime } from '../../src/server/runtime'
+import type { MockStore } from '../../src/server/store/types'
+
+const env = {
+  WIREMOCK_URL: 'http://wm',
+  WIREMOCK_ADMIN_USER: 'a',
+  WIREMOCK_ADMIN_PASSWORD: 'b',
+  REDIS_URL: 'redis://r:6379',
+  ADMIN_USER: 'u',
+  ADMIN_PASSWORD: 'p',
+  SESSION_SECRET: 's',
+  SYNC_INTERVAL_SECONDS: '3600',
+}
+
+const fakeStore = (pings: boolean[] = []): MockStore =>
+  ({
+    ping: async () => pings.shift() ?? true,
+    close: async () => {},
+    listAll: async () => [],
+    get: async () => null,
+    acquireLock: async () => 'tok',
+    releaseLock: async () => {},
+  }) as unknown as MockStore
+
+// Behaves like a locked-down WireMock 3.x once "up"; refuses connections for the first `failures` calls.
+const wiremockFetch = (failures: number) => {
+  let calls = 0
+  const fn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls++
+    if (calls <= failures) throw new TypeError('fetch failed')
+    const authed = new Headers(init?.headers).has('authorization')
+    if (!authed) return new Response('unauthorized', { status: 401 })
+    if (String(input).includes('/__admin/version')) return new Response(JSON.stringify({ version: '3.13.1' }), { status: 200 })
+    return new Response(JSON.stringify({ mappings: [] }), { status: 200 })
+  }) as typeof fetch
+  return { fn, calls: () => calls }
+}
+
+test('boot retries until WireMock and the store become reachable', async () => {
+  const wm = wiremockFetch(3)
+  const sleeps: number[] = []
+  const pings = [false, true]
+  const rt = await bootRuntime(env, {
+    fetch: wm.fn,
+    createStore: () => fakeStore(pings),
+    sleep: async (ms) => {
+      sleeps.push(ms)
+    },
+  })
+  rt.reconciler.stop()
+  expect(sleeps).toEqual([500, 1000, 2000, 500])
+})
+
+test('a ConfigError fails immediately without retrying', async () => {
+  const open = (async () => new Response(JSON.stringify({ mappings: [] }), { status: 200 })) as typeof fetch
+  let slept = 0
+  await expect(
+    bootRuntime(env, { fetch: open, createStore: () => fakeStore(), sleep: async () => void slept++ }),
+  ).rejects.toBeInstanceOf(ConfigError)
+  expect(slept).toBe(0)
+})
+
+test('gives up with the last reachability error after BOOT_TIMEOUT_SECONDS', async () => {
+  const wm = wiremockFetch(Infinity)
+  const t0 = Date.now()
+  await expect(bootRuntime({ ...env, BOOT_TIMEOUT_SECONDS: '1' }, { fetch: wm.fn, createStore: () => fakeStore() })).rejects.toThrow(
+    /WireMock unreachable/,
+  )
+  expect(Date.now() - t0).toBeLessThan(5000)
+})

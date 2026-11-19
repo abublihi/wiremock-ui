@@ -3,7 +3,7 @@ services:
     image: wiremock/wiremock:3.13.1
     command:
       - --admin-api-basic-auth
-      - ${WIREMOCK_ADMIN_USER}:${WIREMOCK_ADMIN_PASSWORD}
+      - ${WIREMOCK_ADMIN_USER:?set WIREMOCK_ADMIN_USER in .env}:${WIREMOCK_ADMIN_PASSWORD:?set WIREMOCK_ADMIN_PASSWORD in .env}
       - --max-request-journal-entries
       - "5000"
     ports:
@@ -30,6 +30,7 @@ services:
     build: .
     env_file: .env
     environment:
+      PORT: "3000"
       WIREMOCK_URL: http://wiremock:8080
       REDIS_URL: redis://redis:6379
     ports:

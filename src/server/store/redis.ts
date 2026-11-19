@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Redis } from 'ioredis'
 import { ConflictError } from '../errors'
+import { logger } from '../logger'
 import type { StubMapping } from '../wiremock/types'
 import type { MockStore } from './types'
 
@@ -19,19 +20,30 @@ const metaOf = (s: StubMapping | null) => s?.metadata?.wiremockUi
 const versionOf = (s: StubMapping | null) => metaOf(s)?.version ?? 0
 const parse = (json: string) => JSON.parse(json) as StubMapping
 
+/** Log connection errors at warn, at most once per 10 s per connection. */
+function logErrors(conn: Redis): void {
+  let last = 0
+  conn.on('error', (err) => {
+    const now = Date.now()
+    if (now - last < 10_000) return
+    last = now
+    logger.warn({ err: err.message }, 'redis connection error')
+  })
+}
+
 export class RedisMockStore implements MockStore {
   private readonly redis: Redis
   private readonly txConnections = new Set<Redis>()
 
   constructor(redisUrl: string) {
     this.redis = new Redis(redisUrl)
-    this.redis.on('error', () => {})
+    logErrors(this.redis)
   }
 
   /** WATCH is per connection, so every transaction gets its own short-lived one. */
   private async withTx<T>(fn: (conn: Redis) => Promise<T>): Promise<T> {
     const conn = this.redis.duplicate()
-    conn.on('error', () => {})
+    logErrors(conn)
     this.txConnections.add(conn)
     try {
       return await fn(conn)

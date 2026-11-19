@@ -142,6 +142,26 @@ test('marker only after success; lock released after a failed sync', async () =>
   expect(await client.getStub(MARKER_ID)).not.toBeNull()
 })
 
+test('a WireMock reset right before the marker import fails the sync and leaves no marker', async () => {
+  await fill(5)
+  let resetOnce = true
+  const resetting = Object.create(client) as WireMockClient
+  resetting.importStubs = async (stubs, o) => {
+    if (resetOnce && stubs.some((s) => s.id === MARKER_ID)) {
+      resetOnce = false
+      await wm.restart()
+    }
+    return client.importStubs(stubs, o)
+  }
+  const rec = mk({ wiremock: resetting })
+  await expect(rec.fullSync()).rejects.toThrow(/changed during sync/)
+  expect(await client.getStub(MARKER_ID)).toBeNull()
+  expect(rec.lastError).toMatch(/changed during sync/)
+  expect(rec.lastSyncAt).toBeNull()
+  expect(await rec.check()).toBe('synced')
+  expect((await client.listStubIds()).length).toBe(6)
+})
+
 test('sync lock: concurrent fullSync calls from two reconcilers, one synced one skipped', async () => {
   await fill(300)
   const a = mk()
@@ -193,8 +213,8 @@ test('start() survives a failing first sync and recovers on a later tick', async
   expect(rec.lastError).toContain('boom')
   expect(await client.getStub(MARKER_ID)).toBeNull()
   fault = false
-  expect(await until(async () => (await client.getStub(MARKER_ID)) !== null, 3000)).toBe(true)
-  expect(rec.lastError).toBeNull()
+  expect(await until(async () => rec.lastError === null && rec.lastSyncAt !== null, 3000)).toBe(true)
+  expect(await client.getStub(MARKER_ID)).not.toBeNull()
 })
 
 test('guard (a): a stub in the store but absent from every snapshot is never deleted', async () => {

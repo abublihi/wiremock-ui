@@ -18,3 +18,16 @@ test('rejects sqlite until milestone 5', () => {
 test('rejects non-positive SYNC_INTERVAL_SECONDS', () => {
   expect(() => loadConfig({ ...base, SYNC_INTERVAL_SECONDS: '0' })).toThrow(/SYNC_INTERVAL_SECONDS/)
 })
+test('BOOT_TIMEOUT_SECONDS defaults to 60 and must be a positive integer', () => {
+  expect(loadConfig(base).bootTimeoutSeconds).toBe(60)
+  expect(loadConfig({ ...base, BOOT_TIMEOUT_SECONDS: '90' }).bootTimeoutSeconds).toBe(90)
+  for (const bad of ['0', '-5', '1.5', 'abc']) {
+    expect(() => loadConfig({ ...base, BOOT_TIMEOUT_SECONDS: bad })).toThrow(/BOOT_TIMEOUT_SECONDS/)
+  }
+})
+test('WIREMOCK_ADMIN_USER and WIREMOCK_ADMIN_PASSWORD must be set together', () => {
+  expect(() => loadConfig({ ...base, WIREMOCK_ADMIN_USER: 'u' })).toThrow(/WIREMOCK_ADMIN_USER.*WIREMOCK_ADMIN_PASSWORD/)
+  expect(() => loadConfig({ ...base, WIREMOCK_ADMIN_PASSWORD: 'p' })).toThrow(/WIREMOCK_ADMIN_USER.*WIREMOCK_ADMIN_PASSWORD/)
+  expect(() => loadConfig({ ...base, WIREMOCK_ADMIN_USER: 'u', WIREMOCK_ADMIN_PASSWORD: 'p' })).not.toThrow()
+  expect(() => loadConfig(base)).not.toThrow()
+})
