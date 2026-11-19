@@ -331,7 +331,7 @@ Ship in five steps, each usable on its own; QA can start using it after step 2.
 
 **A2 — A failed store write rolls WireMock back to the previous version.** For a create, the stub is deleted from WireMock again. For an edit, the previous stored version is pushed back to WireMock (`OVERWRITE`), so a failed edit never deletes a working mock.
 
-**A4 — Scripts authenticate with HTTP Basic against user accounts (from Milestone 2).** Browsers use the session cookie with CSRF tokens. Non-browser clients (CI, scripts) may send `Authorization: Basic` with a UI user's credentials; those requests need no CSRF token and count toward the login rate limit. The UI never sends `WWW-Authenticate`, so browsers never cache Basic credentials (which would reopen cross-site request forgery).
+**A4 — Scripts authenticate with HTTP Basic against user accounts (from Milestone 2).** Browsers use the session cookie with CSRF tokens. Non-browser clients (CI, scripts) may send `Authorization: Basic` with a UI user's credentials; those requests need no CSRF token. Failed attempts — Basic or browser sign-in — count toward the per-IP login rate limit; successful ones do not. The UI never sends `WWW-Authenticate`, so browsers never cache Basic credentials (which would reopen cross-site request forgery).
 
 **A5 — OIDC sign-in to the UI itself moves after Milestone 2.** Milestone 2 ships local accounts only; `AUTH_OIDC_*` sign-in is scheduled with Milestone 3 (OIDC template).
 
