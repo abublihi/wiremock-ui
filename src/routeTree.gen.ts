@@ -15,8 +15,12 @@ import { Route as ApiMocksRouteImport } from './routes/api/mocks'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
 import { Route as ApiUsersRouteImport } from './routes/api/users'
 import { Route as ApiMocksIdRouteImport } from './routes/api/mocks.$id'
+import { Route as ApiMocksResetMineRouteImport } from './routes/api/mocks.reset-mine'
 import { Route as ApiSessionPasswordRouteImport } from './routes/api/session.password'
 import { Route as ApiUsersIdRouteImport } from './routes/api/users.$id'
+import { Route as ApiMocksIdDuplicateRouteImport } from './routes/api/mocks.$id.duplicate'
+import { Route as ApiMocksIdHistoryRouteImport } from './routes/api/mocks.$id.history'
+import { Route as ApiMocksIdRestoreRouteImport } from './routes/api/mocks.$id.restore'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -48,6 +52,11 @@ const ApiMocksIdRoute = ApiMocksIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiMocksRoute,
 } as any)
+const ApiMocksResetMineRoute = ApiMocksResetMineRouteImport.update({
+  id: '/reset-mine',
+  path: '/reset-mine',
+  getParentRoute: () => ApiMocksRoute,
+} as any)
 const ApiSessionPasswordRoute = ApiSessionPasswordRouteImport.update({
   id: '/password',
   path: '/password',
@@ -58,6 +67,21 @@ const ApiUsersIdRoute = ApiUsersIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiUsersRoute,
 } as any)
+const ApiMocksIdDuplicateRoute = ApiMocksIdDuplicateRouteImport.update({
+  id: '/duplicate',
+  path: '/duplicate',
+  getParentRoute: () => ApiMocksIdRoute,
+} as any)
+const ApiMocksIdHistoryRoute = ApiMocksIdHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => ApiMocksIdRoute,
+} as any)
+const ApiMocksIdRestoreRoute = ApiMocksIdRestoreRouteImport.update({
+  id: '/restore',
+  path: '/restore',
+  getParentRoute: () => ApiMocksIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -65,9 +89,13 @@ export interface FileRoutesByFullPath {
   '/api/mocks': typeof ApiMocksRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
-  '/api/mocks/$id': typeof ApiMocksIdRoute
+  '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
+  '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
+  '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
+  '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
+  '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -75,9 +103,13 @@ export interface FileRoutesByTo {
   '/api/mocks': typeof ApiMocksRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
-  '/api/mocks/$id': typeof ApiMocksIdRoute
+  '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
+  '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
+  '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
+  '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
+  '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -86,9 +118,13 @@ export interface FileRoutesById {
   '/api/mocks': typeof ApiMocksRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
-  '/api/mocks/$id': typeof ApiMocksIdRoute
+  '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
+  '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
+  '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
+  '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
+  '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -99,8 +135,12 @@ export interface FileRouteTypes {
     | '/api/session'
     | '/api/users'
     | '/api/mocks/$id'
+    | '/api/mocks/reset-mine'
     | '/api/session/password'
     | '/api/users/$id'
+    | '/api/mocks/$id/duplicate'
+    | '/api/mocks/$id/history'
+    | '/api/mocks/$id/restore'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -109,8 +149,12 @@ export interface FileRouteTypes {
     | '/api/session'
     | '/api/users'
     | '/api/mocks/$id'
+    | '/api/mocks/reset-mine'
     | '/api/session/password'
     | '/api/users/$id'
+    | '/api/mocks/$id/duplicate'
+    | '/api/mocks/$id/history'
+    | '/api/mocks/$id/restore'
   id:
     | '__root__'
     | '/'
@@ -119,8 +163,12 @@ export interface FileRouteTypes {
     | '/api/session'
     | '/api/users'
     | '/api/mocks/$id'
+    | '/api/mocks/reset-mine'
     | '/api/session/password'
     | '/api/users/$id'
+    | '/api/mocks/$id/duplicate'
+    | '/api/mocks/$id/history'
+    | '/api/mocks/$id/restore'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -175,6 +223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMocksIdRouteImport
       parentRoute: typeof ApiMocksRoute
     }
+    '/api/mocks/reset-mine': {
+      id: '/api/mocks/reset-mine'
+      path: '/reset-mine'
+      fullPath: '/api/mocks/reset-mine'
+      preLoaderRoute: typeof ApiMocksResetMineRouteImport
+      parentRoute: typeof ApiMocksRoute
+    }
     '/api/session/password': {
       id: '/api/session/password'
       path: '/password'
@@ -189,15 +244,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUsersIdRouteImport
       parentRoute: typeof ApiUsersRoute
     }
+    '/api/mocks/$id/duplicate': {
+      id: '/api/mocks/$id/duplicate'
+      path: '/duplicate'
+      fullPath: '/api/mocks/$id/duplicate'
+      preLoaderRoute: typeof ApiMocksIdDuplicateRouteImport
+      parentRoute: typeof ApiMocksIdRoute
+    }
+    '/api/mocks/$id/history': {
+      id: '/api/mocks/$id/history'
+      path: '/history'
+      fullPath: '/api/mocks/$id/history'
+      preLoaderRoute: typeof ApiMocksIdHistoryRouteImport
+      parentRoute: typeof ApiMocksIdRoute
+    }
+    '/api/mocks/$id/restore': {
+      id: '/api/mocks/$id/restore'
+      path: '/restore'
+      fullPath: '/api/mocks/$id/restore'
+      preLoaderRoute: typeof ApiMocksIdRestoreRouteImport
+      parentRoute: typeof ApiMocksIdRoute
+    }
   }
 }
 
+interface ApiMocksIdRouteChildren {
+  ApiMocksIdDuplicateRoute: typeof ApiMocksIdDuplicateRoute
+  ApiMocksIdHistoryRoute: typeof ApiMocksIdHistoryRoute
+  ApiMocksIdRestoreRoute: typeof ApiMocksIdRestoreRoute
+}
+
+const ApiMocksIdRouteChildren: ApiMocksIdRouteChildren = {
+  ApiMocksIdDuplicateRoute: ApiMocksIdDuplicateRoute,
+  ApiMocksIdHistoryRoute: ApiMocksIdHistoryRoute,
+  ApiMocksIdRestoreRoute: ApiMocksIdRestoreRoute,
+}
+
+const ApiMocksIdRouteWithChildren = ApiMocksIdRoute._addFileChildren(
+  ApiMocksIdRouteChildren,
+)
+
 interface ApiMocksRouteChildren {
-  ApiMocksIdRoute: typeof ApiMocksIdRoute
+  ApiMocksIdRoute: typeof ApiMocksIdRouteWithChildren
+  ApiMocksResetMineRoute: typeof ApiMocksResetMineRoute
 }
 
 const ApiMocksRouteChildren: ApiMocksRouteChildren = {
-  ApiMocksIdRoute: ApiMocksIdRoute,
+  ApiMocksIdRoute: ApiMocksIdRouteWithChildren,
+  ApiMocksResetMineRoute: ApiMocksResetMineRoute,
 }
 
 const ApiMocksRouteWithChildren = ApiMocksRoute._addFileChildren(

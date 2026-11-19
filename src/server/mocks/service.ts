@@ -22,6 +22,17 @@ type Deps = {
   newId?: () => string
 }
 
+const URL_FIELDS = ['url', 'urlPath', 'urlPattern', 'urlPathPattern', 'urlPathTemplate'] as const
+
+function matchesQuery(stub: StubMapping, q: string): boolean {
+  const has = (v: unknown) => typeof v === 'string' && v.toLowerCase().includes(q)
+  return (
+    has(stub.name) ||
+    URL_FIELDS.some((f) => has(stub.request[f])) ||
+    JSON.stringify(stub.request).toLowerCase().includes(q)
+  )
+}
+
 const ownerOf = (stub: StubMapping) => stub.metadata?.wiremockUi?.owner ?? 'baseline'
 
 export class MockService {
@@ -64,6 +75,12 @@ export class MockService {
   async delete(id: string, expectedVersion: number | undefined, actor: PublicUser): Promise<void> {
     const current = await this.get(id)
     this.assertCanEdit(actor, ownerOf(current))
+    await this.remove(current, expectedVersion)
+    await this.record({ actor: actor.username, action: 'mock.delete', target: id })
+  }
+
+  private async remove(current: StubMapping, expectedVersion: number | undefined): Promise<void> {
+    const id = current.id
     if (expectedVersion !== undefined && current.metadata?.wiremockUi?.version !== expectedVersion) {
       throw new ConflictError()
     }
@@ -79,7 +96,6 @@ export class MockService {
       }
       throw err
     }
-    await this.record({ actor: actor.username, action: 'mock.delete', target: id })
   }
 
   async get(id: string): Promise<StubMapping> {
@@ -88,12 +104,70 @@ export class MockService {
     return stub
   }
 
-  list(filter?: { integration?: string; owner?: string }): Promise<StubMapping[]> {
-    return this.store.list(filter)
+  async list(filter?: { integration?: string; owner?: string; status?: number; q?: string }): Promise<StubMapping[]> {
+    const all = await this.store.list({ integration: filter?.integration, owner: filter?.owner })
+    const status = filter?.status
+    const q = filter?.q?.trim().toLowerCase()
+    return all.filter((stub) => {
+      if (status !== undefined && (stub.response.status ?? 200) !== status) return false
+      if (q && !matchesQuery(stub, q)) return false
+      return true
+    })
+  }
+
+  async duplicate(id: string, actor: PublicUser): Promise<StubMapping> {
+    this.assertCanEdit(actor, actor.username)
+    const source = await this.get(id)
+    const { id: _id, ...rest } = source
+    const input = { ...rest, name: source.name ? `${source.name} (copy)` : '(copy)' } as MockInput
+    const stub = await this.save(this.newId(), input, 0, actor.username, null)
+    await this.record({ actor: actor.username, action: 'mock.duplicate', target: stub.id, details: { from: id } })
+    return stub
+  }
+
+  async resetMine(actor: PublicUser): Promise<{ deleted: number }> {
+    const mine = await this.store.list({ owner: actor.username })
+    let deleted = 0
+    try {
+      for (const stub of mine) {
+        await this.remove(stub, undefined)
+        deleted++
+      }
+    } finally {
+      await this.record({ actor: actor.username, action: 'mock.reset-mine', target: actor.username, details: { deleted } })
+    }
+    return { deleted }
+  }
+
+  history(id: string): Promise<StubMapping[]> {
+    return this.store.history(id)
+  }
+
+  async restore(id: string, fromVersion: number, actor: PublicUser): Promise<StubMapping> {
+    const versions = await this.store.history(id)
+    const target = versions.find((v) => v.metadata?.wiremockUi?.version === fromVersion)
+    if (!target) throw new NotFoundError('Version not found')
+    const owner = ownerOf(target)
+    this.assertCanEdit(actor, owner)
+    const current = await this.store.get(id)
+    let stub: StubMapping
+    if (current) {
+      stub = await this.save(id, target as MockInput, current.metadata?.wiremockUi?.version ?? 0, actor.username, current)
+    } else {
+      const highest = Math.max(...versions.map((v) => v.metadata?.wiremockUi?.version ?? 0))
+      stub = await this.save(id, target as MockInput, 0, actor.username, null, { owner, version: highest + 1 })
+    }
+    await this.record({ actor: actor.username, action: 'mock.restore', target: id, details: { fromVersion } })
+    return stub
   }
 
   // The write already committed; a failing audit log must not turn it into an error.
-  private async record(entry: { actor: string; action: string; target: string }): Promise<void> {
+  private async record(entry: {
+    actor: string
+    action: string
+    target: string
+    details?: Record<string, unknown>
+  }): Promise<void> {
     try {
       await this.audit.record(entry)
     } catch (err) {
@@ -117,14 +191,15 @@ export class MockService {
     expectedVersion: number,
     user: string,
     previous: StubMapping | null,
+    override?: { owner: string; version: number },
   ): Promise<StubMapping> {
     this.validate(input)
     const prevMeta = previous?.metadata?.wiremockUi
     const wiremockUi: WireMockUiMeta = {
       integration: input.metadata?.wiremockUi?.integration,
       endpoint: input.metadata?.wiremockUi?.endpoint,
-      owner: prevMeta?.owner ?? user,
-      version: expectedVersion + 1,
+      owner: override?.owner ?? prevMeta?.owner ?? user,
+      version: override?.version ?? expectedVersion + 1,
       updatedAt: this.now().toISOString(),
       updatedBy: user,
       source: 'ui',

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { healthz } from '../../../src/server/http/handlers/health'
-import { createMock, deleteMock, getMock, listMocks, updateMock } from '../../../src/server/http/handlers/mocks'
+import { createMock, deleteMock, duplicateMock, getMock, listMocks, mockHistory, resetMine, restoreMock, updateMock } from '../../../src/server/http/handlers/mocks'
 import type { Runtime } from '../../../src/server/runtime'
 import { URL_, basic, login, req as baseReq, startTestRuntime } from '../../helpers/http'
 
@@ -250,6 +250,60 @@ test('an audit failure after a committed write is logged and the write still suc
   } finally {
     rt.audit.record = real
   }
+})
+
+test('GET /api/mocks: owner=me, status and q filters; bad status is 400', async () => {
+  const s = await userSession('filterer', 'tester')
+  const mine = await (await createMock(rt, req('/api/mocks', 'POST', input('/h/f-mine/zebra', { response: { status: 418 } }), asSession(s)))).json()
+  await createMock(rt, req('/api/mocks', 'POST', input('/h/f-other')))
+  const ids = async (qs: string) => (await (await listMocks(rt, req(`/api/mocks?${qs}`, 'GET', undefined, asSession(s)))).json()).map((x: { id: string }) => x.id)
+  expect(await ids('owner=me')).toEqual([mine.id])
+  expect(await ids('owner=me&status=418')).toEqual([mine.id])
+  expect(await ids('owner=me&status=200')).toEqual([])
+  expect(await ids('q=ZEBRA')).toEqual([mine.id])
+  expect(await ids('q=%20%20')).toContain(mine.id)
+  for (const bad of ['abc', '99', '600', '2.5', '-200']) {
+    expect((await listMocks(rt, req(`/api/mocks?status=${bad}`, 'GET', undefined, asSession(s)))).status).toBe(400)
+  }
+})
+
+test('duplicate, history, restore and reset-mine over HTTP', async () => {
+  const s = await userSession('extras', 'tester')
+  const viewer = await userSession('extras-viewer', 'viewer')
+  const other = await userSession('extras-other', 'tester')
+  const baseId = await seedBaseline('/h/x-base')
+
+  // duplicate needs no body or content type, but cookie sessions need CSRF
+  const noCsrf = await duplicateMock(rt, new Request(`${URL_}/api/mocks/${baseId}/duplicate`, { method: 'POST', headers: { Cookie: s.cookie } }), { id: baseId })
+  expect(noCsrf.status).toBe(403)
+  const dupRes = await duplicateMock(rt, new Request(`${URL_}/api/mocks/${baseId}/duplicate`, { method: 'POST', headers: asSession(s) }), { id: baseId })
+  expect(dupRes.status).toBe(201)
+  const dup = await dupRes.json()
+  expect(dup.metadata.wiremockUi.owner).toBe('extras')
+  expect((await duplicateMock(rt, req(`/api/mocks/${baseId}/duplicate`, 'POST', undefined, asSession(viewer)), { id: baseId })).status).toBe(403)
+  expect((await duplicateMock(rt, req('/api/mocks/nope/duplicate', 'POST', undefined, asSession(s)), { id: 'nope' })).status).toBe(404)
+
+  // history + restore
+  await updateMock(rt, req(`/api/mocks/${dup.id}`, 'PUT', { stub: input('/h/x-base', { response: { status: 202, body: 'v2' } }), version: 1 }, asSession(s)), { id: dup.id })
+  const hist = await (await mockHistory(rt, req(`/api/mocks/${dup.id}/history`, 'GET', undefined, asSession(viewer)), { id: dup.id })).json()
+  expect(hist.map((h: { metadata: { wiremockUi: { version: number } } }) => h.metadata.wiremockUi.version)).toEqual([1])
+  expect((await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 1 }, asSession(other)), { id: dup.id })).status).toBe(403)
+  expect((await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 1 }, { ...asSession(s), 'Content-Type': 'text/plain' }), { id: dup.id })).status).toBe(415)
+  expect((await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 'x' }, asSession(s)), { id: dup.id })).status).toBe(400)
+  expect((await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 7 }, asSession(s)), { id: dup.id })).status).toBe(404)
+  const restored = await restoreMock(rt, req(`/api/mocks/${dup.id}/restore`, 'POST', { version: 1 }, asSession(s)), { id: dup.id })
+  expect(restored.status).toBe(200)
+  expect((await restored.json()).metadata.wiremockUi.version).toBe(3)
+
+  // reset-mine: no body, no content type
+  const before = await (await listMocks(rt, req('/api/mocks?owner=me', 'GET', undefined, asSession(s)))).json()
+  expect(before.length).toBeGreaterThan(0)
+  const reset = await resetMine(rt, new Request(`${URL_}/api/mocks/reset-mine`, { method: 'POST', headers: asSession(s) }))
+  expect(reset.status).toBe(200)
+  expect(await reset.json()).toEqual({ deleted: before.length })
+  expect(await (await listMocks(rt, req('/api/mocks?owner=me', 'GET', undefined, asSession(s)))).json()).toEqual([])
+  expect((await resetMine(rt, new Request(`${URL_}/api/mocks/reset-mine`, { method: 'POST', headers: asSession(viewer) }))).status).toBe(403)
+  expect(await served('/h/x-base')).toBe(200)
 })
 
 // Last: stops WireMock.
