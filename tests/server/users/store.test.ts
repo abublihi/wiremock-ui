@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
-import { ConflictError } from '../../../src/server/errors'
+import { ConflictError, NotFoundError } from '../../../src/server/errors'
 import { createRedis } from '../../../src/server/store/connection'
 import type { User } from '../../../src/server/users/types'
 import { RedisUserStore } from '../../../src/server/users/store'
@@ -94,4 +94,30 @@ test('hitRateLimit counts and sets the window once', async () => {
   const ttl = await redis.ttl('ratelimit:login:1.2.3.4')
   expect(ttl).toBeLessThanOrEqual(500)
   expect(ttl).toBeGreaterThan(0)
+})
+
+test('concurrent renames of one user leave exactly one by-name key pointing at it', async () => {
+  const u = mk('1', 'alice')
+  await store.createUser(u)
+  await Promise.allSettled([
+    store.updateUser({ ...u, username: 'bob' }),
+    store.updateUser({ ...u, username: 'carol' }),
+  ])
+  const keys = await redis.keys('users:by-name:*')
+  expect(keys).toHaveLength(1)
+  expect(await redis.get(keys[0] as string)).toBe('1')
+  expect(keys[0]).toBe(`users:by-name:${(await store.getUser('1'))?.username}`)
+})
+
+test('case-only rename works', async () => {
+  const u = mk('1', 'alice')
+  await store.createUser(u)
+  await store.updateUser({ ...u, username: 'Alice' })
+  expect((await store.getUserByName('alice'))?.username).toBe('Alice')
+  expect(await redis.keys('users:by-name:*')).toEqual(['users:by-name:alice'])
+})
+
+test('updating a nonexistent user throws NotFoundError and creates nothing', async () => {
+  await expect(store.updateUser(mk('9', 'ghost'))).rejects.toBeInstanceOf(NotFoundError)
+  expect(await redis.keys('*')).toEqual([])
 })

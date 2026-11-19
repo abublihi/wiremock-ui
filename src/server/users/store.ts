@@ -1,10 +1,11 @@
 import { randomBytes } from 'node:crypto'
 import type { Redis } from 'ioredis'
-import { ConflictError } from '../errors'
+import { ConflictError, NotFoundError } from '../errors'
 import type { Session, User, UserStore } from './types'
 
 const userKey = (id: string) => `user:${id}`
-const nameKey = (username: string) => `users:by-name:${username.toLowerCase()}`
+const BY_NAME_PREFIX = 'users:by-name:'
+const nameKey = (username: string) => `${BY_NAME_PREFIX}${username.toLowerCase()}`
 const sessionKey = (id: string) => `session:${id}`
 const userSessionsKey = (id: string) => `user:${id}:sessions`
 const rateKey = (ip: string) => `ratelimit:login:${ip}`
@@ -19,13 +20,19 @@ redis.call("set", KEYS[1], ARGV[2])
 redis.call("sadd", "${ALL}", ARGV[1])
 return 1`
 
-// KEYS: user, new by-name, old by-name. ARGV: id, json. Returns 0 when the new name belongs to someone else.
+// KEYS: user. ARGV: id, json, new lower-cased username, by-name key prefix.
+// Returns -1 when the user does not exist, 0 when the new name belongs to someone else, 1 on success.
 const UPDATE_LUA = `
-if KEYS[2] ~= KEYS[3] then
-  if redis.call("set", KEYS[2], ARGV[1], "NX") == false then return 0 end
-  redis.call("del", KEYS[3])
-end
+local old = redis.call("get", KEYS[1])
+if not old then return -1 end
+local oldKey = ARGV[4] .. string.lower(cjson.decode(old).username)
+local newKey = ARGV[4] .. ARGV[3]
+local holder = redis.call("get", newKey)
+if holder and holder ~= ARGV[1] then return 0 end
+redis.call("set", newKey, ARGV[1])
+if oldKey ~= newKey then redis.call("del", oldKey) end
 redis.call("set", KEYS[1], ARGV[2])
+redis.call("sadd", "${ALL}", ARGV[1])
 return 1`
 
 const HIT_LUA = `
@@ -62,19 +69,17 @@ export class RedisUserStore implements UserStore {
   }
 
   async updateUser(user: User): Promise<void> {
-    const old = await this.getUser(user.id)
-    const oldKey = old ? nameKey(old.username) : nameKey(user.username)
-    const ok = await this.redis.eval(
+    const res = await this.redis.eval(
       UPDATE_LUA,
-      3,
+      1,
       userKey(user.id),
-      nameKey(user.username),
-      oldKey,
       user.id,
       JSON.stringify(user),
+      user.username.toLowerCase(),
+      BY_NAME_PREFIX,
     )
-    if (ok === 0) throw new ConflictError('Username already exists')
-    await this.redis.sadd(ALL, user.id)
+    if (res === -1) throw new NotFoundError('User not found')
+    if (res === 0) throw new ConflictError('Username already exists')
   }
 
   async deleteUser(id: string): Promise<void> {
