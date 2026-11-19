@@ -179,3 +179,83 @@ test('start() syncs immediately and restores after restart within 3 intervals', 
   expect(await until(async () => (await client.getStub(uuid(3))) !== null, 3000)).toBe(true)
   rec.stop()
 })
+
+test('start() survives a failing first sync and recovers on a later tick', async () => {
+  await fill(3)
+  let fault = true
+  const faulty = Object.create(client) as WireMockClient
+  faulty.importStubs = async (stubs, o) => {
+    if (fault) throw new Error('boom')
+    return client.importStubs(stubs, o)
+  }
+  const rec = mk({ wiremock: faulty, intervalMs: 300 })
+  await rec.start()
+  expect(rec.lastError).toContain('boom')
+  expect(await client.getStub(MARKER_ID)).toBeNull()
+  fault = false
+  expect(await until(async () => (await client.getStub(MARKER_ID)) !== null, 3000)).toBe(true)
+  expect(rec.lastError).toBeNull()
+})
+
+test('guard (a): a stub in the store but absent from every snapshot is never deleted', async () => {
+  await store.save(stubOf(uuid(1)), 0)
+  const late = stubOf(uuid(2))
+  await store.save(late, 0)
+  await client.importStubs([late], { deleteAllNotInImport: false })
+  const hiding: MockStore = Object.create(store)
+  hiding.listAll = async () => (await store.listAll()).filter((s) => s.id !== late.id)
+  const deleted: string[] = []
+  const spy = Object.create(client) as WireMockClient
+  spy.deleteStub = async (id) => {
+    deleted.push(id)
+    return client.deleteStub(id)
+  }
+  await mk({ wiremock: spy, store: hiding }).fullSync()
+  expect(deleted).not.toContain(late.id)
+  expect(await client.getStub(late.id)).not.toBeNull()
+})
+
+test('guard (b): a stub updated during the sync ends up at the new version in WireMock', async () => {
+  const v1 = stubOf(uuid(1))
+  await store.save(v1, 0)
+  const v2: StubMapping = {
+    ...v1,
+    response: { status: 200, body: 'second' },
+    metadata: { wiremockUi: { ...v1.metadata!.wiremockUi!, version: 2 } },
+  }
+  let first = true
+  const racing: MockStore = Object.create(store)
+  racing.listAll = async () => {
+    const snap = await store.listAll()
+    if (first) {
+      first = false
+      await store.save(v2, 1)
+      await client.importStubs([v2], { deleteAllNotInImport: false })
+    }
+    return snap
+  }
+  await mk({ store: racing }).fullSync()
+  const res = await fetch(`${wm.url}/s/${v1.id}`)
+  expect(await res.text()).toBe('second')
+})
+
+test('a mock deleted during the sync is not resurrected', async () => {
+  const a = stubOf(uuid(1))
+  const b = stubOf(uuid(2))
+  await store.save(a, 0)
+  await store.save(b, 0)
+  let first = true
+  const racing: MockStore = Object.create(store)
+  racing.listAll = async () => {
+    const snap = await store.listAll()
+    if (first) {
+      first = false
+      await store.delete(a.id)
+      await client.deleteStub(a.id)
+    }
+    return snap
+  }
+  await mk({ store: racing }).fullSync()
+  expect(await client.getStub(a.id)).toBeNull()
+  expect(await client.getStub(b.id)).not.toBeNull()
+})

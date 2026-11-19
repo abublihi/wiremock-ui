@@ -60,8 +60,14 @@ export class Reconciler {
 
       // Catch up with saves that raced the import.
       const before = new Map(snapshot.map((s) => [s.id, versionOf(s)]))
-      const changed = (await this.store.listAll()).filter((s) => !before.has(s.id) || before.get(s.id) !== versionOf(s))
+      const current = await this.store.listAll()
+      const currentIds = new Set(current.map((s) => s.id))
+      const changed = current.filter((s) => !before.has(s.id) || before.get(s.id) !== versionOf(s))
       await this.importAll(changed)
+      // Mocks deleted during the sync were just re-imported from the snapshot: remove them again.
+      for (const id of before.keys()) {
+        if (!currentIds.has(id) && (await this.store.get(id)) === null) await this.wiremock.deleteStub(id)
+      }
 
       await this.wiremock.importStubs([markerStub()], { deleteAllNotInImport: false })
       this.lastSyncAt = new Date()
@@ -84,7 +90,6 @@ export class Reconciler {
   }
 
   async start(): Promise<void> {
-    await this.fullSync()
     const guarded = (fn: () => Promise<unknown>) => async () => {
       if (this.busy) return
       this.busy = true
@@ -100,6 +105,8 @@ export class Reconciler {
       setInterval(guarded(() => this.check()), this.intervalMs).unref(),
       setInterval(guarded(() => this.fullSync()), this.safetyNetMs).unref(),
     )
+    // A failed first sync is logged and recorded in lastError; the timers keep retrying.
+    await guarded(() => this.fullSync())()
   }
 
   stop(): void {
