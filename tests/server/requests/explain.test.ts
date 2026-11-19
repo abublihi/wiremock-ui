@@ -175,8 +175,30 @@ test('matchesJsonPath', () => {
   expect(jp({ expression: '$.items[?(@.k=="v")]' }, '{"items":[{"k":"v"}]}').matched).toBe(true)
   expect(jp({ expression: '$.a', contains: 'b' }, '{"a":{"x":"b"}}').matched).toBe(true)
   expect(jp({ expression: 5 }, '{}').matched).toBeNull()
-  expect(jp({ expression: '$[', equalTo: '1' }, '{}').matched).not.toBe(true)
+  expect(jp({ expression: '$[', equalTo: '1' }, '{}').matched).toBe(false)
 })
+
+test('matchesJsonPath never evaluates script expressions', () => {
+  for (const expression of ["$[?(@.constructor.constructor('return process')().exit())]", '$[?(process.exit())]']) {
+    const row = one({ bodyPatterns: [{ matchesJsonPath: expression }] }, { body: '[{"a":1}]' })
+    expect(row.field).toBe('body')
+    expect([false, null]).toContain(row.matched)
+  }
+  expect(process.pid).toBeGreaterThan(0)
+})
+
+test('equalToJson: bipartite array matching and own keys only', () => {
+  const j = (e: unknown, body: string, opts = {}) => one({ bodyPatterns: [{ equalToJson: e, ...opts }] }, { body })
+  expect(j([{ a: 1 }, { a: 1, b: 2 }], '[{"a":1,"b":2},{"a":1}]', { ignoreArrayOrder: true, ignoreExtraElements: true }).matched).toBe(true)
+  expect(j({ toString: 1 }, '{}', { ignoreExtraElements: true }).matched).toBe(false)
+})
+
+test('regex is not evaluated against very long values; dot does not match newline', () => {
+  const long = 'a'.repeat(10_001)
+  expect(one({ bodyPatterns: [{ matches: 'a+' }] }, { body: long })).toMatchObject({ expected: 'matches a+ (value too long to check)', matched: null })
+  expect(one({ bodyPatterns: [{ doesNotMatch: 'a+' }] }, { body: long }).matched).toBeNull()
+  expect(one({ urlPattern: 'a+' }, { url: long }).matched).toBeNull()
+  expect(one({ bodyPatterns: [{ matches: 'a.b' }] }, { body: 'a\nb' }).matched).toBe(false)})
 
 test('matchesXPath is not checked', () => {
   expect(one({ bodyPatterns: [{ matchesXPath: '/a/b' }] }, { body: '<a/>' })).toEqual({

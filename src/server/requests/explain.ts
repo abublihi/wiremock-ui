@@ -18,10 +18,13 @@ const json = (v: unknown) => {
 const show = (v: unknown) => (typeof v === 'string' ? v : json(v))
 
 /** WireMock `matches` is a full-string regex. Invalid expressions yield null instead of throwing. */
+const MAX_REGEX_INPUT = 10_000
+const TOO_LONG = ' (value too long to check)'
+
 function fullMatch(re: unknown, value: string): boolean | null {
   if (typeof re !== 'string') return null
   try {
-    return new RegExp(`^(?:${re})$`, 's').test(value)
+    return new RegExp(`^(?:${re})$`).test(value)
   } catch {
     return null
   }
@@ -41,6 +44,9 @@ function evalString(pattern: unknown, actual: string | null): Verdict {
   if (typeof arg !== 'string') return unknown
   const expected = `${op} ${arg}${ci && (op === 'equalTo' || op === 'contains') ? ' (ignore case)' : ''}`
   if (actual === null) return { expected, matched: false }
+  if ((op === 'matches' || op === 'doesNotMatch') && actual.length > MAX_REGEX_INPUT) {
+    return { expected: expected + TOO_LONG, matched: null }
+  }
   const a = ci ? actual.toLowerCase() : actual
   const e = ci ? arg.toLowerCase() : arg
   switch (op) {
@@ -147,19 +153,26 @@ function jsonEq(exp: unknown, act: unknown, ignoreOrder: boolean, ignoreExtra: b
         return false
       })
     }
-    const used = new Set<number>()
-    return exp.every((e) => {
-      const i = act.findIndex((a, idx) => !used.has(idx) && jsonEq(e, a, ignoreOrder, ignoreExtra))
-      if (i < 0) return false
-      used.add(i)
-      return true
-    })
+    // Augmenting-path bipartite matching: greedy assignment can reject valid pairings.
+    const owner = new Array<number>(act.length).fill(-1)
+    const assign = (e: number, seen: Set<number>): boolean => {
+      for (let a = 0; a < act.length; a++) {
+        if (seen.has(a) || !jsonEq(exp[e], act[a], ignoreOrder, ignoreExtra)) continue
+        seen.add(a)
+        if (owner[a] < 0 || assign(owner[a], seen)) {
+          owner[a] = e
+          return true
+        }
+      }
+      return false
+    }
+    return exp.every((_, e) => assign(e, new Set()))
   }
   if (isObj(exp)) {
     if (!isObj(act)) return false
     const keys = Object.keys(exp)
     if (!ignoreExtra && keys.length !== Object.keys(act).length) return false
-    return keys.every((k) => k in act && jsonEq(exp[k], act[k], ignoreOrder, ignoreExtra))
+    return keys.every((k) => Object.hasOwn(act, k) && jsonEq(exp[k], act[k], ignoreOrder, ignoreExtra))
   }
   return exp === act
 }
@@ -183,7 +196,7 @@ function explainJsonPath(pattern: unknown, body: string | null): FieldDiff {
   }
   let found: unknown[]
   try {
-    const out = JSONPath({ path: expr, json: doc as object, wrap: true }) as unknown
+    const out = JSONPath({ path: expr, json: doc as object, wrap: true, eval: 'safe' }) as unknown
     found = Array.isArray(out) ? out : []
   } catch {
     return { field, expected, actual: null, matched: null }
@@ -282,6 +295,7 @@ function explainUrl(req: Obj, request: LoggedRequest): FieldDiff[] {
   }
   const re = (field: string, expected: unknown, actual: string) => {
     if (typeof expected !== 'string') return rows.push({ field, expected: `${field} ${json(expected)}`, actual, matched: null })
+    if (actual.length > MAX_REGEX_INPUT) return rows.push({ field, expected: `matches ${expected}${TOO_LONG}`, actual, matched: null })
     rows.push({ field, expected: `matches ${expected}`, actual, matched: fullMatch(expected, actual) })
   }
   if ('url' in req) eq('url', req.url, request.url)
