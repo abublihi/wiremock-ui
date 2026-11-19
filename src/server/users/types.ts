@@ -38,10 +38,10 @@ export interface UserStore {
   getSession(id: string): Promise<Session | null>
   deleteSession(id: string): Promise<void>
   deleteSessionsOf(userId: string): Promise<void>
-  /** INCR ratelimit:login:{ip}; EXPIRE windowSeconds on first hit. Returns the new count. */
+  /** Atomically INCR ratelimit:login:{ip}; sets EXPIRE windowSeconds whenever the key has no TTL. Returns the new count. */
   hitRateLimit(ip: string, windowSeconds: number): Promise<number>
-  /** Current attempt count for ip without incrementing. */
-  peekRateLimit(ip: string): Promise<number>
+  /** DECR ratelimit:login:{ip}, never below 0 (an attempt that succeeded or was never verified). */
+  releaseRateLimit(ip: string): Promise<void>
   /** Deletes all of the user's sessions except keepId. */
   deleteOtherSessions(userId: string, keepId: string): Promise<void>
 }

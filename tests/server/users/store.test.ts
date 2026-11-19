@@ -122,14 +122,27 @@ test('updating a nonexistent user throws NotFoundError and creates nothing', asy
   expect(await redis.keys('*')).toEqual([])
 })
 
-test('peekRateLimit reads without incrementing; deleteOtherSessions keeps one', async () => {
-  expect(await store.peekRateLimit('9.9.9.9')).toBe(0)
+test('releaseRateLimit decrements but never below 0; deleteOtherSessions keeps one', async () => {
   await store.hitRateLimit('9.9.9.9', 900)
-  expect(await store.peekRateLimit('9.9.9.9')).toBe(1)
-  expect(await store.peekRateLimit('9.9.9.9')).toBe(1)
+  await store.hitRateLimit('9.9.9.9', 900)
+  await store.releaseRateLimit('9.9.9.9')
+  expect(await redis.get('ratelimit:login:9.9.9.9')).toBe('1')
+  await store.releaseRateLimit('9.9.9.9')
+  await store.releaseRateLimit('9.9.9.9')
+  await store.releaseRateLimit('8.8.8.8')
+  expect(await redis.get('ratelimit:login:9.9.9.9')).toBe('0')
+  expect(await redis.exists('ratelimit:login:8.8.8.8')).toBe(0)
   const a = await store.createSession('u', 60)
   const b = await store.createSession('u', 60)
   await store.deleteOtherSessions('u', a.id)
   expect(await store.getSession(a.id)).not.toBeNull()
   expect(await store.getSession(b.id)).toBeNull()
+})
+
+test('hitRateLimit sets the window on a key that has no TTL', async () => {
+  await redis.set('ratelimit:login:7.7.7.7', '4')
+  expect(await store.hitRateLimit('7.7.7.7', 900)).toBe(5)
+  const ttl = await redis.ttl('ratelimit:login:7.7.7.7')
+  expect(ttl).toBeGreaterThan(0)
+  expect(ttl).toBeLessThanOrEqual(900)
 })

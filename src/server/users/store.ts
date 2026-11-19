@@ -35,10 +35,16 @@ redis.call("set", KEYS[1], ARGV[2])
 redis.call("sadd", "${ALL}", ARGV[1])
 return 1`
 
+// A key without a TTL (manual SET, restore) gets the window too, so it can never block forever.
 const HIT_LUA = `
 local n = redis.call("incr", KEYS[1])
-if n == 1 then redis.call("expire", KEYS[1], ARGV[1]) end
+if redis.call("ttl", KEYS[1]) < 0 then redis.call("expire", KEYS[1], ARGV[1]) end
 return n`
+
+const RELEASE_LUA = `
+local n = tonumber(redis.call("get", KEYS[1]) or "0")
+if n and n > 0 then redis.call("decr", KEYS[1]) end
+return 0`
 
 export class RedisUserStore implements UserStore {
   constructor(private readonly redis: Redis) {}
@@ -134,10 +140,6 @@ export class RedisUserStore implements UserStore {
     await m.exec()
   }
 
-  async peekRateLimit(ip: string): Promise<number> {
-    return Number((await this.redis.get(rateKey(ip))) ?? 0)
-  }
-
   async deleteOtherSessions(userId: string, keepId: string): Promise<void> {
     const ids = (await this.redis.smembers(userSessionsKey(userId))).filter((id) => id !== keepId)
     if (ids.length === 0) return
@@ -149,5 +151,9 @@ export class RedisUserStore implements UserStore {
 
   async hitRateLimit(ip: string, windowSeconds: number): Promise<number> {
     return (await this.redis.eval(HIT_LUA, 1, rateKey(ip), windowSeconds)) as number
+  }
+
+  async releaseRateLimit(ip: string): Promise<void> {
+    await this.redis.eval(RELEASE_LUA, 1, rateKey(ip))
   }
 }

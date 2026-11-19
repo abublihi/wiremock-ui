@@ -56,9 +56,10 @@ test('disabled user cannot log in (same 401)', async () => {
   await expect(svc.login('bob', 'bobpass12', '1.1.1.1', config)).rejects.toMatchObject({ status: 401, message: 'Invalid username or password' })
 })
 
-test('rate limit: 11th login attempt → 429 even with right password', async () => {
+test('rate limit: failures only — 15 successes pass; after 10 failures the right password → 429', async () => {
   await admin()
-  for (let i = 0; i < 10; i++) await svc.login('root', 'rootpass1', '2.2.2.2', config)
+  for (let i = 0; i < 15; i++) await svc.login('root', 'rootpass1', '2.2.2.2', config)
+  for (let i = 0; i < 10; i++) await expect(svc.login('root', 'wrong-pass', '2.2.2.2', config)).rejects.toMatchObject({ status: 401 })
   await expect(svc.login('root', 'rootpass1', '2.2.2.2', config)).rejects.toMatchObject({ status: 429, message: 'Too many login attempts; try again later' })
   await svc.login('root', 'rootpass1', '3.3.3.3', config)
 })

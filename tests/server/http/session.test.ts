@@ -79,6 +79,13 @@ test('password change keeps the current session and drops the others', async () 
   await login(rt, 'pw-user', 'password-2')
 })
 
+test('POST /api/session: 15 successful logins from one IP all succeed', async () => {
+  for (let i = 0; i < 15; i++) {
+    const res = await loginHandler(rt, req('/api/session', 'POST', { username: 'ui-admin', password: 'ui-admin-pass' }, { 'X-Forwarded-For': '203.0.113.20' }))
+    expect(res.status, `login ${i + 1}`).toBe(200)
+  }
+})
+
 test('POST /api/session is 429 after 10 failed attempts from one IP', async () => {
   const attempt = () =>
     loginHandler(rt, req('/api/session', 'POST', { username: 'ui-admin', password: 'wrong-pass' }, { 'X-Forwarded-For': '203.0.113.7' }))

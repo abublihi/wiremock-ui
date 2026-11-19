@@ -3,14 +3,14 @@ import type { Config } from '../config'
 import { verifyPasswordOrDummy } from '../users/passwords'
 import { toPublicUser } from '../users/types'
 import type { PublicUser, Session, UserStore } from '../users/types'
-import { LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS, clientIp, readSessionCookie, safeEqual, tooManyAttempts } from './session'
+import { clientIp, limitLoginAttempts, readSessionCookie, safeEqual } from './session'
 
 export type Principal = { user: PublicUser; via: 'session' | 'basic'; session?: Session }
-export class AuthDeps {
-  constructor(
-    public users: UserStore,
-    public config: Config,
-  ) {}
+export type AuthDeps = {
+  users: UserStore
+  config: Config
+  /** Password check; injectable so tests can count verifications. */
+  verify?: (plain: string, hash: string | undefined) => Promise<boolean>
 }
 
 const unauthenticated = () => new AppError('Authentication required', 401)
@@ -28,20 +28,16 @@ async function viaSession(request: Request, deps: AuthDeps): Promise<Principal |
 async function viaBasic(request: Request, deps: AuthDeps): Promise<Principal | null> {
   const header = request.headers.get('authorization')
   if (!header || !/^basic\s/i.test(header)) return null
-  const ip = clientIp(request, deps.config)
-  // Only failed attempts count: peek first, increment on failure.
-  if ((await deps.users.peekRateLimit(ip)) >= LOGIN_MAX_ATTEMPTS) throw tooManyAttempts()
-  const fail = async () => {
-    await deps.users.hitRateLimit(ip, LOGIN_WINDOW_SECONDS)
-    return null
-  }
-  const decoded = Buffer.from(header.slice(6).trim(), 'base64').toString('utf8')
-  const colon = decoded.indexOf(':')
-  if (colon === -1) return fail()
-  const user = await deps.users.getUserByName(decoded.slice(0, colon))
-  const ok = await verifyPasswordOrDummy(decoded.slice(colon + 1), user?.passwordHash)
-  if (!user || user.disabled || !ok) return fail()
-  return { user: toPublicUser(user), via: 'basic' }
+  const verify = deps.verify ?? verifyPasswordOrDummy
+  return limitLoginAttempts(deps.users, clientIp(request, deps.config), async () => {
+    const decoded = Buffer.from(header.slice(6).trim(), 'base64').toString('utf8')
+    const colon = decoded.indexOf(':')
+    if (colon === -1) return null
+    const user = await deps.users.getUserByName(decoded.slice(0, colon))
+    const ok = await verify(decoded.slice(colon + 1), user?.passwordHash)
+    if (!user || user.disabled || !ok) return null
+    return { user: toPublicUser(user), via: 'basic' as const }
+  })
 }
 
 export async function authenticate(request: Request, deps: AuthDeps): Promise<Principal> {

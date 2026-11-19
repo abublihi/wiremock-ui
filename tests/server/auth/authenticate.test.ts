@@ -4,7 +4,7 @@ import { assertCsrf, authenticate } from '../../../src/server/auth/authenticate'
 import { signSessionId } from '../../../src/server/auth/session'
 import type { Config } from '../../../src/server/config'
 import { createRedis } from '../../../src/server/store/connection'
-import { hashPassword } from '../../../src/server/users/passwords'
+import { hashPassword, verifyPasswordOrDummy } from '../../../src/server/users/passwords'
 import { RedisUserStore } from '../../../src/server/users/store'
 import type { User } from '../../../src/server/users/types'
 import { startRedis } from '../../helpers/containers'
@@ -94,6 +94,33 @@ test('basic auth counts only failed attempts: 12 successes pass; 10 failures the
     status: 429,
     message: 'Too many login attempts; try again later',
   })
+})
+
+test('20 parallel bad Basic requests: at most 10 reach password verification, the rest get 429', async () => {
+  await mk()
+  let verified = 0
+  const verify = async (plain: string, hash: string | undefined) => {
+    verified++
+    return verifyPasswordOrDummy(plain, hash)
+  }
+  const results = await Promise.allSettled(
+    Array.from({ length: 20 }, () => authenticate(basic('alice', 'wrong'), { ...deps(), verify })),
+  )
+  const statuses = results.map((r) => (r.status === 'rejected' ? (r.reason as { status: number }).status : 200))
+  expect(verified).toBeLessThanOrEqual(10)
+  expect(statuses.filter((s) => s === 429).length).toBeGreaterThanOrEqual(10)
+  expect(statuses.filter((s) => s === 401).length).toBe(verified)
+})
+
+test('a refused (429) attempt does not count; successes never accumulate', async () => {
+  await mk()
+  for (let i = 0; i < 10; i++) await authenticate(basic('alice', 'wrong'), deps()).catch(() => {})
+  for (let i = 0; i < 5; i++) await authenticate(basic('alice', 'password1'), deps()).catch(() => {})
+  expect(await redis.get('ratelimit:login:unknown')).toBe('10')
+  await redis.flushdb()
+  await mk()
+  for (let i = 0; i < 15; i++) await authenticate(basic('alice', 'password1'), deps())
+  expect(await redis.get('ratelimit:login:unknown')).toBe('0')
 })
 
 test('session-cookie requests do not count toward the rate limit', async () => {

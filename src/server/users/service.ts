@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AuditLog } from '../audit/log'
-import { LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS, SESSION_TTL_SECONDS, tooManyAttempts } from '../auth/session'
+import { SESSION_TTL_SECONDS, limitLoginAttempts } from '../auth/session'
 import type { Config } from '../config'
 import { AppError, ConfigError, NotFoundError, ValidationError } from '../errors'
 import { hashPassword, verifyPassword, verifyPasswordOrDummy } from './passwords'
@@ -98,12 +98,12 @@ export class UserService {
   }
 
   async login(username: string, password: string, ip: string, _config: Config): Promise<{ user: PublicUser; session: Session }> {
-    if ((await this.users.hitRateLimit(ip, LOGIN_WINDOW_SECONDS)) > LOGIN_MAX_ATTEMPTS) {
-      throw tooManyAttempts()
-    }
-    const user = await this.users.getUserByName(String(username ?? ''))
-    const ok = await verifyPasswordOrDummy(String(password ?? ''), user?.passwordHash)
-    if (!user || !ok || user.disabled) throw invalidLogin()
+    const user = await limitLoginAttempts(this.users, ip, async () => {
+      const found = await this.users.getUserByName(String(username ?? ''))
+      const ok = await verifyPasswordOrDummy(String(password ?? ''), found?.passwordHash)
+      return found && ok && !found.disabled ? found : null
+    })
+    if (!user) throw invalidLogin()
     const session = await this.users.createSession(user.id, SESSION_TTL_SECONDS)
     return { user: toPublicUser(user), session }
   }

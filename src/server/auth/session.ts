@@ -1,12 +1,33 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { Config } from '../config'
 import { AppError } from '../errors'
+import type { UserStore } from '../users/types'
 
 export const SESSION_TTL_SECONDS = 43200
 export const LOGIN_WINDOW_SECONDS = 900
 export const LOGIN_MAX_ATTEMPTS = 10
 export const tooManyAttempts = () => new AppError('Too many login attempts; try again later', 429)
 export const SESSION_COOKIE = 'wmui_session'
+
+/**
+ * Login rate limit shared by `POST /api/session` and Basic auth; only failed attempts count.
+ * The slot is taken atomically before verifying (so parallel guesses cannot all slip through the
+ * check) and handed back when the attempt succeeds or is refused unverified.
+ * `attempt` returns null for a failed login.
+ */
+export async function limitLoginAttempts<T>(
+  users: Pick<UserStore, 'hitRateLimit' | 'releaseRateLimit'>,
+  ip: string,
+  attempt: () => Promise<T | null>,
+): Promise<T | null> {
+  if ((await users.hitRateLimit(ip, LOGIN_WINDOW_SECONDS)) > LOGIN_MAX_ATTEMPTS) {
+    await users.releaseRateLimit(ip)
+    throw tooManyAttempts()
+  }
+  const result = await attempt()
+  if (result !== null) await users.releaseRateLimit(ip)
+  return result
+}
 
 const sign = (id: string, secret: string) => createHmac('sha256', secret).update(id).digest('base64url')
 
