@@ -9,8 +9,12 @@ export async function assertWireMockReady(
   const root = baseUrl.replace(/\/+$/, '')
   let open: Response
   try {
-    open = await fetchFn(`${root}/__admin/mappings?limit=1`)
+    open = await fetchFn(`${root}/__admin/mappings?limit=1`, { signal: AbortSignal.timeout(5000) })
   } catch (err) {
+    const name = (err as Error).name
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      throw new UpstreamError(`WireMock unreachable at ${baseUrl}: probe timed out`)
+    }
     throw new UpstreamError(`WireMock unreachable at ${baseUrl}: ${(err as Error).message}`)
   }
   if (open.status === 200) {

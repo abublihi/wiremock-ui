@@ -17,11 +17,20 @@ The UI listens on http://localhost:3000 and WireMock on http://localhost:8080. C
 
 ## Authentication
 
-Accounts live in Redis. On first start the UI creates one admin from `ADMIN_USER` / `ADMIN_PASSWORD` (only when there are no users yet; changing those variables later does not touch existing accounts). Roles: `viewer` (read), `tester` (create and edit own mocks), `developer` (edit anyone's mocks), `admin` (also baseline mocks and user management).
+Accounts live in Redis. On first start the UI creates one admin from `ADMIN_USER` / `ADMIN_PASSWORD` (only when there are no users yet; changing those variables later does not touch existing accounts).
 
-- **Browser:** `POST /api/session` with `{ "username", "password" }` sets an HttpOnly `wmui_session` cookie and returns `{ user, csrfToken }`. Send the token as `X-CSRF-Token` on every `POST`, `PUT`, `PATCH` and `DELETE`. `DELETE /api/session` signs out.
-- **Scripts:** HTTP Basic with a user account (no CSRF token needed). Failed attempts are rate-limited per IP.
+| Role | Can |
+| --- | --- |
+| `viewer` | Read |
+| `tester` | Create and edit own mocks |
+| `developer` | Edit anyone's mocks |
+| `admin` | Also baseline mocks, imports and user management |
+
+- **Browser sessions:** `POST /api/session` with `{ "username", "password" }` sets an HttpOnly `wmui_session` cookie and returns `{ user, csrfToken }`. Send the token as `X-CSRF-Token` on every `POST`, `PUT`, `PATCH` and `DELETE`. `DELETE /api/session` signs out. The cookie is `Secure` when `PUBLIC_UI_URL` is https, or when `TRUST_PROXY` is on and the proxy sends `X-Forwarded-Proto: https`.
+- **Scripts:** HTTP Basic with a user account. No CSRF token is needed and no `WWW-Authenticate` challenge is sent, so browsers never pop a login dialog. Failed attempts are rate-limited per client IP.
 - Admins manage accounts through `/api/users`; anyone can change their own password with `POST /api/session/password` (`{ current, next }`).
+
+Behind a reverse proxy, set `TRUST_PROXY=true` so the client IP (for rate limiting) is taken from `X-Forwarded-For`. The rightmost hop is used, because that is the one your proxy appended; do not enable it without a proxy, as clients could spoof the header. `PUBLIC_UI_URL` is the externally visible base URL of the UI (for example `https://wiremock-ui.example.com`); an https URL marks session cookies `Secure`.
 
 Examples below use the bootstrap admin with basic auth:
 
@@ -55,7 +64,23 @@ It starts a throwaway stack (`WIREMOCK_PORT` and `UI_PORT` override the host por
 
 A bundle is JSON in any of these shapes: `{ "integrations": [], "catalog": [], "mocks": [], "oidcIdentities": [] }` (every key optional), a WireMock export `{ "mappings": [...] }`, a single stub, or an array of stubs. Admins can `POST /api/import` (add `?prune=true` to delete baseline mocks that are not in the bundle; bodies over 10 MB get a 413).
 
-Set `SEED_PATH` to a file or a folder to import at boot, as user `system`, before the reconciler starts. A folder is read recursively (every `*.json`, sorted by path, dotfiles ignored), so a WireMock `mappings/` folder works as is. `SEED_PRUNE=true` also prunes baseline mocks missing from the seed. A seed that fails validation stops the boot.
+Set `SEED_PATH` to a file or a folder to import at boot, as user `system`, before the reconciler starts. A folder is read recursively (every `*.json`, sorted by path, dotfiles ignored), so a WireMock `mappings/` folder works as is. `SEED_PRUNE=true` also prunes baseline mocks missing from the seed. Symlinked entries are followed, so a Kubernetes ConfigMap volume mounted as `SEED_PATH` works. A dangling symlink is skipped with a warning, and when anything was skipped the prune step is skipped too (`prune skipped: seed folder had unreadable entries`). A seed that fails validation stops the boot.
+
+A small bundle:
+
+```json
+{
+  "integrations": [{ "key": "pay", "name": "Payments", "prefix": "/pay" }],
+  "mocks": [
+    {
+      "request": { "method": "GET", "urlPath": "/pay/status" },
+      "response": { "status": 200, "body": "ok" }
+    }
+  ]
+}
+```
+
+The first start-up sync and any sync caused by a missing marker (WireMock was reset) are recorded in the audit log as `sync` by `system`.
 
 - Mocks without an `id` get a stable UUID derived from their content, so re-imports change nothing.
 - The owner is `metadata.wiremockUi.owner`, else `baseline`. Mocks owned by a person are never touched by an import.

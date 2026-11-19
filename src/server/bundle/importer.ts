@@ -53,7 +53,7 @@ const invalid = <T>(what: string, fn: () => T): T => {
 export async function importBundle(
   bundle: Bundle,
   deps: Deps,
-  opts: { actor: string; prune: boolean; source: 'import' | 'seed' },
+  opts: { actor: string; prune: boolean; source: 'import' | 'seed'; unreadable?: number },
 ): Promise<ImportReport> {
   // Phase 1: validate everything; nothing is written until the whole bundle passes.
   const integrations = bundle.integrations.map((raw, i) =>
@@ -127,7 +127,8 @@ export async function importBundle(
     report[await deps.mocks.upsertImported(stub, owner, source, opts.actor)]++
   }
 
-  if (opts.prune) {
+  // Unreadable seed entries may hold mocks we cannot see: pruning could delete them.
+  if (opts.prune && !opts.unreadable) {
     for (const stub of await deps.store.listAll()) {
       if ((stub.metadata?.wiremockUi?.owner ?? 'baseline') !== 'baseline' || mocks.has(stub.id)) continue
       await deps.mocks.deleteImported(stub.id)

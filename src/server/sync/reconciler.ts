@@ -1,3 +1,4 @@
+import type { AuditLog } from '../audit/log'
 import { logger } from '../logger'
 import type { MockStore } from '../store/types'
 import type { WireMockClient } from '../wiremock/client'
@@ -13,6 +14,7 @@ type Deps = {
   intervalMs: number
   safetyNetMs?: number
   batchSize?: number
+  audit?: AuditLog
 }
 
 const versionOf = (s: StubMapping) => s.metadata?.wiremockUi?.version
@@ -26,6 +28,7 @@ export class Reconciler {
   private readonly intervalMs: number
   private readonly safetyNetMs: number
   private readonly batchSize: number
+  private readonly audit?: AuditLog
   private timers: NodeJS.Timeout[] = []
   private busy = false
 
@@ -35,6 +38,7 @@ export class Reconciler {
     this.intervalMs = deps.intervalMs
     this.safetyNetMs = deps.safetyNetMs ?? 600_000
     this.batchSize = deps.batchSize ?? 500
+    this.audit = deps.audit
   }
 
   get lastSyncAt(): Date | null {
@@ -48,10 +52,11 @@ export class Reconciler {
   async check(): Promise<'ok' | 'synced' | 'skipped'> {
     if ((await this.wiremock.getStub(MARKER_ID)) !== null) return 'ok'
     logger.warn('wiremock marker missing, running full sync')
-    return this.fullSync()
+    return this.fullSync({ audit: true })
   }
 
-  async fullSync(): Promise<'synced' | 'skipped'> {
+  /** `audit` records a `sync` entry on success; only startup and marker-triggered syncs ask for it. */
+  async fullSync(opts: { audit?: boolean } = {}): Promise<'synced' | 'skipped'> {
     const token = await this.store.acquireLock(LOCK, LOCK_TTL_MS)
     if (token === null) return 'skipped'
     try {
@@ -89,6 +94,11 @@ export class Reconciler {
       this._lastSyncAt = new Date()
       this._lastError = null
       logger.info({ stubs: snapshot.length }, 'full sync done')
+      if (opts.audit) {
+        await this.audit
+          ?.record({ actor: 'system', action: 'sync', details: { stubs: snapshot.length } })
+          .catch((err) => logger.error({ err }, 'audit record failed'))
+      }
       return 'synced'
     } catch (err) {
       this._lastError = (err as Error).message
@@ -122,7 +132,7 @@ export class Reconciler {
       setInterval(guarded(() => this.fullSync()), this.safetyNetMs).unref(),
     )
     // A failed first sync is logged and recorded in lastError; the timers keep retrying.
-    await guarded(() => this.fullSync())()
+    await guarded(() => this.fullSync({ audit: true }))()
   }
 
   stop(): void {

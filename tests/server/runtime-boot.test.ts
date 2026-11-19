@@ -74,3 +74,16 @@ test('gives up with the last reachability error after BOOT_TIMEOUT_SECONDS', asy
   )
   expect(Date.now() - t0).toBeLessThan(5000)
 })
+
+test('boot retries a hung store ping until reachable', async () => {
+  const wm = wiremockFetch(0)
+  let attempts = 0
+  const hung = (): Stores => {
+    const s = fakeStore()
+    if (attempts++ === 0) (s as unknown as { ping: () => Promise<boolean> }).ping = () => new Promise(() => {})
+    return s
+  }
+  const rt = await bootRuntime(env, { fetch: wm.fn, createStores: hung, sleep: async () => {} })
+  rt.reconciler.stop()
+  expect(attempts).toBe(2)
+}, 10_000)

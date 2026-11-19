@@ -39,7 +39,7 @@ export function parseBundle(json: unknown, source: string): Bundle {
   throw new ValidationError(`${source}: unrecognised bundle shape (expected a bundle, a WireMock export, a stub or an array of stubs)`)
 }
 
-async function jsonFiles(dir: string, rel = '', seen = new Set<string>()): Promise<string[]> {
+async function jsonFiles(dir: string, skipped: string[], rel = '', seen = new Set<string>()): Promise<string[]> {
   const real = await realpath(join(dir, rel))
   if (seen.has(real)) return []
   seen.add(real)
@@ -50,8 +50,11 @@ async function jsonFiles(dir: string, rel = '', seen = new Set<string>()): Promi
     const path = rel ? `${rel}/${e.name}` : e.name
     // Dirents use lstat; follow symlinks (e.g. Kubernetes ConfigMap volumes) with stat.
     const info = e.isSymbolicLink() ? await stat(join(dir, path)).catch(() => null) : e
-    if (!info) continue
-    if (info.isDirectory()) out.push(...(await jsonFiles(dir, path, seen)))
+    if (!info) {
+      skipped.push(path)
+      continue
+    }
+    if (info.isDirectory()) out.push(...(await jsonFiles(dir, skipped, path, seen)))
     else if (info.isFile() && e.name.endsWith('.json')) out.push(path)
   }
   return out
@@ -68,12 +71,13 @@ async function readFileBundle(path: string, label: string): Promise<Bundle> {
 }
 
 /** A file, or a folder whose *.json files (recursively, sorted by relative path) are merged. */
-export async function readBundleFromPath(path: string): Promise<Bundle> {
+export async function readBundleFromPath(path: string): Promise<{ bundle: Bundle; skipped: string[] }> {
   const info = await stat(path).catch(() => null)
   if (!info) throw new ValidationError(`${path}: no such file or folder`)
-  if (!info.isDirectory()) return readFileBundle(path, path)
+  if (!info.isDirectory()) return { bundle: await readFileBundle(path, path), skipped: [] }
   const merged = emptyBundle()
-  const files = (await jsonFiles(path)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  const skipped: string[] = []
+  const files = (await jsonFiles(path, skipped)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
   if (files.length === 0) throw new ValidationError(`SEED_PATH ${path} contains no .json files`)
   for (const rel of files) {
     const part = await readFileBundle(join(path, rel), join(path, rel))
@@ -82,5 +86,5 @@ export async function readBundleFromPath(path: string): Promise<Bundle> {
     merged.mocks.push(...part.mocks)
     merged.oidcIdentities.push(...part.oidcIdentities)
   }
-  return merged
+  return { bundle: merged, skipped }
 }

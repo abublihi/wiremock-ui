@@ -72,3 +72,15 @@ test('401 with no configured user tells the operator to set credentials', async 
     'WireMock admin API requires credentials; set WIREMOCK_ADMIN_USER and WIREMOCK_ADMIN_PASSWORD',
   )
 })
+
+test('a hung unauthenticated probe becomes UpstreamError within ~5 s', async () => {
+  const hang = ((_: RequestInfo | URL, init?: RequestInit) =>
+    new Promise((_res, rej) => {
+      init?.signal?.addEventListener('abort', () => rej(init.signal!.reason))
+    })) as typeof fetch
+  const t0 = Date.now()
+  const err = await assertWireMockReady(clientFor(authed), authed.url, hang).catch((e) => e)
+  expect(err).toBeInstanceOf(UpstreamError)
+  expect(err.message).toMatch(/timed out/)
+  expect(Date.now() - t0).toBeLessThan(7000)
+})

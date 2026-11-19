@@ -39,7 +39,8 @@ test('folder: recursive, sorted by path, ignores dotfiles and non-json', async (
   await writeFile(join(dir, 'a', '.hidden.json'), JSON.stringify(stub(9)))
   await writeFile(join(dir, 'a', 'readme.txt'), 'x')
   await writeFile(join(dir, '0.json'), JSON.stringify({ mappings: [stub(1)] }))
-  const b = await readBundleFromPath(dir)
+  const { bundle: b, skipped } = await readBundleFromPath(dir)
+  expect(skipped).toEqual([])
   expect(b.mocks.map((m) => (m.request as { urlPath: string }).urlPath)).toEqual(['/s1', '/s2', '/s3'])
 })
 
@@ -47,7 +48,7 @@ test('file path and bad JSON', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'bundle-'))
   await writeFile(join(dir, 'ok.json'), JSON.stringify(stub(1)))
   await writeFile(join(dir, 'bad.json'), '{')
-  expect((await readBundleFromPath(join(dir, 'ok.json'))).mocks).toHaveLength(1)
+  expect((await readBundleFromPath(join(dir, 'ok.json'))).bundle.mocks).toHaveLength(1)
   await expect(readBundleFromPath(join(dir, 'bad.json'))).rejects.toThrow(/bad\.json: invalid JSON/)
   await expect(readBundleFromPath(join(dir, 'missing'))).rejects.toThrow(ValidationError)
 })
@@ -60,7 +61,7 @@ test('ConfigMap-like symlink layout is read', async () => {
   await symlink('..2026_x', join(dir, '..data'))
   await symlink('..data/a.json', join(dir, 'a.json'))
   await symlink('..data/b.json', join(dir, 'b.json'))
-  const b = await readBundleFromPath(dir)
+  const { bundle: b } = await readBundleFromPath(dir)
   expect(b.mocks.map((m) => (m.request as { urlPath: string }).urlPath)).toEqual(['/s1', '/s2'])
 })
 
@@ -69,11 +70,20 @@ test('a symlink loop does not hang', async () => {
   await mkdir(join(dir, 'sub'))
   await writeFile(join(dir, 'sub', 'a.json'), JSON.stringify(stub(1)))
   await symlink('..', join(dir, 'sub', 'loop'))
-  expect((await readBundleFromPath(dir)).mocks).toHaveLength(1)
+  expect((await readBundleFromPath(dir)).bundle.mocks).toHaveLength(1)
 })
 
 test('a folder without .json files is an error', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'bundle-'))
   await writeFile(join(dir, 'x.txt'), 'x')
   await expect(readBundleFromPath(dir)).rejects.toThrow(/contains no \.json files/)
+})
+
+test('dangling symlinks are skipped and reported', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bundle-'))
+  await writeFile(join(dir, 'a.json'), JSON.stringify(stub(1)))
+  await symlink(join(dir, 'gone.json'), join(dir, 'dangling.json'))
+  const r = await readBundleFromPath(dir)
+  expect(r.bundle.mocks).toHaveLength(1)
+  expect(r.skipped).toEqual(['dangling.json'])
 })

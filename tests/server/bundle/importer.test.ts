@@ -130,3 +130,10 @@ test('metadata that is not an object is rejected before any write', async () => 
   ).rejects.toThrow(/mocks\[0\].*metadata must be an object/)
   expect(await env.rt.catalog.listIntegrations()).toEqual([])
 })
+
+test('prune is skipped when the seed had unreadable entries', async () => {
+  await run({ mocks: [stub('/imp/u1', { id: '00000000-0000-4000-8000-0000000000e1' })] })
+  const r = await importBundle(emptyBundle(), deps(), { actor: 'system', prune: true, source: 'seed', unreadable: 1 })
+  expect(r.pruned).toBe(0)
+  expect(await env.rt.store.get('00000000-0000-4000-8000-0000000000e1')).not.toBeNull()
+})

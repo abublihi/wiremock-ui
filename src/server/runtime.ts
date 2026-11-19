@@ -34,6 +34,7 @@ export type BootDeps = {
 
 const BACKOFF_START_MS = 500
 const BACKOFF_CAP_MS = 5000
+const PING_TIMEOUT_MS = 2000
 
 /** Retries only reachability failures (UpstreamError, store ping false) until the deadline. */
 async function untilReachable<T>(
@@ -77,9 +78,18 @@ export async function bootRuntime(
     stores = await untilReachable('Store', deadline, sleep, async () => {
       const candidate = open(config)
       try {
-        if (!(await candidate.ping())) throw new UpstreamError('Store unreachable')
+        let timer: NodeJS.Timeout | undefined
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new UpstreamError('Store ping timed out')), PING_TIMEOUT_MS)
+        })
+        try {
+          if (!(await Promise.race([candidate.ping(), timeout]))) throw new UpstreamError('Store unreachable')
+        } finally {
+          clearTimeout(timer)
+        }
       } catch (err) {
-        await candidate.close().catch(() => {})
+        // Not awaited: closing a hung connection can itself hang.
+        void candidate.close().catch(() => {})
         throw err instanceof UpstreamError ? err : new UpstreamError(`Store unreachable: ${(err as Error).message}`)
       }
       return candidate
@@ -93,14 +103,20 @@ export async function bootRuntime(
     const requests = new RequestJournal({ wiremock, catalog, audit })
     if (config.seedPath) {
       try {
-        const bundle = await readBundleFromPath(config.seedPath)
-        const report = await importBundle(bundle, { catalog, mocks, store, audit }, { actor: 'system', prune: config.seedPrune, source: 'seed' })
+        const { bundle, skipped } = await readBundleFromPath(config.seedPath)
+        for (const entry of skipped) logger.warn({ entry, seedPath: config.seedPath }, 'seed entry skipped: unreadable (dangling symlink?)')
+        if (skipped.length > 0 && config.seedPrune) logger.warn({ skipped: skipped.length }, 'prune skipped: seed folder had unreadable entries')
+        const report = await importBundle(
+          bundle,
+          { catalog, mocks, store, audit },
+          { actor: 'system', prune: config.seedPrune, source: 'seed', unreadable: skipped.length },
+        )
         logger.info({ report, seedPath: config.seedPath }, 'seed imported')
       } catch (err) {
         throw new ConfigError(`Seed import from ${config.seedPath} failed: ${(err as Error).message}`)
       }
     }
-    const reconciler = new Reconciler({ wiremock, store, intervalMs: config.syncIntervalSeconds * 1000 })
+    const reconciler = new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000 })
     await reconciler.start()
     return { config, wiremock, store, stores, users, audit, mocks, catalog, requests, reconciler }
   } catch (err) {
