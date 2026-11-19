@@ -78,3 +78,15 @@ test('password change keeps the current session and drops the others', async () 
   expect((await getSession(rt, req('/api/session', 'GET', undefined, { Cookie: b.cookie }))).status).toBe(401)
   await login(rt, 'pw-user', 'password-2')
 })
+
+test('POST /api/session is 429 after 10 failed attempts from one IP', async () => {
+  const attempt = () =>
+    loginHandler(rt, req('/api/session', 'POST', { username: 'ui-admin', password: 'wrong-pass' }, { 'X-Forwarded-For': '203.0.113.7' }))
+  for (let i = 0; i < 10; i++) expect((await attempt()).status).toBe(401)
+  const blocked = await attempt()
+  expect(blocked.status).toBe(429)
+  // The right password is also refused while blocked; another IP is unaffected.
+  const right = await loginHandler(rt, req('/api/session', 'POST', { username: 'ui-admin', password: 'ui-admin-pass' }, { 'X-Forwarded-For': '203.0.113.7' }))
+  expect(right.status).toBe(429)
+  await login(rt, 'ui-admin', 'ui-admin-pass')
+})

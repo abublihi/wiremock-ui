@@ -24,6 +24,7 @@ export async function startTestRuntime(adminUser = 'ui-admin', adminPassword = '
     ADMIN_USER: adminUser,
     ADMIN_PASSWORD: adminPassword,
     SESSION_SECRET: 'x',
+    TRUST_PROXY: 'true',
   })
   return {
     rt,
@@ -38,9 +39,11 @@ export async function startTestRuntime(adminUser = 'ui-admin', adminPassword = '
   }
 }
 
+let nextIp = 1
+
 /** Logs in through the real handler; returns the Cookie header value and the CSRF token. */
-export async function login(rt: Runtime, username: string, password: string) {
-  const res = await loginHandler(rt, req('/api/session', 'POST', { username, password }))
+export async function login(rt: Runtime, username: string, password: string, ip = `10.9.0.${nextIp++}`) {
+  const res = await loginHandler(rt, req('/api/session', 'POST', { username, password }, { 'X-Forwarded-For': ip }))
   if (res.status !== 200) throw new Error(`login failed: ${res.status}`)
   const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0]
   const { csrfToken } = await res.json()

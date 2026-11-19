@@ -169,6 +169,7 @@ test('cookie POST /api/mocks without X-CSRF-Token is 403, with the token 201', a
   const s = await userSession('csrf-tester', 'tester')
   const denied = await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/csrf1'), asSession(s, false)))
   expect(denied.status).toBe(403)
+  expect(await denied.json()).toEqual({ error: 'CSRF token missing or invalid' })
   const ok = await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/csrf1'), asSession(s)))
   expect(ok.status).toBe(201)
 })
@@ -192,12 +193,14 @@ test("tester cannot touch others' or baseline mocks (403, WireMock unchanged)", 
   const del = await deleteMock(rt, req(`/api/mocks/${mine.id}`, 'DELETE', undefined, asSession(other)), { id: mine.id })
   expect(del.status).toBe(403)
   expect(await served('/h/own')).toBe(200)
+  expect(await rt.store.get(mine.id)).toEqual(mine)
 
   const basePut = await updateMock(rt, req(`/api/mocks/${baseId}`, 'PUT', { stub: input('/h/base1', { response: { status: 418 } }), version: 1 }, asSession(owner)), { id: baseId })
   expect(basePut.status).toBe(403)
   const baseDel = await deleteMock(rt, req(`/api/mocks/${baseId}`, 'DELETE', undefined, asSession(owner)), { id: baseId })
   expect(baseDel.status).toBe(403)
   expect(await served('/h/base1')).toBe(200)
+  expect((await rt.store.get(baseId))?.metadata?.wiremockUi?.version).toBe(1)
 
   const ownPut = await updateMock(rt, req(`/api/mocks/${mine.id}`, 'PUT', { stub: input('/h/own'), version: 1 }, asSession(owner)), { id: mine.id })
   expect(ownPut.status).toBe(200)
@@ -223,6 +226,30 @@ test('mock create/update/delete write audit entries with actor and target', asyn
   const entries = (await rt.audit.list({ limit: 500 })).filter((e) => e.target === m.id)
   expect(entries.map((e) => e.action).sort()).toEqual(['mock.create', 'mock.delete', 'mock.update'])
   expect(entries.every((e) => e.actor === 'audited')).toBe(true)
+})
+
+test('a body cannot spoof the owner', async () => {
+  const s = await userSession('spoofer', 'tester')
+  const body = input('/h/spoof', { metadata: { wiremockUi: { owner: 'baseline', version: 99, updatedBy: 'baseline' } } })
+  const created = await (await createMock(rt, req('/api/mocks', 'POST', body, asSession(s)))).json()
+  expect(created.metadata.wiremockUi).toMatchObject({ owner: 'spoofer', version: 1, updatedBy: 'spoofer' })
+  const upd = await (await updateMock(rt, req(`/api/mocks/${created.id}`, 'PUT', { stub: body, version: 1 }, asSession(s)), { id: created.id })).json()
+  expect(upd.metadata.wiremockUi).toMatchObject({ owner: 'spoofer', version: 2 })
+})
+
+test('an audit failure after a committed write is logged and the write still succeeds', async () => {
+  const s = await userSession('audit-fail', 'tester')
+  const real = rt.audit.record
+  rt.audit.record = async () => {
+    throw new Error('audit down')
+  }
+  try {
+    const res = await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/auditfail'), asSession(s)))
+    expect(res.status).toBe(201)
+    expect(await served('/h/auditfail')).toBe(200)
+  } finally {
+    rt.audit.record = real
+  }
 })
 
 // Last: stops WireMock.

@@ -55,5 +55,5 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 export function assertCsrf(request: Request, principal: Principal): void {
   if (principal.via !== 'session' || !principal.session || SAFE_METHODS.has(request.method.toUpperCase())) return
   const token = request.headers.get('x-csrf-token')
-  if (!token || !safeEqual(token, principal.session.csrfToken)) throw new AppError('Invalid CSRF token', 403)
+  if (!token || !safeEqual(token, principal.session.csrfToken)) throw new AppError('CSRF token missing or invalid', 403)
 }

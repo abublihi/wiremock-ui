@@ -42,7 +42,7 @@ export class MockService {
   async create(input: MockInput, actor: PublicUser): Promise<StubMapping> {
     this.assertCanEdit(actor, actor.username)
     const stub = await this.save(this.newId(), input, 0, actor.username, null)
-    await this.audit.record({ actor: actor.username, action: 'mock.create', target: stub.id })
+    await this.record({ actor: actor.username, action: 'mock.create', target: stub.id })
     return stub
   }
 
@@ -57,7 +57,7 @@ export class MockService {
     this.assertCanEdit(actor, ownerOf(previous))
     if (previous.metadata?.wiremockUi?.version !== expectedVersion) throw new ConflictError()
     const stub = await this.save(id, input, expectedVersion, actor.username, previous)
-    await this.audit.record({ actor: actor.username, action: 'mock.update', target: id })
+    await this.record({ actor: actor.username, action: 'mock.update', target: id })
     return stub
   }
 
@@ -79,7 +79,7 @@ export class MockService {
       }
       throw err
     }
-    await this.audit.record({ actor: actor.username, action: 'mock.delete', target: id })
+    await this.record({ actor: actor.username, action: 'mock.delete', target: id })
   }
 
   async get(id: string): Promise<StubMapping> {
@@ -90,6 +90,15 @@ export class MockService {
 
   list(filter?: { integration?: string; owner?: string }): Promise<StubMapping[]> {
     return this.store.list(filter)
+  }
+
+  // The write already committed; a failing audit log must not turn it into an error.
+  private async record(entry: { actor: string; action: string; target: string }): Promise<void> {
+    try {
+      await this.audit.record(entry)
+    } catch (err) {
+      logger.error({ err, ...entry }, 'audit record failed')
+    }
   }
 
   private assertCanEdit(actor: PublicUser, owner: string): void {

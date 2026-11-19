@@ -57,3 +57,13 @@ test('invalid bodies are 400', async () => {
   const noPw = await createUser(rt, req('/api/users', 'POST', { username: 'zed', role: 'viewer' }, as(admin)))
   expect(noPw.status).toBe(400)
 })
+
+test('PATCH rejects unknown fields and empty patches', async () => {
+  const u = await (await createUser(rt, req('/api/users', 'POST', { username: 'patchy', role: 'viewer', password: 'password-1' }, as(admin)))).json()
+  const unknown = await updateUser(rt, req(`/api/users/${u.id}`, 'PATCH', { username: 'other' }, as(admin)), { id: u.id })
+  expect(unknown.status).toBe(400)
+  expect((await unknown.json()).error).toContain('username')
+  const empty = await updateUser(rt, req(`/api/users/${u.id}`, 'PATCH', {}, as(admin)), { id: u.id })
+  expect(empty.status).toBe(400)
+  expect(await empty.json()).toEqual({ error: 'patch must change at least one field' })
+})
