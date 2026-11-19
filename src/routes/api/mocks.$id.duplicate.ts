@@ -1,0 +1,11 @@
+import { createFileRoute } from '@tanstack/react-router'
+import { duplicateMock } from '../../server/http/handlers/mocks'
+import { getRuntime } from '../../server/runtime'
+
+export const Route = createFileRoute('/api/mocks/$id/duplicate')({
+  server: {
+    handlers: {
+      POST: async ({ request, params }) => duplicateMock(await getRuntime(), request, params),
+    },
+  },
+})

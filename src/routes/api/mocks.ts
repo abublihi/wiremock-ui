@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { createMock, listMocks } from '../../server/http/handlers'
+import { createMock, listMocks } from '../../server/http/handlers/mocks'
 import { getRuntime } from '../../server/runtime'
 
 export const Route = createFileRoute('/api/mocks')({

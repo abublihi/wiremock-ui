@@ -279,3 +279,79 @@ test('a mock deleted during the sync is not resurrected', async () => {
   expect(await client.getStub(a.id)).toBeNull()
   expect(await client.getStub(b.id)).not.toBeNull()
 })
+
+test('audit entry after a marker-triggered full sync, none for a plain fullSync', async () => {
+  await fill(3)
+  const entries: { actor: string; action: string; details?: Record<string, unknown> }[] = []
+  const audit = { record: async (e: (typeof entries)[number]) => void entries.push(e), list: async () => ({ entries: [], nextCursor: null }) }
+  const rec = new Reconciler({ wiremock: client, store, intervalMs: 60_000, audit })
+  reconcilers.push(rec)
+  await rec.fullSync()
+  expect(entries).toEqual([])
+  await client.deleteStub(MARKER_ID)
+  expect(await rec.check()).toBe('synced')
+  expect(entries).toEqual([{ actor: 'system', action: 'sync', details: { stubs: 3 } }])
+})
+
+test('an audit failure does not fail the sync', async () => {
+  const audit = { record: async () => Promise.reject(new Error('redis down')), list: async () => ({ entries: [], nextCursor: null }) }
+  const rec = new Reconciler({ wiremock: client, store, intervalMs: 60_000, audit })
+  reconcilers.push(rec)
+  await client.deleteStub(MARKER_ID)
+  expect(await rec.check()).toBe('synced')
+})
+
+const tied = (id: string, owner: string, updatedAt: string, path: string): StubMapping => ({
+  ...stubOf(id, path),
+  priority: 5,
+  response: { status: 200, body: id },
+  metadata: { wiremockUi: { owner, version: 1, updatedAt, updatedBy: owner, source: 'ui' } },
+})
+const answer = async (path: string) => (await fetch(`${wm.url}${path}`)).text()
+
+test('equal-priority precedence after a restart: person beats baseline, newest person wins, for any batch size', async () => {
+  const stubs = [
+    tied(uuid(11), 'sara', '2026-01-01T00:00:00.000Z', '/tie/one'),
+    tied(uuid(12), 'baseline', '2026-03-01T00:00:00.000Z', '/tie/one'),
+    tied(uuid(21), 'baseline', '2026-05-01T00:00:00.000Z', '/tie/two'),
+    tied(uuid(22), 'sara', '2026-02-02T00:00:00.000Z', '/tie/two'),
+    tied(uuid(23), 'omar', '2026-02-01T00:00:00.000Z', '/tie/two'),
+  ]
+  for (const s of stubs) await store.save(s, 0)
+  for (const batchSize of [1, 2, 500]) {
+    await wm.restart()
+    const rec = new Reconciler({ wiremock: client, store, intervalMs: 60_000, batchSize })
+    reconcilers.push(rec)
+    expect(await rec.check()).toBe('synced')
+    expect(await answer('/tie/one'), `batch ${batchSize}`).toBe(uuid(11))
+    expect(await answer('/tie/two'), `batch ${batchSize}`).toBe(uuid(22))
+  }
+})
+
+test('a person mock saved after a WireMock reset still beats the baseline the next check() re-adds', async () => {
+  const base = tied(uuid(31), 'baseline', '2026-01-01T00:00:00.000Z', '/tie/three')
+  const mine = tied(uuid(32), 'sara', '2026-01-02T00:00:00.000Z', '/tie/three')
+  await store.save(base, 0)
+  const rec = mk()
+  await rec.fullSync()
+  await wm.restart()
+  // Saved through the UI between the reset and the next marker check.
+  await client.importStubs([mine], { deleteAllNotInImport: false })
+  await store.save(mine, 0)
+  expect(await rec.check()).toBe('synced')
+  expect(await answer('/tie/three')).toBe(uuid(32))
+})
+
+test('repositionPersonMocks puts person mocks above a baseline mock added after them', async () => {
+  const mine = tied(uuid(41), 'sara', '2026-01-01T00:00:00.000Z', '/tie/four')
+  await store.save(mine, 0)
+  const rec = mk()
+  await rec.fullSync()
+  const base = tied(uuid(42), 'baseline', '2026-01-02T00:00:00.000Z', '/tie/four')
+  await store.save(base, 0)
+  await client.importStubs([base], { deleteAllNotInImport: false })
+  expect(await answer('/tie/four')).toBe(uuid(42))
+  await rec.repositionPersonMocks()
+  expect(await answer('/tie/four')).toBe(uuid(41))
+  expect(await rec.check()).toBe('ok')
+})

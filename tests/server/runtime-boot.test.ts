@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { ConfigError } from '../../src/server/errors'
 import { bootRuntime } from '../../src/server/runtime'
-import type { MockStore } from '../../src/server/store/types'
+import type { Stores } from '../../src/server/store'
 
 const env = {
   WIREMOCK_URL: 'http://wm',
@@ -14,15 +14,19 @@ const env = {
   SYNC_INTERVAL_SECONDS: '3600',
 }
 
-const fakeStore = (pings: boolean[] = []): MockStore =>
+const fakeStore = (pings: boolean[] = []): Stores =>
   ({
     ping: async () => pings.shift() ?? true,
     close: async () => {},
-    listAll: async () => [],
-    get: async () => null,
-    acquireLock: async () => 'tok',
-    releaseLock: async () => {},
-  }) as unknown as MockStore
+    mocks: {
+      listAll: async () => [],
+      get: async () => null,
+      acquireLock: async () => 'tok',
+      releaseLock: async () => {},
+    },
+    users: { countUsers: async () => 1 },
+    audit: { record: async () => {} },
+  }) as unknown as Stores
 
 // Behaves like a locked-down WireMock 3.x once "up"; refuses connections for the first `failures` calls.
 const wiremockFetch = (failures: number) => {
@@ -44,7 +48,7 @@ test('boot retries until WireMock and the store become reachable', async () => {
   const pings = [false, true]
   const rt = await bootRuntime(env, {
     fetch: wm.fn,
-    createStore: () => fakeStore(pings),
+    createStores: () => fakeStore(pings),
     sleep: async (ms) => {
       sleeps.push(ms)
     },
@@ -57,7 +61,7 @@ test('a ConfigError fails immediately without retrying', async () => {
   const open = (async () => new Response(JSON.stringify({ mappings: [] }), { status: 200 })) as typeof fetch
   let slept = 0
   await expect(
-    bootRuntime(env, { fetch: open, createStore: () => fakeStore(), sleep: async () => void slept++ }),
+    bootRuntime(env, { fetch: open, createStores: () => fakeStore(), sleep: async () => void slept++ }),
   ).rejects.toBeInstanceOf(ConfigError)
   expect(slept).toBe(0)
 })
@@ -65,8 +69,21 @@ test('a ConfigError fails immediately without retrying', async () => {
 test('gives up with the last reachability error after BOOT_TIMEOUT_SECONDS', async () => {
   const wm = wiremockFetch(Infinity)
   const t0 = Date.now()
-  await expect(bootRuntime({ ...env, BOOT_TIMEOUT_SECONDS: '1' }, { fetch: wm.fn, createStore: () => fakeStore() })).rejects.toThrow(
+  await expect(bootRuntime({ ...env, BOOT_TIMEOUT_SECONDS: '1' }, { fetch: wm.fn, createStores: () => fakeStore() })).rejects.toThrow(
     /WireMock unreachable/,
   )
   expect(Date.now() - t0).toBeLessThan(5000)
 })
+
+test('boot retries a hung store ping until reachable', async () => {
+  const wm = wiremockFetch(0)
+  let attempts = 0
+  const hung = (): Stores => {
+    const s = fakeStore()
+    if (attempts++ === 0) (s as unknown as { ping: () => Promise<boolean> }).ping = () => new Promise(() => {})
+    return s
+  }
+  const rt = await bootRuntime(env, { fetch: wm.fn, createStores: hung, sleep: async () => {} })
+  rt.reconciler.stop()
+  expect(attempts).toBe(2)
+}, 10_000)

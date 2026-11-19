@@ -1,0 +1,17 @@
+{
+  "integrations": [{ "key": "seedpay", "name": "Seed payments", "prefix": "/seedpay" }],
+  "catalog": [
+    {
+      "integration": "seedpay",
+      "key": "get-charge",
+      "name": "Get charge",
+      "method": "GET",
+      "path": "/seedpay/charges/{id}",
+      "pathType": "template",
+      "contentType": "json",
+      "exampleResponses": { "200": "{\"ok\":true}" },
+      "allowedStatuses": [200]
+    }
+  ],
+  "oidcIdentities": [{ "subject": "someone" }]
+}

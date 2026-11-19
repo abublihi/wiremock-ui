@@ -1,3 +1,4 @@
+import { safeRecord, type AuditLog } from '../audit/log'
 import { logger } from '../logger'
 import type { MockStore } from '../store/types'
 import type { WireMockClient } from '../wiremock/client'
@@ -13,9 +14,22 @@ type Deps = {
   intervalMs: number
   safetyNetMs?: number
   batchSize?: number
+  audit?: AuditLog
 }
 
 const versionOf = (s: StubMapping) => s.metadata?.wiremockUi?.version
+const isBaseline = (s: StubMapping) => (s.metadata?.wiremockUi?.owner ?? 'baseline') === 'baseline'
+
+/**
+ * WireMock 3.13.1 breaks ties between equal-priority matching stubs by insertion: the stub added last
+ * wins, an OVERWRITE import keeps a stub's old position, and within one import call the earlier entry
+ * wins (tests/server/wiremock/precedence.test.ts). This is the order stubs must be *added* in so that
+ * person-owned mocks beat baseline mocks and the most recently updated person mock wins.
+ */
+export function precedenceOrder(stubs: StubMapping[]): StubMapping[] {
+  const key = (s: StubMapping) => `${isBaseline(s) ? 0 : 1}|${s.metadata?.wiremockUi?.updatedAt ?? ''}|${s.id}`
+  return [...stubs].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))
+}
 
 export class Reconciler {
   private _lastSyncAt: Date | null = null
@@ -26,6 +40,7 @@ export class Reconciler {
   private readonly intervalMs: number
   private readonly safetyNetMs: number
   private readonly batchSize: number
+  private readonly audit?: AuditLog
   private timers: NodeJS.Timeout[] = []
   private busy = false
 
@@ -35,6 +50,7 @@ export class Reconciler {
     this.intervalMs = deps.intervalMs
     this.safetyNetMs = deps.safetyNetMs ?? 600_000
     this.batchSize = deps.batchSize ?? 500
+    this.audit = deps.audit
   }
 
   get lastSyncAt(): Date | null {
@@ -48,15 +64,22 @@ export class Reconciler {
   async check(): Promise<'ok' | 'synced' | 'skipped'> {
     if ((await this.wiremock.getStub(MARKER_ID)) !== null) return 'ok'
     logger.warn('wiremock marker missing, running full sync')
-    return this.fullSync()
+    return this.fullSync({ audit: true })
   }
 
-  async fullSync(): Promise<'synced' | 'skipped'> {
+  /** `audit` records a `sync` entry on success; only startup and marker-triggered syncs ask for it. */
+  async fullSync(opts: { audit?: boolean } = {}): Promise<'synced' | 'skipped'> {
     const token = await this.store.acquireLock(LOCK, LOCK_TTL_MS)
     if (token === null) return 'skipped'
     try {
-      const snapshot = await this.store.listAll()
+      const snapshot = precedenceOrder(await this.store.listAll())
+      const present = new Set(await this.wiremock.listStubIds())
       await this.importAll(snapshot)
+      // A baseline stub WireMock did not have was just added on top of the person-owned stubs it already had
+      // (e.g. ones saved after a WireMock reset); re-add those so they win again.
+      if (snapshot.some((s) => isBaseline(s) && !present.has(s.id))) {
+        await this.readd(snapshot.filter((s) => !isBaseline(s) && present.has(s.id)))
+      }
 
       const known = new Set(snapshot.map((s) => s.id))
       for (const id of await this.wiremock.listStubIds()) {
@@ -70,7 +93,7 @@ export class Reconciler {
       const before = new Map(snapshot.map((s) => [s.id, versionOf(s)]))
       const current = await this.store.listAll()
       const currentIds = new Set(current.map((s) => s.id))
-      const changed = current.filter((s) => !before.has(s.id) || before.get(s.id) !== versionOf(s))
+      const changed = precedenceOrder(current.filter((s) => !before.has(s.id) || before.get(s.id) !== versionOf(s)))
       await this.importAll(changed)
       // Mocks deleted during the sync were just re-imported from the snapshot: remove them again.
       for (const id of before.keys()) {
@@ -89,6 +112,9 @@ export class Reconciler {
       this._lastSyncAt = new Date()
       this._lastError = null
       logger.info({ stubs: snapshot.length }, 'full sync done')
+      if (opts.audit) {
+        await safeRecord(this.audit, { actor: 'system', action: 'sync', details: { stubs: snapshot.length } })
+      }
       return 'synced'
     } catch (err) {
       this._lastError = (err as Error).message
@@ -99,10 +125,29 @@ export class Reconciler {
     }
   }
 
+  /** Adds `stubs` so that later entries take precedence (each batch is sent reversed: within one call the earlier entry wins). */
   private async importAll(stubs: StubMapping[]): Promise<void> {
     for (let i = 0; i < stubs.length; i += this.batchSize) {
-      await this.wiremock.importStubs(stubs.slice(i, i + this.batchSize), { deleteAllNotInImport: false })
+      await this.wiremock.importStubs(stubs.slice(i, i + this.batchSize).reverse(), { deleteAllNotInImport: false })
     }
+  }
+
+  /** Delete + add (OVERWRITE alone keeps the old position), oldest first, using the latest stored copy. */
+  private async readd(stubs: StubMapping[]): Promise<void> {
+    for (const stub of stubs) {
+      const latest = await this.store.get(stub.id)
+      if (!latest) continue
+      await this.wiremock.deleteStub(stub.id)
+      await this.wiremock.importStubs([latest], { deleteAllNotInImport: false })
+    }
+  }
+
+  /**
+   * Re-adds every person-owned mock so it sits above baseline mocks added after it (import, seed).
+   * Each mock is briefly absent from WireMock while it is moved.
+   */
+  async repositionPersonMocks(): Promise<void> {
+    await this.readd(precedenceOrder((await this.store.listAll()).filter((s) => !isBaseline(s))))
   }
 
   async start(): Promise<void> {
@@ -122,7 +167,7 @@ export class Reconciler {
       setInterval(guarded(() => this.fullSync()), this.safetyNetMs).unref(),
     )
     // A failed first sync is logged and recorded in lastError; the timers keep retrying.
-    await guarded(() => this.fullSync())()
+    await guarded(() => this.fullSync({ audit: true }))()
   }
 
   stop(): void {
