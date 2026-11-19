@@ -12,7 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HealthzRouteImport } from './routes/healthz'
 import { Route as ApiMocksRouteImport } from './routes/api/mocks'
+import { Route as ApiSessionRouteImport } from './routes/api/session'
+import { Route as ApiUsersRouteImport } from './routes/api/users'
 import { Route as ApiMocksIdRouteImport } from './routes/api/mocks.$id'
+import { Route as ApiSessionPasswordRouteImport } from './routes/api/session.password'
+import { Route as ApiUsersIdRouteImport } from './routes/api/users.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -29,43 +33,102 @@ const ApiMocksRoute = ApiMocksRouteImport.update({
   path: '/api/mocks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSessionRoute = ApiSessionRouteImport.update({
+  id: '/api/session',
+  path: '/api/session',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiUsersRoute = ApiUsersRouteImport.update({
+  id: '/api/users',
+  path: '/api/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMocksIdRoute = ApiMocksIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => ApiMocksRoute,
+} as any)
+const ApiSessionPasswordRoute = ApiSessionPasswordRouteImport.update({
+  id: '/password',
+  path: '/password',
+  getParentRoute: () => ApiSessionRoute,
+} as any)
+const ApiUsersIdRoute = ApiUsersIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiUsersRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/healthz': typeof HealthzRoute
   '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/session': typeof ApiSessionRouteWithChildren
+  '/api/users': typeof ApiUsersRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRoute
+  '/api/session/password': typeof ApiSessionPasswordRoute
+  '/api/users/$id': typeof ApiUsersIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/healthz': typeof HealthzRoute
   '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/session': typeof ApiSessionRouteWithChildren
+  '/api/users': typeof ApiUsersRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRoute
+  '/api/session/password': typeof ApiSessionPasswordRoute
+  '/api/users/$id': typeof ApiUsersIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/healthz': typeof HealthzRoute
   '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/session': typeof ApiSessionRouteWithChildren
+  '/api/users': typeof ApiUsersRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRoute
+  '/api/session/password': typeof ApiSessionPasswordRoute
+  '/api/users/$id': typeof ApiUsersIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/healthz' | '/api/mocks' | '/api/mocks/$id'
+  fullPaths:
+    | '/'
+    | '/healthz'
+    | '/api/mocks'
+    | '/api/session'
+    | '/api/users'
+    | '/api/mocks/$id'
+    | '/api/session/password'
+    | '/api/users/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/healthz' | '/api/mocks' | '/api/mocks/$id'
-  id: '__root__' | '/' | '/healthz' | '/api/mocks' | '/api/mocks/$id'
+  to:
+    | '/'
+    | '/healthz'
+    | '/api/mocks'
+    | '/api/session'
+    | '/api/users'
+    | '/api/mocks/$id'
+    | '/api/session/password'
+    | '/api/users/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/healthz'
+    | '/api/mocks'
+    | '/api/session'
+    | '/api/users'
+    | '/api/mocks/$id'
+    | '/api/session/password'
+    | '/api/users/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HealthzRoute: typeof HealthzRoute
   ApiMocksRoute: typeof ApiMocksRouteWithChildren
+  ApiSessionRoute: typeof ApiSessionRouteWithChildren
+  ApiUsersRoute: typeof ApiUsersRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -91,12 +154,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMocksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/session': {
+      id: '/api/session'
+      path: '/api/session'
+      fullPath: '/api/session'
+      preLoaderRoute: typeof ApiSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/users': {
+      id: '/api/users'
+      path: '/api/users'
+      fullPath: '/api/users'
+      preLoaderRoute: typeof ApiUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/mocks/$id': {
       id: '/api/mocks/$id'
       path: '/$id'
       fullPath: '/api/mocks/$id'
       preLoaderRoute: typeof ApiMocksIdRouteImport
       parentRoute: typeof ApiMocksRoute
+    }
+    '/api/session/password': {
+      id: '/api/session/password'
+      path: '/password'
+      fullPath: '/api/session/password'
+      preLoaderRoute: typeof ApiSessionPasswordRouteImport
+      parentRoute: typeof ApiSessionRoute
+    }
+    '/api/users/$id': {
+      id: '/api/users/$id'
+      path: '/$id'
+      fullPath: '/api/users/$id'
+      preLoaderRoute: typeof ApiUsersIdRouteImport
+      parentRoute: typeof ApiUsersRoute
     }
   }
 }
@@ -113,10 +204,36 @@ const ApiMocksRouteWithChildren = ApiMocksRoute._addFileChildren(
   ApiMocksRouteChildren,
 )
 
+interface ApiSessionRouteChildren {
+  ApiSessionPasswordRoute: typeof ApiSessionPasswordRoute
+}
+
+const ApiSessionRouteChildren: ApiSessionRouteChildren = {
+  ApiSessionPasswordRoute: ApiSessionPasswordRoute,
+}
+
+const ApiSessionRouteWithChildren = ApiSessionRoute._addFileChildren(
+  ApiSessionRouteChildren,
+)
+
+interface ApiUsersRouteChildren {
+  ApiUsersIdRoute: typeof ApiUsersIdRoute
+}
+
+const ApiUsersRouteChildren: ApiUsersRouteChildren = {
+  ApiUsersIdRoute: ApiUsersIdRoute,
+}
+
+const ApiUsersRouteWithChildren = ApiUsersRoute._addFileChildren(
+  ApiUsersRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HealthzRoute: HealthzRoute,
   ApiMocksRoute: ApiMocksRouteWithChildren,
+  ApiSessionRoute: ApiSessionRouteWithChildren,
+  ApiUsersRoute: ApiUsersRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

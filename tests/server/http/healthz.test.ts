@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { healthz } from '../../../src/server/http/handlers'
+import { healthz } from '../../../src/server/http/handlers/health'
 import type { Runtime } from '../../../src/server/runtime'
 
 const fake = (opts: { ping: () => Promise<boolean>; lastError: string | null }) =>

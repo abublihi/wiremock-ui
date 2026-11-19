@@ -1,22 +1,16 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import { createMock, deleteMock, getMock, healthz, listMocks, updateMock } from '../../../src/server/http/handlers'
-import { bootRuntime, type Runtime } from '../../../src/server/runtime'
-import { startRedis, startWireMock } from '../../helpers/containers'
+import { healthz } from '../../../src/server/http/handlers/health'
+import { createMock, deleteMock, getMock, listMocks, updateMock } from '../../../src/server/http/handlers/mocks'
+import type { Runtime } from '../../../src/server/runtime'
+import { URL_, basic, login, req as baseReq, startTestRuntime } from '../../helpers/http'
 
-let wm: Awaited<ReturnType<typeof startWireMock>>
-let redis: Awaited<ReturnType<typeof startRedis>>
+let env: Awaited<ReturnType<typeof startTestRuntime>>
 let rt: Runtime
+const wm = () => env.wm
 
-const basic = (user: string, pw: string) => `Basic ${Buffer.from(`${user}:${pw}`).toString('base64')}`
-const auth = { Authorization: basic('ui-admin', 'ui-pass') }
-const URL_ = 'http://ui.test'
-
+const auth = { Authorization: basic('ui-admin', 'ui-admin-pass') }
 const req = (path: string, method = 'GET', body?: unknown, headers: Record<string, string> = auth) =>
-  new Request(`${URL_}${path}`, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
-  })
+  baseReq(path, method, body, headers)
 
 const input = (path: string, extra: Record<string, unknown> = {}) => ({
   request: { method: 'GET', urlPath: path },
@@ -25,33 +19,21 @@ const input = (path: string, extra: Record<string, unknown> = {}) => ({
 })
 
 beforeAll(async () => {
-  wm = await startWireMock()
-  redis = await startRedis()
-  rt = await bootRuntime({
-    WIREMOCK_URL: wm.url,
-    WIREMOCK_ADMIN_USER: wm.user,
-    WIREMOCK_ADMIN_PASSWORD: wm.password,
-    REDIS_URL: redis.url,
-    ADMIN_USER: 'ui-admin',
-    ADMIN_PASSWORD: 'ui-pass',
-    SESSION_SECRET: 'x',
-  })
+  env = await startTestRuntime()
+  rt = env.rt
 }, 120_000)
 
 afterAll(async () => {
-  rt?.reconciler.stop()
-  await rt?.store.close()
-  await redis?.stop()
-  await wm?.stop().catch(() => {})
+  await env?.stop()
 })
 
 test('401 without credentials, 401 with wrong password', async () => {
   const none = await listMocks(rt, req('/api/mocks', 'GET', undefined, {}))
   expect(none.status).toBe(401)
-  expect(none.headers.get('www-authenticate')).toBe('Basic realm="wiremock-ui"')
+  expect(none.headers.get('www-authenticate')).toBeNull()
   const wrong = await listMocks(rt, req('/api/mocks', 'GET', undefined, { Authorization: basic('ui-admin', 'nope') }))
   expect(wrong.status).toBe(401)
-  const wrongUser = await listMocks(rt, req('/api/mocks', 'GET', undefined, { Authorization: basic('other', 'ui-pass') }))
+  const wrongUser = await listMocks(rt, req('/api/mocks', 'GET', undefined, { Authorization: basic('other', 'ui-admin-pass') }))
   expect(wrongUser.status).toBe(401)
   const bearer = await listMocks(rt, req('/api/mocks', 'GET', undefined, { Authorization: 'Bearer abc' }))
   expect(bearer.status).toBe(401)
@@ -156,6 +138,93 @@ test('WireMock rejects stub → 400 carrying WireMock reason', async () => {
   expect(await file.json()).toEqual({ error: 'bodyFileName is not supported; put the body inline' })
 })
 
+
+const mockBody = (path: string) => input(path)
+
+async function userSession(username: string, role: string) {
+  await rt.users.create({ username, role: role as never, password: 'password-1' }, 'ui-admin')
+  return login(rt, username, 'password-1')
+}
+
+const asSession = (s: { cookie: string; csrf: string }, withCsrf = true) => ({
+  Cookie: s.cookie,
+  ...(withCsrf ? { 'X-CSRF-Token': s.csrf } : {}),
+})
+
+async function seedBaseline(path: string) {
+  const stub = {
+    id: crypto.randomUUID(),
+    persistent: false,
+    ...input(path),
+    metadata: { wiremockUi: { owner: 'baseline', version: 1, updatedAt: new Date().toISOString(), updatedBy: 'baseline', source: 'seed' } },
+  }
+  await rt.wiremock.importStubs([stub as never], { deleteAllNotInImport: false })
+  await rt.store.save(stub as never, 0)
+  return stub.id
+}
+
+const served = async (path: string) => (await fetch(`${wm().url}${path}`)).status
+
+test('cookie POST /api/mocks without X-CSRF-Token is 403, with the token 201', async () => {
+  const s = await userSession('csrf-tester', 'tester')
+  const denied = await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/csrf1'), asSession(s, false)))
+  expect(denied.status).toBe(403)
+  const ok = await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/csrf1'), asSession(s)))
+  expect(ok.status).toBe(201)
+})
+
+test('viewer: GET mocks 200, POST mocks 403', async () => {
+  const s = await userSession('viewer-1', 'viewer')
+  expect((await listMocks(rt, req('/api/mocks', 'GET', undefined, asSession(s)))).status).toBe(200)
+  const res = await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/viewer'), asSession(s)))
+  expect(res.status).toBe(403)
+  expect(await res.json()).toEqual({ error: 'Forbidden' })
+})
+
+test("tester cannot touch others' or baseline mocks (403, WireMock unchanged)", async () => {
+  const owner = await userSession('tester-a', 'tester')
+  const other = await userSession('tester-b', 'tester')
+  const mine = await (await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/own'), asSession(owner)))).json()
+  const baseId = await seedBaseline('/h/base1')
+
+  const put = await updateMock(rt, req(`/api/mocks/${mine.id}`, 'PUT', { stub: input('/h/own', { response: { status: 418 } }), version: 1 }, asSession(other)), { id: mine.id })
+  expect(put.status).toBe(403)
+  const del = await deleteMock(rt, req(`/api/mocks/${mine.id}`, 'DELETE', undefined, asSession(other)), { id: mine.id })
+  expect(del.status).toBe(403)
+  expect(await served('/h/own')).toBe(200)
+
+  const basePut = await updateMock(rt, req(`/api/mocks/${baseId}`, 'PUT', { stub: input('/h/base1', { response: { status: 418 } }), version: 1 }, asSession(owner)), { id: baseId })
+  expect(basePut.status).toBe(403)
+  const baseDel = await deleteMock(rt, req(`/api/mocks/${baseId}`, 'DELETE', undefined, asSession(owner)), { id: baseId })
+  expect(baseDel.status).toBe(403)
+  expect(await served('/h/base1')).toBe(200)
+
+  const ownPut = await updateMock(rt, req(`/api/mocks/${mine.id}`, 'PUT', { stub: input('/h/own'), version: 1 }, asSession(owner)), { id: mine.id })
+  expect(ownPut.status).toBe(200)
+})
+
+test('developer can edit another tester\'s mock but not a baseline mock', async () => {
+  const tester = await userSession('tester-c', 'tester')
+  const dev = await userSession('dev-1', 'developer')
+  const mine = await (await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/dev-edit'), asSession(tester)))).json()
+  const ok = await updateMock(rt, req(`/api/mocks/${mine.id}`, 'PUT', { stub: input('/h/dev-edit'), version: 1 }, asSession(dev)), { id: mine.id })
+  expect(ok.status).toBe(200)
+  const baseId = await seedBaseline('/h/base2')
+  const denied = await deleteMock(rt, req(`/api/mocks/${baseId}`, 'DELETE', undefined, asSession(dev)), { id: baseId })
+  expect(denied.status).toBe(403)
+  expect(await served('/h/base2')).toBe(200)
+})
+
+test('mock create/update/delete write audit entries with actor and target', async () => {
+  const s = await userSession('audited', 'tester')
+  const m = await (await createMock(rt, req('/api/mocks', 'POST', mockBody('/h/audit'), asSession(s)))).json()
+  await updateMock(rt, req(`/api/mocks/${m.id}`, 'PUT', { stub: input('/h/audit'), version: 1 }, asSession(s)), { id: m.id })
+  await deleteMock(rt, req(`/api/mocks/${m.id}`, 'DELETE', undefined, asSession(s)), { id: m.id })
+  const entries = (await rt.audit.list({ limit: 500 })).filter((e) => e.target === m.id)
+  expect(entries.map((e) => e.action).sort()).toEqual(['mock.create', 'mock.delete', 'mock.update'])
+  expect(entries.every((e) => e.actor === 'audited')).toBe(true)
+})
+
 // Last: stops WireMock.
 test('healthz 200 with lastSyncAt set; 503 with wiremock:"error" after WireMock stops', async () => {
   const ok = await healthz(rt, new Request(`${URL_}/healthz`))
@@ -165,7 +234,7 @@ test('healthz 200 with lastSyncAt set; 503 with wiremock:"error" after WireMock 
   expect(body.lastSyncError).toBeNull()
   expect(typeof body.lastSyncAt).toBe('string')
 
-  await wm.stop()
+  await wm().stop()
   const down = await healthz(rt, new Request(`${URL_}/healthz`))
   expect(down.status).toBe(503)
   expect(await down.json()).toMatchObject({ store: 'ok', wiremock: 'error' })

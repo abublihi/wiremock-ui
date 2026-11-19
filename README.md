@@ -15,7 +15,15 @@ docker compose up -d --build
 
 The UI listens on http://localhost:3000 and WireMock on http://localhost:8080. Compose sets `WIREMOCK_URL` and `REDIS_URL` for the UI itself; everything else comes from `.env`.
 
-Use the `ADMIN_USER` / `ADMIN_PASSWORD` from `.env` as basic auth:
+## Authentication
+
+Accounts live in Redis. On first start the UI creates one admin from `ADMIN_USER` / `ADMIN_PASSWORD` (only when there are no users yet; changing those variables later does not touch existing accounts). Roles: `viewer` (read), `tester` (create and edit own mocks), `developer` (edit anyone's mocks), `admin` (also baseline mocks and user management).
+
+- **Browser:** `POST /api/session` with `{ "username", "password" }` sets an HttpOnly `wmui_session` cookie and returns `{ user, csrfToken }`. Send the token as `X-CSRF-Token` on every `POST`, `PUT`, `PATCH` and `DELETE`. `DELETE /api/session` signs out.
+- **Scripts:** HTTP Basic with a user account (no CSRF token needed). Failed attempts are rate-limited per IP.
+- Admins manage accounts through `/api/users`; anyone can change their own password with `POST /api/session/password` (`{ current, next }`).
+
+Examples below use the bootstrap admin with basic auth:
 
 ```sh
 # create

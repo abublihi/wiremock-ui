@@ -2,7 +2,9 @@ import { loadConfig, type Config } from './config'
 import { UpstreamError } from './errors'
 import { logger } from './logger'
 import { MockService } from './mocks/service'
-import { createStore, type MockStore } from './store'
+import type { AuditLog } from './audit/log'
+import { createStores, type MockStore, type Stores } from './store'
+import { UserService } from './users/service'
 import { Reconciler } from './sync/reconciler'
 import { WireMockClient } from './wiremock/client'
 import { assertWireMockReady } from './wiremock/startup'
@@ -11,13 +13,16 @@ export type Runtime = {
   config: Config
   wiremock: WireMockClient
   store: MockStore
+  stores: Stores
+  users: UserService
+  audit: AuditLog
   mocks: MockService
   reconciler: Reconciler
 }
 
 export type BootDeps = {
   fetch?: typeof fetch
-  createStore?: (config: Config) => MockStore
+  createStores?: (config: Config) => Stores
   sleep?: (ms: number) => Promise<void>
 }
 
@@ -48,7 +53,7 @@ export async function bootRuntime(
   env: Record<string, string | undefined>,
   deps: BootDeps = {},
 ): Promise<Runtime> {
-  let store: MockStore | undefined
+  let stores: Stores | undefined
   try {
     const config = loadConfig(env)
     const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
@@ -62,8 +67,8 @@ export async function bootRuntime(
     await untilReachable('WireMock', deadline, sleep, () =>
       assertWireMockReady(wiremock, config.wiremockUrl, deps.fetch),
     )
-    const open = deps.createStore ?? createStore
-    store = await untilReachable('Store', deadline, sleep, async () => {
+    const open = deps.createStores ?? createStores
+    stores = await untilReachable('Store', deadline, sleep, async () => {
       const candidate = open(config)
       try {
         if (!(await candidate.ping())) throw new UpstreamError('Store unreachable')
@@ -73,12 +78,16 @@ export async function bootRuntime(
       }
       return candidate
     })
-    const mocks = new MockService({ wiremock, store })
+    const store = stores.mocks
+    const audit = stores.audit
+    const users = new UserService({ users: stores.users, audit })
+    await users.ensureFirstAdmin(config.adminUser, config.adminPassword)
+    const mocks = new MockService({ wiremock, store, audit })
     const reconciler = new Reconciler({ wiremock, store, intervalMs: config.syncIntervalSeconds * 1000 })
     await reconciler.start()
-    return { config, wiremock, store, mocks, reconciler }
+    return { config, wiremock, store, stores, users, audit, mocks, reconciler }
   } catch (err) {
-    await store?.close().catch(() => {})
+    await stores?.close().catch(() => {})
     logger.error({ err }, 'runtime boot failed')
     throw err
   }
