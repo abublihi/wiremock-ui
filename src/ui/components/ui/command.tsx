@@ -32,15 +32,16 @@ function Command({
 }
 
 function CommandDialog({
-  title = "Command Palette",
-  description = "Search for a command to run...",
+  title,
+  description,
   children,
   className,
   showCloseButton = false,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
-  title?: string
-  description?: string
+  /** Required: pass translated text (screen-reader title of the palette). */
+  title: string
+  description: string
   className?: string
   showCloseButton?: boolean
 }) {

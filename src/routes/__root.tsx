@@ -1,21 +1,12 @@
 /// <reference types="vite/client" />
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, type ReactNode } from 'react'
 import { HeadContent, Outlet, Scripts, createRootRoute, useRouter } from '@tanstack/react-router'
 import { createIsomorphicFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { Toaster } from '@/ui/components/ui/sonner'
 import { TooltipProvider } from '@/ui/components/ui/tooltip'
-import {
-  LOCALE_COOKIE,
-  PrefsProvider,
-  dirOf,
-  getLocaleFromRequest,
-  localeFromCookies,
-  writePrefCookie,
-  type Locale,
-  type Prefs,
-} from '@/ui/i18n'
-import { getThemeFromRequest, persistTheme, themeFromCookies, type Theme } from '@/ui/theme'
+import { PrefsProvider, dirOf, getLocaleFromRequest, localeFromCookies, usePrefsState, type Prefs } from '@/ui/i18n'
+import { getThemeFromRequest, themeFromCookies } from '@/ui/theme'
 import appCss from '@/ui/styles.css?url'
 
 export function prefsFromRequest(request: Request): Prefs {
@@ -53,24 +44,12 @@ export function RootDocument({ prefs, head, children }: { prefs: Prefs; head?: R
 
 function RootComponent() {
   const router = useRouter()
-  const [prefs, setPrefs] = useState<Prefs>(Route.useRouteContext().prefs)
-
-  const onLocaleChange = useCallback(
-    (locale: Locale) => {
-      writePrefCookie(LOCALE_COOKIE, locale)
-      setPrefs((p) => ({ ...p, locale }))
-      void router.invalidate()
-    },
-    [router],
-  )
-  const onThemeChange = useCallback((theme: Theme) => {
-    persistTheme(theme)
-    setPrefs((p) => ({ ...p, theme }))
-  }, [])
+  const reload = useCallback(() => void router.invalidate(), [router])
+  const { prefs, setLocale, setTheme } = usePrefsState(Route.useRouteContext().prefs, reload)
 
   return (
     <RootDocument prefs={prefs} head={<HeadContent />}>
-      <PrefsProvider prefs={prefs} onLocaleChange={onLocaleChange} onThemeChange={onThemeChange}>
+      <PrefsProvider prefs={prefs} onLocaleChange={setLocale} onThemeChange={setTheme}>
         <TooltipProvider>
           <Outlet />
           <Toaster />

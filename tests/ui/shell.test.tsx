@@ -1,11 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { renderToString } from 'react-dom/server'
 import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } from '@tanstack/react-router'
 import type { PublicUser, Role } from '@/server/users/types'
 import { AppShell, APP_NAV } from '@/ui/components/shell/AppShell'
 import { HazardStrip } from '@/ui/components/shell/HazardStrip'
-import { PrefsProvider, type Prefs } from '@/ui/i18n'
+import { PrefsProvider, dirOf, usePrefsState, type Prefs } from '@/ui/i18n'
 import { RootDocument, prefsFromRequest } from '@/routes/__root'
 
 const user = (role: Role): PublicUser => ({
@@ -30,10 +31,11 @@ async function renderShell(u: PublicUser | null, prefs: Prefs = enPrefs) {
   await screen.findByText('page content')
 }
 
-function navLabels() {
-  const nav = screen.getByRole('navigation', { name: 'Main navigation' })
+function labelsOf(name: string) {
+  const nav = screen.getByRole('navigation', { name })
   return within(nav).getAllByRole('link').map((a) => a.textContent?.trim())
 }
+const navLabels = Object.assign(() => labelsOf('Main navigation'), { ar: () => labelsOf('التنقل الرئيسي') })
 
 describe('HazardStrip', () => {
   it('renders role=note with the test-environment text', () => {
@@ -96,5 +98,66 @@ describe('root document', () => {
     expect(html).toMatch(/<html[^>]*lang="en"/)
     expect(html).toMatch(/<html[^>]*dir="ltr"/)
     expect(html).toMatch(/<html[^>]*class="dark"/)
+  })
+})
+
+describe('preference toggles and the mobile nav', () => {
+  afterEach(() => {
+    document.cookie = 'wmui_lang=; Max-Age=0; Path=/'
+    document.cookie = 'wmui_theme=; Max-Age=0; Path=/'
+  })
+
+  // The same wiring as the root route: live prefs state whose values RootDocument puts on <html>.
+  async function renderLiveShell() {
+    function Harness() {
+      const { prefs, setLocale, setTheme } = usePrefsState({ locale: 'en', theme: 'light' })
+      return (
+        <div data-testid="document" lang={prefs.locale} dir={dirOf(prefs.locale)} className={prefs.theme}>
+          <PrefsProvider prefs={prefs} onLocaleChange={setLocale} onThemeChange={setTheme}>
+            <AppShell nav={APP_NAV} user={user('tester')}>
+              <p>page content</p>
+            </AppShell>
+          </PrefsProvider>
+        </div>
+      )
+    }
+    const rootRoute = createRootRoute({ component: Harness })
+    const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/'] }) })
+    render(<RouterProvider router={router} />)
+    await screen.findByText('page content')
+  }
+
+  it('choosing العربية writes wmui_lang=ar and re-renders in Arabic, right-to-left', async () => {
+    const ue = userEvent.setup()
+    await renderLiveShell()
+    await ue.click(screen.getByRole('button', { name: 'Change language' }))
+    await ue.click(await screen.findByRole('menuitemradio', { name: 'العربية' }))
+
+    expect(document.cookie).toContain('wmui_lang=ar')
+    const doc = screen.getByTestId('document')
+    expect(doc.getAttribute('lang')).toBe('ar')
+    expect(doc.getAttribute('dir')).toBe('rtl')
+    expect(navLabels.ar()).toEqual(['الاستجابات الوهمية', 'سجل الطلبات', 'الفهرس'])
+  })
+
+  it('choosing Dark writes wmui_theme=dark and applies the class', async () => {
+    const ue = userEvent.setup()
+    await renderLiveShell()
+    await ue.click(screen.getByRole('button', { name: 'Theme' }))
+    await ue.click(await screen.findByRole('menuitemradio', { name: 'Dark' }))
+
+    expect(document.cookie).toContain('wmui_theme=dark')
+    expect(screen.getByTestId('document').className).toBe('dark')
+  })
+
+  it('the mobile nav sheet opens from the menu button and closes after choosing an item', async () => {
+    const ue = userEvent.setup()
+    await renderLiveShell()
+    await ue.click(screen.getByRole('button', { name: 'Open navigation' }))
+    const sheet = await screen.findByRole('dialog')
+    expect(within(sheet).getByRole('button', { name: 'Close' })).toBeTruthy()
+
+    await ue.click(within(sheet).getByRole('link', { name: 'Request log' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 })

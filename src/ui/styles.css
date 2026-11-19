@@ -35,6 +35,8 @@
   --muted-ink: #5b6676;
   --signal: #0b7a75;
   --hazard: #f0a202;
+  /* The hatch's dark stripe: the same in both themes so the hatch always reads amber/ink. */
+  --hazard-ink: #17202e;
   --mismatch: #c8402b;
   --match: #2e8b57;
 
@@ -152,7 +154,7 @@
 /* The signature hazard hatching (45° amber/ink). Used only by the test-environment strip and the
    request log's "No match" stamp. */
 @utility hatch {
-  background-image: repeating-linear-gradient(45deg, var(--hazard) 0 10px, var(--ink) 10px 20px);
+  background-image: repeating-linear-gradient(45deg, var(--hazard) 0 10px, var(--hazard-ink) 10px 20px);
 }
 
 @layer base {
@@ -167,5 +169,17 @@
   }
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;
+  }
+  /* Reduced motion: neutralise every animation and transition (Radix overlays, sheet, toasts,
+     the request log's live-row flash). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

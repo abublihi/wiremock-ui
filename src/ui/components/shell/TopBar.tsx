@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LanguagesIcon, MenuIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { LanguagesIcon, MenuIcon, MonitorIcon, MoonIcon, SunIcon, WaypointsIcon } from 'lucide-react'
 import type { PublicUser } from '@/server/users/types'
 import { Badge } from '@/ui/components/ui/badge'
 import { Button } from '@/ui/components/ui/button'
@@ -22,7 +22,9 @@ export function Brand() {
   const t = useT()
   return (
     <span dir="ltr" className="inline-flex items-center gap-2 font-condensed text-base font-semibold text-ink">
-      <span aria-hidden className="hatch size-4 rounded-sm" />
+      <span aria-hidden className="flex size-5 items-center justify-center rounded-sm bg-signal text-primary-foreground">
+        <WaypointsIcon className="size-3.5" />
+      </span>
       {t('app.name')}
     </span>
   )
@@ -88,7 +90,7 @@ export function TopBar({ nav, user }: { nav: NavItem[]; user: PublicUser | null 
             <MenuIcon />
           </Button>
         </SheetTrigger>
-        <SheetContent side="start" closeLabel={t('common.close')} className="w-64 gap-0 p-0">
+        <SheetContent side="start" className="w-64 gap-0 p-0">
           <SheetHeader className="border-b">
             <SheetTitle>
               <Brand />

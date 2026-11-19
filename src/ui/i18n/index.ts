@@ -1,8 +1,8 @@
-import { createContext, createElement, useCallback, useContext, useMemo, type ReactNode } from 'react'
+import { createContext, createElement, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { Direction } from 'radix-ui'
 import { en } from './en'
 import { ar } from './ar'
-import type { Theme } from '../theme'
+import { THEME_COOKIE, type Theme } from '../theme'
 
 export type Locale = 'en' | 'ar'
 export type Dir = 'ltr' | 'rtl'
@@ -54,6 +54,27 @@ export function translate(locale: Locale, key: MessageKey, vars?: Record<string,
   const template = messages[locale][key] ?? en[key]
   if (!vars) return template
   return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match))
+}
+
+/**
+ * The app's live preferences: each change writes its cookie (so the next server render matches)
+ * and re-renders at once. `onLocaleChanged` lets the root reload route data for the new locale.
+ */
+export function usePrefsState(initial: Prefs, onLocaleChanged?: (locale: Locale) => void) {
+  const [prefs, setPrefs] = useState<Prefs>(initial)
+  const setLocale = useCallback(
+    (locale: Locale) => {
+      writePrefCookie(LOCALE_COOKIE, locale)
+      setPrefs((p) => ({ ...p, locale }))
+      onLocaleChanged?.(locale)
+    },
+    [onLocaleChanged],
+  )
+  const setTheme = useCallback((theme: Theme) => {
+    writePrefCookie(THEME_COOKIE, theme)
+    setPrefs((p) => ({ ...p, theme }))
+  }, [])
+  return { prefs, setLocale, setTheme }
 }
 
 type PrefsContextValue = Prefs & {

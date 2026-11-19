@@ -1,4 +1,4 @@
-import { readCookie, usePrefs, writePrefCookie } from './i18n'
+import { readCookie, usePrefs } from './i18n'
 
 export type Theme = 'light' | 'dark' | 'system'
 export const THEMES: readonly Theme[] = ['light', 'dark', 'system']
@@ -19,10 +19,6 @@ export function themeFromCookies(header: string | null | undefined): Theme {
 
 export function getThemeFromRequest(request: Request): Theme {
   return themeFromCookies(request.headers.get('cookie'))
-}
-
-export function persistTheme(theme: Theme): void {
-  writePrefCookie(THEME_COOKIE, theme)
 }
 
 export function useTheme(): { theme: Theme; setTheme: (theme: Theme) => void } {

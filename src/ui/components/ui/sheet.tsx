@@ -1,5 +1,6 @@
 import * as React from "react"
 import { cn } from "@/ui/lib/utils"
+import { useT } from "@/ui/i18n"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { Button } from "@/ui/components/ui/button"
@@ -48,14 +49,16 @@ function SheetContent({
   children,
   side = "end",
   showCloseButton = true,
-  closeLabel = "Close",
+  closeLabel,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   /** Logical sides: start/end follow the document direction. */
   side?: "top" | "end" | "bottom" | "start"
   showCloseButton?: boolean
+  /** Defaults to the translated "Close". */
   closeLabel?: string
 }) {
+  const t = useT()
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -78,7 +81,7 @@ function SheetContent({
             >
               <XIcon
               />
-              <span className="sr-only">{closeLabel}</span>
+              <span className="sr-only">{closeLabel ?? t("common.close")}</span>
             </Button>
           </SheetPrimitive.Close>
         )}
