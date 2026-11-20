@@ -167,7 +167,7 @@ test('start validates the target: http(s) only, never WireMock itself or this ap
 test('an empty stop says why: requests went through but the filters left them out, or nothing reached WireMock', async () => {
   expect((await start({ targetUrl: pair.upstreamInternalUrl, urlPathPattern: '/api/Products?limit=3' })).status).toBe(200)
   await fetch(`${W()}/shop/items/1`)
-  expect((await stop()).body).toEqual({ recording: null, empty: { reason: 'filtered', requests: 1, filters: { urlPathPattern: '^/api/Products$' } } })
+  expect((await stop()).body).toEqual({ recording: null, empty: { reason: 'filtered', requests: 1, filters: { urlPathPattern: '^/api/Products$' }, paths: ['/shop/items/1'] } })
 
   await rt.wiremock.clearRequests()
   expect((await start({ targetUrl: pair.upstreamInternalUrl })).status).toBe(200)
@@ -201,7 +201,7 @@ test('snapshot from the request log: picked ids, duplicate of an existing mock, 
 
   const picked = await snapshot({ ids: [entries[0].id] })
   expect(picked.body.recording.items).toHaveLength(1)
-  expect((await snapshot({ method: 'POST' })).body).toEqual({ recording: null, empty: { reason: 'filtered', requests: expect.any(Number), filters: { method: 'POST' } } })
+  expect((await snapshot({ method: 'POST' })).body).toEqual({ recording: null, empty: { reason: 'filtered', requests: expect.any(Number), filters: { method: 'POST' }, paths: expect.arrayContaining(['/hello', '/missing']) } })
   // Paths to record is a wildcard: /hel* takes the logged GET /hello.
   expect((await snapshot({ urlPathPattern: '/hel*' })).body.recording.items.map((i: { url: string }) => i.url)).toEqual(['/hello'])
   expect((await snapshot({ urlPathPattern: 'hello?x=1', urlPathMode: 'regex' })).body).toEqual({ error: 'urlPathPattern matches the path only, without the query string. To record /hello?x=1 use /hello.*' })

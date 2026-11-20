@@ -9,7 +9,7 @@ import { logger } from '../logger'
 import type { MockInput, MockService } from '../mocks/service'
 import type { PublicUser } from '../users/types'
 import type { WireMockClient } from '../wiremock/client'
-import type { StubMapping } from '../wiremock/types'
+import type { LoggedEvent, StubMapping } from '../wiremock/types'
 import { reviewItem } from './normalise'
 import { PATH_MODES, regexProblemMessage, resolvePathFilter } from './path-pattern'
 import { isRecordingProxy } from './proxy'
@@ -117,7 +117,8 @@ export type AcceptInput = z.infer<typeof acceptSchema>
  * request log for a snapshot) but none passed the filters. `noTraffic`: nothing reached WireMock.
  */
 export type EmptyResult =
-  | { reason: 'filtered'; requests: number; filters: RecordingFilters }
+  /** `paths`: up to 10 distinct request paths (no query) that went through, newest first, to compare with the filters. */
+  | { reason: 'filtered'; requests: number; filters: RecordingFilters; paths: string[] }
   | { reason: 'noTraffic'; wiremockUrl: string }
 
 export type RecordResult = { recording: Recording | null; empty?: EmptyResult }
@@ -266,13 +267,14 @@ export class RecordingService {
     // Matched by stub id, not by time: WireMock's clock and ours may differ. Started outside the UI: any recording proxy.
     const viaProxy = (stub: StubMapping | undefined) =>
       stub !== undefined && (active?.proxyStubId ? stub.id === active.proxyStubId : isRecordingProxy(stub))
-    const proxied = (await this.journal()).filter((e) => viaProxy(e.stubMapping)).length
+    const proxied = (await this.journal()).filter((e) => viaProxy(e.stubMapping))
     return { recording: null, empty: this.emptyResult(proxied, active?.filters ?? {}) }
   }
 
-  private emptyResult(requests: number, filters: RecordingFilters): EmptyResult {
-    return requests > 0
-      ? { reason: 'filtered', requests, filters }
+  private emptyResult(entries: LoggedEvent[], filters: RecordingFilters): EmptyResult {
+    const paths = [...new Set(entries.map((e) => String(e.request.url ?? '/').split('?')[0]))].slice(0, 10)
+    return entries.length > 0
+      ? { reason: 'filtered', requests: entries.length, filters, paths }
       : { reason: 'noTraffic', wiremockUrl: this.deps.config.wiremockPublicUrl ?? this.deps.config.wiremockUrl }
   }
 
@@ -303,7 +305,7 @@ export class RecordingService {
     // Nothing taken: was the request log empty (or the picked requests gone), or did the filters leave everything out?
     const journal = await this.journal()
     const picked = input.ids ? new Set(input.ids) : null
-    const requests = journal.filter((e) => !picked || picked.has(e.id)).length
+    const requests = journal.filter((e) => !picked || picked.has(e.id))
     return { recording: null, empty: this.emptyResult(requests, (spec.filters ?? {}) as RecordingFilters) }
   }
 
@@ -314,7 +316,16 @@ export class RecordingService {
    */
   private async keepAndRemove(kind: Recording['kind'], stubs: StubMapping[], actor: string, target?: string): Promise<Recording | null> {
     if (stubs.length === 0) return null
-    const recording = await this.keep(kind, stubs, actor, target)
+    let recording: Recording
+    try {
+      recording = await this.keep(kind, stubs, actor, target)
+    } catch (err) {
+      // The review list could not be saved: the recorded stubs still leave WireMock (they would answer requests
+      // as unlisted mocks otherwise); the recording is lost and the error says so.
+      const left = await this.removeFromWireMock(stubs.map((s) => s.id))
+      logger.error({ err, left }, 'saving a review list failed; its recorded stubs were removed from WireMock')
+      throw err
+    }
     const left = await this.removeFromWireMock(stubs.map((s) => s.id))
     if (left.length === 0) return recording
     logger.error({ ids: left, recording: recording.id }, 'recorded stubs could not be removed from WireMock; they answer requests until deleted')

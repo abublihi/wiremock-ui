@@ -190,7 +190,7 @@ test('an empty stop says how many requests went through the recording but were f
   const h = setup({ stubs: [], idle: true, journal: [logged('r1', '/api/Products?limit=3', proxyStub), logged('r2', '/other', stub(9))] })
   await h.svc.start({ targetUrl: 'https://api.testingapis.com', method: 'POST', urlPathPattern: '/api/*' }, 'ann', [])
   const result = await h.svc.stop('ann')
-  expect(result).toEqual({ recording: null, empty: { reason: 'filtered', requests: 1, filters: { method: 'POST', urlPathPattern: '^/api/.*$' } } })
+  expect(result).toEqual({ recording: null, empty: { reason: 'filtered', requests: 1, filters: { method: 'POST', urlPathPattern: '^/api/.*$' }, paths: expect.any(Array) } })
 })
 
 test('an empty stop with no traffic says to point the app at WireMock', async () => {
@@ -201,7 +201,7 @@ test('an empty stop with no traffic says to point the app at WireMock', async ()
 
 test('an empty snapshot says whether the log had requests the filters left out', async () => {
   const h = setup({ stubs: [], journal: [logged('r1', '/a', undefined), logged('r2', '/b', stub(9))] })
-  expect(await h.svc.snapshot({ method: 'DELETE' }, 'ann')).toEqual({ recording: null, empty: { reason: 'filtered', requests: 2, filters: { method: 'DELETE' } } })
+  expect(await h.svc.snapshot({ method: 'DELETE' }, 'ann')).toEqual({ recording: null, empty: { reason: 'filtered', requests: 2, filters: { method: 'DELETE' }, paths: expect.any(Array) } })
   expect((await h.svc.snapshot({ ids: ['gone'] }, 'ann')).empty).toEqual({ reason: 'noTraffic', wiremockUrl: 'http://wiremock:8080' })
 })
 
@@ -216,4 +216,14 @@ test('an empty stop counts only the requests served by this recording\'s proxy s
   await h.svc.start({ targetUrl: 'https://api.testingapis.com', urlPathPattern: '/nope/*' }, 'ann', [])
   expect(await h.store.getActive()).toMatchObject({ proxyStubId: 'p1' })
   expect((await h.svc.stop('ann')).empty).toMatchObject({ reason: 'filtered', requests: 2 })
+})
+
+test('a review list that cannot be saved still takes its recorded stubs out of WireMock', async () => {
+  const stubs = [stub(1), stub(2)]
+  const h = setup({ stubs })
+  h.store.put = async () => {
+    throw new Error('disk full')
+  }
+  await expect(h.svc.snapshot({}, 'ann')).rejects.toThrow('disk full')
+  expect(h.events.filter((e) => e.startsWith('delete')).length).toBe(2)
 })
