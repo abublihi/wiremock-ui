@@ -155,10 +155,27 @@ export async function bootRuntime(
 
 let runtime: Promise<Runtime> | undefined
 
+/**
+ * The runtime this process booted last, kept on globalThis so it outlives a module reload. The dev server
+ * re-evaluates this module when server code changes; without this, every older runtime kept its reconciler
+ * timers running old code (which, for one, deleted WireMock's recording proxy as an unknown stub).
+ */
+const holder = globalThis as { __wiremockUiRuntime?: Promise<Runtime> }
+
+/** Stops an earlier runtime's background work and closes its stores before a new one boots. */
+export async function retire(previous: Promise<Runtime> | undefined): Promise<void> {
+  if (!previous) return
+  const old = await previous.catch(() => undefined)
+  if (!old) return
+  old.reconciler?.stop()
+  await old.stores?.close().catch((err: unknown) => logger.warn({ err }, 'closing the previous runtime failed'))
+}
+
 export function getRuntime(): Promise<Runtime> {
   if (!runtime) {
-    const attempt = bootRuntime(process.env)
+    const attempt = retire(holder.__wiremockUiRuntime).then(() => bootRuntime(process.env))
     runtime = attempt
+    holder.__wiremockUiRuntime = attempt
     // A failed boot is not cached, so a later request can retry (dev server).
     attempt.catch(() => {
       if (runtime === attempt) runtime = undefined
