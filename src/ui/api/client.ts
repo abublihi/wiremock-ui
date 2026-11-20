@@ -22,6 +22,9 @@ export function registerQueryClient(client: QueryClient): void {
   queryClient = client
 }
 
+/** The sign-in page itself: never a page to come back to after signing in. */
+export const isLoginPath = (pathname: string) => /^\/login\/?$/.test(pathname)
+
 function defaultOnUnauthorized(next: string): void {
   window.location.assign(`/login?next=${encodeURIComponent(next)}`)
 }
@@ -84,7 +87,8 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
 
   if (!response.ok) {
     const message = (data as { error?: unknown } | undefined)?.error
-    if (response.status === 401 && options.redirectOnUnauthorized !== false) {
+    // Already on the sign-in page (just signed out, say): nothing to come back to, and no /login?next=/login…
+    if (response.status === 401 && options.redirectOnUnauthorized !== false && !isLoginPath(window.location.pathname)) {
       onUnauthorized(window.location.pathname + window.location.search)
     }
     throw new ApiError(response.status, typeof message === 'string' ? message : response.statusText)

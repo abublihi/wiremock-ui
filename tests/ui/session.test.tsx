@@ -36,6 +36,16 @@ describe('requireSession', () => {
     expect(queryClient.getQueryData(SESSION_KEY)).toBeUndefined()
   })
 
+  it('sends the start page and /login itself to a plain /login, never /login?next=/login…', async () => {
+    const unauthorized = async () => {
+      throw new ApiError(401, 'Authentication required')
+    }
+    for (const where of [{ pathname: '/', searchStr: '' }, { pathname: '/login', searchStr: '?next=%2Fmocks' }]) {
+      const error = await requireSession(new QueryClient(), where, unauthorized).catch((e: unknown) => e)
+      expect(error).toMatchObject({ options: { to: '/login', search: {} } })
+    }
+  })
+
   it('does not hide other failures', async () => {
     await expect(
       requireSession(new QueryClient(), location, async () => {

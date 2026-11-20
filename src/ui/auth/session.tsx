@@ -71,7 +71,9 @@ export async function requireSession(
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       queryClient.removeQueries({ queryKey: sessionQueryOptions().queryKey })
-      throw redirect({ to: '/login', search: { next: location.pathname + location.searchStr } })
+      // The start page or /login itself is not worth a ?next=: a plain /login after signing out.
+      const next = location.pathname + location.searchStr
+      throw redirect({ to: '/login', search: next === '/' || /^\/login\/?([?#]|$)/.test(next) ? {} : { next } })
     }
     throw error
   }
