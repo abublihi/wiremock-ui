@@ -179,7 +179,8 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
               <p className="text-center text-xs text-muted-foreground">{t(older.loaded ? 'requests.olderHint' : 'requests.capped', { count: rows.length })}</p>
             </div>
           )}
-          {older.loaded && !older.more && <p className="text-center text-xs text-muted-foreground">{t('requests.olderEnd')}</p>}
+          {older.loaded && !older.more && <p className="text-center text-xs text-muted-foreground">{t(older.limited ? 'requests.olderLimit' : 'requests.olderEnd')}</p>}
+          {older.limited && older.more && <p className="text-center text-xs text-muted-foreground">{t('requests.olderLimit')}</p>}
           {older.error && (
             <p role="alert" className="text-center text-xs text-mismatch">
               {t('requests.olderFailed', { message: older.error.message })}

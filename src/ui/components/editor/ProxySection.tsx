@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from '@/server/url'
 import { useId } from 'react'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import { Button } from '@/ui/components/ui/button'
@@ -14,7 +15,7 @@ export function proxyRoute(integration: Integration, endpoint: Endpoint, proxy: 
   const from = (integration.prefix === '/' ? '' : integration.prefix) + endpoint.path
   const prefix = proxy.stripPrefix.trim()
   const rest = prefix && from.startsWith(prefix) ? from.slice(prefix.length) : from
-  return { from, to: proxy.baseUrl.trim().replace(/\/+$/, '') + rest }
+  return { from, to: trimTrailingSlashes(proxy.baseUrl.trim()) + rest }
 }
 
 /** "Forward to a real service": base URL, path prefix to strip, headers to add and remove. */
@@ -58,7 +59,7 @@ export function ProxySection({
           aria-describedby={described('baseUrl', id('base-hint'))}
           onChange={(e) => onChange({ baseUrl: e.target.value })}
           // WireMock adds the request path (which starts with /): a trailing / would double it.
-          onBlur={() => /\/+$/.test(proxy.baseUrl) && onChange({ baseUrl: proxy.baseUrl.replace(/\/+$/, '') })}
+          onBlur={() => proxy.baseUrl.endsWith('/') && onChange({ baseUrl: trimTrailingSlashes(proxy.baseUrl) })}
         />
         <FieldDescription id={id('base-hint')} className="text-xs">
           {t('editor.proxy.baseUrlHint')} {t('editor.dockerHint')}

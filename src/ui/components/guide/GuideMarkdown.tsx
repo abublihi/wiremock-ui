@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from '@/server/url'
 import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import Markdown, { defaultUrlTransform, type Components } from 'react-markdown'
 import { useConfiguredPublicUrl } from '@/ui/config'
@@ -40,7 +41,8 @@ export function GuideMarkdown({
 }) {
   const t = useT()
   // The guide's examples use WireMock's default address; in the app they show this install's (WIREMOCK_PUBLIC_URL).
-  const publicUrl = useConfiguredPublicUrl()?.replace(/\/+$/, '')
+  const configured = useConfiguredPublicUrl()
+  const publicUrl = configured === undefined ? undefined : trimTrailingSlashes(configured)
   const text = publicUrl ? markdown.split('http://localhost:8080').join(publicUrl) : markdown
   // The section title is the page's h2, so the file's ## and ### sit one level below it.
   const components: Components = {

@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from '@/server/url'
 import type { Endpoint } from '@/server/catalog/types'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
 import { type Pair, type RequestDraft, draftFromStub, loggedHeaders } from './test-request'
@@ -56,7 +57,7 @@ export function encodePath(path: string): string {
 
 /** WireMock's public URL + path + the query, each name and value percent-encoded. */
 export function joinUrl(publicUrl: string, path: string, query: Pair[]): string {
-  const base = publicUrl.replace(/\/+$/, '')
+  const base = trimTrailingSlashes(publicUrl)
   const qs = query
     .filter((p) => p.name !== '')
     .map((p) => `${encodeURIComponent(p.name)}=${encodeURIComponent(p.value)}`)
@@ -86,7 +87,7 @@ export function curlFromLoggedRequest(event: Pick<LoggedEvent, 'request'>, publi
   const url = event.request.url
   return buildCurl({
     method: event.request.method || 'GET',
-    url: `${publicUrl.replace(/\/+$/, '')}${url.startsWith('/') ? '' : '/'}${url}`,
+    url: `${trimTrailingSlashes(publicUrl)}${url.startsWith('/') ? '' : '/'}${url}`,
     headers: loggedHeaders(event),
     body: event.request.body ?? '',
   })

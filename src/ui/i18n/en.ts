@@ -685,6 +685,7 @@ export const en = {
   'requests.olderHint': '// {count} shown; new requests still arrive on top',
   'requests.olderEnd': '// that is everything in WireMock’s request log',
   'requests.olderFailed': 'Could not load older requests: {message}',
+  'requests.olderLimit': '// older requests beyond the newest 10,000 aren’t searched',
 
   'request.title': 'Request details',
   'request.loadFailed': 'Could not load this request',

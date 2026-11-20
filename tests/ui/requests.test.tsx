@@ -404,3 +404,20 @@ describe('count tool', () => {
     expect(body).toEqual({ pattern: { method: 'GET', urlPath: '/pay/charge' } })
   })
 })
+
+describe('load older: scan limit', () => {
+  it('says when the server stopped searching at the newest 10,000', async () => {
+    const at = (n: number) => new Date(Date.parse('2026-11-20T10:00:00.000Z') - n * 1000).toISOString()
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/requests`, ({ request }) => {
+        const q = new URL(request.url).searchParams
+        if (!q.get('before')) return HttpResponse.json(q.get('since') ? [] : Array.from({ length: 500 }, (_, n) => row(`r${n}`, { loggedAt: at(n) })))
+        return HttpResponse.json({ requests: [], nextCursor: null, scanLimitReached: true })
+      }),
+    )
+    await renderApp(<Harness />)
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Load older' }))
+    expect(await screen.findByText('// older requests beyond the newest 10,000 aren’t searched')).toBeTruthy()
+  })
+})

@@ -383,7 +383,7 @@ export function useNearMisses(id: string | undefined, options: { enabled?: boole
 
 /** Empties WireMock's request journal (for everyone). */
 /** One older page of the request log (`GET /api/requests?before=…`): filtered server-side, newest first. */
-export type OlderRequestsPage = { requests: RequestSummary[]; nextCursor: string | null }
+export type OlderRequestsPage = { requests: RequestSummary[]; nextCursor: string | null; scanLimitReached?: boolean }
 
 /** Where "Load older" starts: just before this row (its logged time and id, so rows in the same millisecond keep their place). */
 export function requestCursor(row: Pick<RequestSummary, 'loggedAt' | 'id'>): string {
@@ -397,8 +397,8 @@ export function requestCursor(row: Pick<RequestSummary, 'loggedAt' | 'id'>): str
  */
 export function useOlderRequests(filter: RequestFilter, shown: RequestSummary[]) {
   const key = JSON.stringify(filter)
-  const [state, setState] = useState<{ key: string; rows: RequestSummary[]; cursor: string | null }>({ key, rows: [], cursor: null })
-  const current = state.key === key ? state : { key, rows: [], cursor: null }
+  const [state, setState] = useState<{ key: string; rows: RequestSummary[]; cursor: string | null; limited?: boolean }>({ key, rows: [], cursor: null })
+  const current = state.key === key ? state : { key, rows: [], cursor: null, limited: false }
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const load = async () => {
@@ -413,7 +413,7 @@ export function useOlderRequests(filter: RequestFilter, shown: RequestSummary[])
       const page = await apiFetch<OlderRequestsPage>('/api/requests', { query: { ...rest, since, before, limit: MAX_REQUEST_ROWS } })
       setState((prev) => {
         const base = prev.key === key ? prev.rows : []
-        return { key, rows: mergeAll([...shown, ...base], page.requests), cursor: page.nextCursor }
+        return { key, rows: mergeAll([...shown, ...base], page.requests), cursor: page.nextCursor, limited: page.scanLimitReached === true }
       })
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)))
@@ -426,7 +426,9 @@ export function useOlderRequests(filter: RequestFilter, shown: RequestSummary[])
   const rows = current.rows.length > 0 ? mergeAll(current.rows, shown) : shown
   /** More may exist: the live page is full, or the last older page said so. */
   const more = current.rows.length > 0 ? current.cursor !== null : shown.length >= MAX_REQUEST_ROWS
-  return { rows, loaded: current.rows.length > 0, more, pending, error, load, reset }
+  /** The server stopped looking: requests older than the newest 10,000 were not searched. */
+  const limited = current.limited === true
+  return { rows, loaded: current.rows.length > 0, more, limited, pending, error, load, reset }
 }
 
 function mergeAll(a: RequestSummary[], b: RequestSummary[]): RequestSummary[] {
