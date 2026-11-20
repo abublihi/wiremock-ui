@@ -97,11 +97,11 @@ export function GuideMarkdown({
         return (
           <details className="rounded-md border border-line bg-surface/60 px-3 py-2">
             <summary className="cursor-pointer text-xs font-medium text-signal-fg">{t('guide.stubJson')}</summary>
-            <pre dir="ltr">{children}</pre>
+            <pre dir="ltr" tabIndex={0}>{children}</pre>
           </details>
         )
       }
-      return <pre dir="ltr">{children}</pre>
+      return <pre dir="ltr" tabIndex={0}>{children}</pre>
     },
     table: ({ children }) => (
       <div className="overflow-x-auto">

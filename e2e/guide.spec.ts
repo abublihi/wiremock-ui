@@ -33,7 +33,7 @@ test('Getting started, end to end, from the guide\'s links only', async ({ page 
   await expect(page).toHaveURL(/\/integrations$/)
   await page.getByRole('button', { name: 'Add integration' }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Add integration' })
-  await dialog.getByLabel('Key').fill(KEY)
+  await dialog.getByLabel('Integration ID').fill(KEY)
   await dialog.getByLabel('Name').fill('Blog API (guide)')
   await dialog.getByLabel('URL prefix').fill(`/${KEY}`)
   await dialog.getByRole('button', { name: 'Save' }).click()
@@ -70,10 +70,10 @@ test('Getting started, end to end, from the guide\'s links only', async ({ page 
   await expect(page).toHaveURL(/\/requests$/)
   await expect(page.getByText(`/${KEY}/posts/42`).first()).toBeVisible()
 
-  // The checklist on Mocks has ticked every step.
+  // Every step is ticked: the checklist on Mocks has hidden itself for good.
   await page.goto('/mocks')
-  await expect(page.getByRole('heading', { name: 'You are set up' })).toBeVisible()
-  await expect(page.getByRole('progressbar', { name: 'Getting started progress' })).toHaveAttribute('aria-valuenow', '5')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('wmui.gettingStarted.done'))).toBe('1')
+  await expect(page.getByRole('heading', { name: 'Getting started' })).toBeHidden()
 })
 
 test('the side menu finds a section, and each page\'s help opens its part of the guide', async ({ page }) => {

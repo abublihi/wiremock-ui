@@ -31,7 +31,7 @@ test('fresh install: New mock → add an integration → its first endpoint → 
 
   await page.getByRole('button', { name: 'Add an integration' }).click()
   const dialog = page.getByRole('dialog', { name: 'Add integration' })
-  await dialog.getByLabel('Key').fill(KEY)
+  await dialog.getByLabel('Integration ID').fill(KEY)
   await dialog.getByLabel('Name').fill('Blog')
   await dialog.getByLabel('URL prefix').fill(`/${KEY}`)
   await dialog.getByRole('button', { name: 'Save' }).click()
