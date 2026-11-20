@@ -18,7 +18,7 @@ import { renderApp } from './helpers'
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 // The Getting started checklist has its own tests (guide.test.tsx); here it is dismissed, as for a returning user.
-beforeEach(() => window.localStorage.setItem('wmui.gettingStarted.dismissed', '1'))
+beforeEach(() => window.localStorage.setItem('wmui.checklist.u1.dismissed', '1'))
 afterEach(() => {
   server.resetHandlers()
   localStorage.removeItem('wmui.mocks.pageSize')
