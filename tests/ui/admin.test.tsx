@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { strToU8, zipSync } from 'fflate'
 import { screen, waitFor, within } from '@testing-library/react'
@@ -6,6 +7,7 @@ import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { AuditEntry } from '@/server/audit/log'
+import type { AuditFilter, AuditView } from '@/server/audit/view'
 import type { ImportReport } from '@/server/bundle/importer'
 import type { PublicUser } from '@/server/users/types'
 import { AuditPage } from '@/routes/_app/audit'
@@ -215,12 +217,72 @@ describe('audit page', () => {
     await renderApp(<AuditPage />)
     const ue = userEvent.setup()
     await screen.findByText('mock.create1')
-    expect(screen.getByText('{"n":1}')).toBeTruthy()
+    expect(screen.getAllByText('n:')[0]!.nextSibling?.textContent).toBe('1')
     await ue.click(screen.getByRole('button', { name: 'Load more' }))
     await screen.findByText('mock.create3')
     expect(seen).toEqual([null, 'cur-2'])
     expect(screen.getByText('mock.create1')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
+  })
+})
+
+describe('audit page: sentences and filters', () => {
+  const at = '2026-01-01T00:00:00.000Z'
+  const entries: AuditView[] = [
+    { at, actor: 'admin', action: 'recording.accept', target: 'rec-1', details: { accepted: 3, failed: 0, owner: 'admin' } },
+    { at, actor: 'sara', action: 'mock.update', target: 'm-1', subject: { kind: 'mock', name: 'Refund ok' } },
+    { at, actor: 'sara', action: 'mock.delete', target: 'm-2', subject: { kind: 'mock', name: null } },
+    { at, actor: 'sara', action: 'mock.update', target: 'm-3', subject: { kind: 'mock', name: null } },
+    { at, actor: 'omar', action: 'catalog.integration.upsert', target: 'pay', subject: { kind: 'integration', name: 'Payments' } },
+    { at, actor: 'omar', action: 'scenario.set-state', target: 'checkout', details: { state: 'paid' } },
+    { at, actor: 'system', action: 'sync', details: { stubs: 12 } },
+  ]
+
+  it('says what happened in plain sentences, linking to what it was about', async () => {
+    server.use(http.get(`${BASE}/api/audit`, () => HttpResponse.json({ entries, nextCursor: null })))
+    await renderApp(<AuditPage />)
+    const table = await screen.findByRole('table')
+    expect(within(table).getAllByText((_, el) => el?.tagName === 'P' && el.textContent === 'admin accepted 3 recorded mocks')).toHaveLength(1)
+    expect(within(table).getByRole('link', { name: 'Refund ok' }).getAttribute('href')).toBe('/mocks/m-1')
+    expect(within(table).getAllByText((_, el) => el?.tagName === 'P' && el.textContent === 'sara deleted a mock')).toHaveLength(1)
+    // Edited, then deleted later: the name went with it.
+    expect(within(table).getByText('deleted mock')).toBeTruthy()
+    expect(within(table).getByRole('link', { name: 'Payments' }).getAttribute('href')).toBe('/integrations/pay')
+    expect(within(table).getByRole('link', { name: 'checkout' }).getAttribute('href')).toBe('/scenarios?scenario=checkout')
+    expect(within(table).getAllByText((_, el) => el?.tagName === 'P' && el.textContent === 'system synced 12 mocks to WireMock')).toHaveLength(1)
+    // Details as key: value.
+    expect(within(table).getAllByText('owner:')[0]!.nextSibling?.textContent).toBe('admin')
+  })
+
+  it('filters by who, what and day on the server', async () => {
+    const seen: URLSearchParams[] = []
+    server.use(
+      http.get(`${BASE}/api/users`, () => HttpResponse.json([{ id: 'u1', username: 'sara', role: 'admin', disabled: false }])),
+      http.get(`${BASE}/api/audit`, ({ request }) => {
+        const q = new URL(request.url).searchParams
+        seen.push(q)
+        return HttpResponse.json({ entries: q.get('actor') ? [] : entries, nextCursor: null })
+      }),
+    )
+    function Harness() {
+      const [search, setSearch] = useState<AuditFilter>({})
+      return <AuditPage search={search} onSearchChange={setSearch} />
+    }
+    await renderApp(<Harness />)
+    const ue = userEvent.setup()
+    await screen.findByRole('table')
+    await ue.click(screen.getByRole('combobox', { name: 'Who' }))
+    await ue.click(await screen.findByRole('option', { name: 'sara' }))
+    await ue.click(screen.getByRole('combobox', { name: 'What' }))
+    await ue.click(await screen.findByRole('option', { name: 'Mocks' }))
+    await ue.type(screen.getByLabelText('From'), '2026-01-01')
+    await waitFor(() => expect(seen.at(-1)?.get('from')).toBe('2026-01-01'))
+    expect(seen.at(-1)?.get('actor')).toBe('sara')
+    expect(seen.at(-1)?.get('action')).toBe('mock')
+    expect(await screen.findByText('Nothing matches these filters. Widen the dates or clear the filters.')).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Clear filters' }))
+    await screen.findByRole('table')
+    expect(seen.at(-1)?.get('actor')).toBeNull()
   })
 })
 

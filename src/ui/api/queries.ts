@@ -4,7 +4,7 @@ import { useRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useT } from '@/ui/i18n'
 import type { QuickMockInput, SimpleMockInput } from '@/server/catalog/build'
-import type { AuditPage } from '@/server/audit/log'
+import type { AuditFilter, AuditViewPage } from '@/server/audit/view'
 import type { ImportReport } from '@/server/bundle/importer'
 import type { PublicConfig } from '@/server/http/handlers/config'
 import type { Endpoint, Integration } from '@/server/catalog/types'
@@ -615,11 +615,12 @@ export function useDeleteUser() {
 
 export const AUDIT_PAGE_SIZE = 50
 
-export function useAudit() {
+/** The audit trail, newest first, filtered on the server (by actor, action group and UTC day). */
+export function useAudit(filter: AuditFilter = {}) {
   return useInfiniteQuery({
-    queryKey: queryKeys.audit,
+    queryKey: [...queryKeys.audit, filter],
     queryFn: ({ pageParam }) =>
-      apiFetch<AuditPage>('/api/audit', { query: { limit: AUDIT_PAGE_SIZE, cursor: pageParam } }),
+      apiFetch<AuditViewPage>('/api/audit', { query: { limit: AUDIT_PAGE_SIZE, cursor: pageParam, ...filter } }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   })
