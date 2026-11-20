@@ -1,10 +1,12 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { AlertCircleIcon, FileStackIcon, PauseIcon, PlayIcon, RadioTowerIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 import { MAX_REQUEST_ROWS, type RequestFilter, useClearRequests, useDocumentVisible, useIntegrations, useRequests, useSnapshot } from '@/ui/api/queries'
 import { useRecordingAllowed } from '@/ui/config'
 import { emptyMessage } from '@/ui/components/recording/RecordForms'
+import { WithTerm } from '@/ui/components/guide/Term'
+import { markRequestLogSeen } from '@/ui/components/guide/GettingStarted'
 import { LiveDot } from '@/ui/components/common/LiveDot'
 import { CountTool } from '@/ui/components/requests/CountTool'
 import { RequestDrawer } from '@/ui/components/requests/RequestDrawer'
@@ -65,6 +67,8 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
   const t = useT()
   const [live, setLive] = useState(true)
   const visible = useDocumentVisible()
+  // The Getting started checklist's last step: the request log was opened.
+  useEffect(() => markRequestLogSeen(), [])
   const filter = useMemo<RequestFilter>(
     () => ({
       matched: search.matched,
@@ -99,7 +103,7 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
           </div>
           <p className="text-xs text-muted-foreground">
             {requests.data
-              ? t(rows.length === 1 ? 'requests.captionOne' : 'requests.caption', { count: rows.length, unmatched })
+              ? <WithTerm text={t(rows.length === 1 ? 'requests.captionOne' : 'requests.caption', { count: rows.length, unmatched })} word="without a match" name="no match" />
               : '//'}
           </p>
         </div>

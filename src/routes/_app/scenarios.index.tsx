@@ -19,6 +19,7 @@ import {
 } from '@/ui/components/ui/alert-dialog'
 import { Button } from '@/ui/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
+import { WithTerm } from '@/ui/components/guide/Term'
 import { useT } from '@/ui/i18n'
 
 export type ScenariosSearch = { scenario?: string }
@@ -54,7 +55,7 @@ export function ScenariosPage({ focus }: { focus?: string } = {}) {
             <LiveDot active={visible && !scenarios.isError} label={visible ? t('scenarios.live') : t('scenarios.pausedHidden')} />
           </div>
           <p className="text-xs text-muted-foreground">
-            {scenarios.data ? t(list.length === 1 ? 'scenarios.captionOne' : 'scenarios.caption', { count: list.length }) : '//'}
+            {scenarios.data ? <WithTerm text={t(list.length === 1 ? 'scenarios.captionOne' : 'scenarios.caption', { count: list.length })} word="state" name="scenario state" /> : '//'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

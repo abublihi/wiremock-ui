@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Outlet, RouterProvider, createMemoryHistory, createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { render } from '@testing-library/react'
@@ -17,6 +17,8 @@ import { renderApp } from './helpers'
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
+// The Getting started checklist has its own tests (guide.test.tsx); here it is dismissed, as for a returning user.
+beforeEach(() => window.localStorage.setItem('wmui.gettingStarted.dismissed', '1'))
 afterEach(() => {
   server.resetHandlers()
   localStorage.removeItem('wmui.mocks.pageSize')
@@ -79,7 +81,7 @@ describe('mock list', () => {
     expect(screen.getByRole('radio', { name: 'My mocks' }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByText('Baseline')).toBeTruthy()
     expect(screen.getByText('404')).toBeTruthy()
-    expect(screen.getByText('// 2 mocks · 1 baseline')).toBeTruthy()
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 2 mocks · 1 baseline')).toBeTruthy()
   })
 
   it('marks proxy mocks with a PROXY badge instead of a status, and webhook mocks with an icon', async () => {
@@ -166,7 +168,7 @@ describe('mock list', () => {
     expect(seen[0]!.url.searchParams.get('offset')).toBe('0')
     expect(screen.getByText('Mock m49')).toBeTruthy()
     expect(screen.queryByText('Mock m50')).toBeNull()
-    expect(screen.getByText('// 120 mocks · 0 baseline')).toBeTruthy()
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 120 mocks · 0 baseline')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Previous' }) as HTMLButtonElement).disabled).toBe(true)
     const ue = userEvent.setup()
     await ue.click(screen.getByRole('button', { name: 'Next' }))

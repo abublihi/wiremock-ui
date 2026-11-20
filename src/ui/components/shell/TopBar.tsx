@@ -14,6 +14,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/ui/components/ui/sheet'
 import { useT } from '@/ui/i18n'
 import { THEMES, isTheme, useTheme, type Theme } from '@/ui/theme'
+import { HelpPanel } from '@/ui/components/guide/HelpPanel'
 import { Brand } from './Brand'
 import { Rail, type NavCounts, type NavItem } from './Rail'
 import { UserMenu } from './UserMenu'
@@ -102,6 +103,7 @@ export function TopBar({ nav, counts, user }: { nav: NavItem[]; counts?: NavCoun
         <span className="text-signal-fg">$</span> cd ~{pathname}
       </p>
       <div className="ms-auto flex items-center gap-1">
+        <HelpPanel />
         <ThemeMenu />
       </div>
     </header>

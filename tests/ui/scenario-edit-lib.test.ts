@@ -180,18 +180,18 @@ describe('saving an edited scenario', () => {
     expect(update.kind === 'update' && 'newScenarioState' in update.stub).toBe(false)
   })
 
-  it('reordering renames the states the moved steps answer in', () => {
+  it('reordering swaps answers: the states stay with the positions, so the moved mocks change state', () => {
     const loaded = load()
-    const steps = moveStep(loaded.steps, 'm3', -1) // shipped before paid
+    const steps = moveStep(loaded.steps, 'm3', -1) // the third answer moves into second place, which answers in paid
     const changes = editChanges(loaded, draftOf(loaded, { steps }))
     const byId = Object.fromEntries(changes.map((c) => [c.kind === 'delete' ? c.before.id : c.kind === 'update' ? c.before.id : 'new', c]))
     const states = (id: string) => {
       const c = byId[id]
       return c?.kind === 'update' ? [c.stub.requiredScenarioState, c.stub.newScenarioState] : undefined
     }
-    expect(states('m1')).toEqual(['Started', 'shipped'])
-    expect(states('m3')).toEqual(['shipped', 'paid'])
-    expect(states('m2')).toEqual(['paid', undefined])
+    expect(byId.m1).toBeUndefined() // step 1 still answers in Started and moves on to paid
+    expect(states('m3')).toEqual(['paid', 'shipped'])
+    expect(states('m2')).toEqual(['shipped', undefined])
   })
 
   it('a body cleared drops body and jsonBody; a delay cleared drops the delay', () => {

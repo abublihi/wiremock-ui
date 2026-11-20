@@ -1,6 +1,6 @@
 # Installing wiremock-ui
 
-wiremock-ui runs next to a WireMock 3 server. The UI keeps every mock in its own store and pushes it into WireMock, so mocks survive a WireMock restart. This page covers running it, configuring it and keeping it healthy. For how to use it day to day, see [USAGE.md](USAGE.md).
+wiremock-ui runs next to a WireMock 3 server. The UI keeps every mock in its own store and pushes it into WireMock, so mocks survive a WireMock restart. This page covers running it, configuring it and keeping it healthy. For how to use it day to day, see the [guide](guide/getting-started.md) (also in the app under Help → Guide).
 
 > **Test environments only.** Never put real personal data in a mock, a request or a stored value.
 
@@ -114,9 +114,9 @@ Everything is set through environment variables. Empty values count as unset.
 | `BOOT_TIMEOUT_SECONDS` | `60` | How long the UI waits for WireMock and the store on start before giving up. |
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy, so the client IP for the sign-in rate limit comes from `X-Forwarded-For` (the rightmost hop). Leave it off without a proxy. |
 | `PUBLIC_UI_URL` | (none) | The address people use to reach the UI, for example `https://mocks.example.com`. An `https` URL makes session cookies `Secure`. |
-| `SEED_PATH` | (none) | A bundle file or a folder of `*.json` files to import as baseline mocks on every start. See [USAGE.md](USAGE.md#bundle-files-and-seeding-baseline-mocks). |
+| `SEED_PATH` | (none) | A bundle file or a folder of `*.json` files to import as baseline mocks on every start. See [Import and export](guide/import-export.md). |
 | `SEED_PRUNE` | `false` | With `SEED_PATH`: also delete baseline mocks that are no longer in the seed. People's own mocks are never touched. Ignored with `STORE_DRIVER=none`. |
-| `RECORDING_ALLOWED` | `true` | `false` turns recording and "create mocks from the request log" off on this environment: the Recording page is hidden and the API answers 403. See [Record real traffic](USAGE.md#record-real-traffic). Recording (like proxy mocks) lets any signed-in user make WireMock connect to any address its network can reach; set `false` where that is not acceptable. |
+| `RECORDING_ALLOWED` | `true` | `false` turns recording and "create mocks from the request log" off on this environment: the Recording page is hidden and the API answers 403. See [Recording and snapshots](guide/recording.md). Recording (like proxy mocks) lets any signed-in user make WireMock connect to any address its network can reach; set `false` where that is not acceptable. |
 | `PORT` | `3000` | Port the UI listens on. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. Logs are JSON lines on stdout. |
 

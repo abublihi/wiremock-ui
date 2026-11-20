@@ -68,10 +68,14 @@ export function CountTool() {
                 id={ids.path}
                 dir="ltr"
                 className="h-8 font-mono text-xs"
-                placeholder="/pay/charge"
+                placeholder="/blog/posts/42"
                 value={path}
+                aria-describedby={`${ids.path}-hint`}
                 onChange={(e) => setPath(e.target.value)}
               />
+              <p id={`${ids.path}-hint`} className="text-[11px] text-muted-foreground">
+                {t('count.pathHint')}
+              </p>
             </Field>
           </FieldGroup>
           <div className="flex items-center justify-between gap-3">

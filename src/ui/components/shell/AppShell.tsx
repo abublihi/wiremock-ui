@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
-import { ArrowDownUpIcon, CircleDotIcon, DatabaseIcon, FileClockIcon, ListIcon, ScrollTextIcon, UsersIcon, WorkflowIcon } from 'lucide-react'
+import { ArrowDownUpIcon, BookOpenIcon, CircleDotIcon, DatabaseIcon, FileClockIcon, ListIcon, ScrollTextIcon, UsersIcon, WorkflowIcon } from 'lucide-react'
 import type { PublicUser } from '@/server/users/types'
 import type { ServerConfig } from '@/ui/api/queries'
 import { useT } from '@/ui/i18n'
+import { useGuideShortcut } from '@/ui/components/guide/HelpPanel'
 import { Brand } from './Brand'
 import { HazardStrip } from './HazardStrip'
 import { RecordingBanner } from './RecordingBanner'
@@ -14,7 +15,7 @@ export type { NavCounts, NavItem } from './Rail'
 
 /**
  * The app's navigation, most used first: every signed-in user sees every entry (there is no authorization).
- * Work is what testers do all day, Setup is what mocks are built on, Admin is people and records.
+ * Work is what testers do all day, Setup is what mocks are built on, Admin is people and records, Help is the guide.
  */
 export const APP_NAV: NavItem[] = [
   { to: '/mocks', label: 'nav.mocks', icon: ListIcon, group: 'work' },
@@ -25,6 +26,7 @@ export const APP_NAV: NavItem[] = [
   { to: '/import', label: 'nav.import', icon: ArrowDownUpIcon, group: 'setup' },
   { to: '/users', label: 'nav.users', icon: UsersIcon, group: 'admin' },
   { to: '/audit', label: 'nav.audit', icon: FileClockIcon, group: 'admin' },
+  { to: '/guide', label: 'nav.guide', icon: BookOpenIcon, group: 'help' },
 ]
 
 /**
@@ -40,6 +42,7 @@ export function navFor(config: ServerConfig | null): NavItem[] {
 export function AppShell({ nav, counts, user, children }: { nav: NavItem[]; counts?: NavCounts; user: PublicUser | null; children: ReactNode }) {
   const t = useT()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  useGuideShortcut()
   return (
     <div className="flex h-svh flex-col bg-background">
       <a

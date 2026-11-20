@@ -102,7 +102,7 @@ describe('Scenarios page', () => {
     // The current state has no "Set as current"; the others do.
     expect(within(card).queryByRole('button', { name: 'Set approved as current' })).toBeNull()
     expect(within(card).getByRole('button', { name: 'Set Started as current' })).toBeTruthy()
-    expect(screen.getByText('// 1 scenario · stateful mocks that answer by state')).toBeTruthy()
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 1 scenario · stateful mocks that answer by state')).toBeTruthy()
   })
 
   it('Set as current and Reset call the API and say what happened', async () => {
@@ -167,7 +167,7 @@ describe('Scenarios page', () => {
     mockScenarios([[]])
     await renderApp(<ScenariosPage />)
     expect(await screen.findByText('No stateful mocks yet')).toBeTruthy()
-    expect(screen.getByText(/the first call returns pending and moves to approved/)).toBeTruthy()
+    expect(screen.getByText(/an order is pending on the first call, shipped on the next, then delivered/)).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Build a scenario' }).getAttribute('href')).toBe('/scenarios/new')
     expect(screen.getByRole('link', { name: 'New scenario' }).getAttribute('href')).toBe('/scenarios/new')
     expect(screen.queryByRole('button', { name: 'Reset all' })).toBeNull()
@@ -235,7 +235,7 @@ describe('mock editor — scenario', () => {
   it('the switch opens the fields; an existing name and its states can be picked; they go along with the mock', async () => {
     const { calls, ue } = await open()
     expect(screen.queryByRole('textbox', { name: 'Scenario name' })).toBeNull()
-    expect(screen.getByText(/the first call returns pending and moves to approved/)).toBeTruthy()
+    expect(screen.getByText(/the first call returns pending and moves to shipped/)).toBeTruthy()
     await ue.click(screen.getByRole('switch', { name: 'Answer differently on later calls' }))
     const required = screen.getByRole('textbox', { name: 'Only answers when the scenario is in state' }) as HTMLInputElement
     expect(required.value).toBe('Started')

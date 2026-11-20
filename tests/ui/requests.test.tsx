@@ -89,7 +89,7 @@ describe('request table', () => {
     expect(stamp.className).toContain('hatch')
     expect(screen.getByText('/pay/refund')).toBeTruthy()
     expect(screen.getAllByText('12 ms')).toHaveLength(2)
-    expect(screen.getByText('// 2 requests · 1 without a match')).toBeTruthy()
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 2 requests · 1 without a match')).toBeTruthy()
   })
 
   it('passes the filters to the API', async () => {

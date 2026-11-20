@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader } from '@/ui/components/ui/empty'
 import { Skeleton } from '@/ui/components/ui/skeleton'
+import { Term } from '@/ui/components/guide/Term'
 import { useT } from '@/ui/i18n'
 import { type DiffRow, type FieldState, diffRows, diffSummary } from '@/ui/lib/diff'
 import { cn } from '@/ui/lib/utils'
@@ -30,7 +31,7 @@ export function NearMissPanel({ requestId }: { requestId: string }) {
       <header>
         <h3 id={headingId} className="text-[10px] font-semibold tracking-[0.18em] text-hazard-fg uppercase">
           <span aria-hidden>— </span>
-          {t('near.title')}
+          <Term name="near miss">{t('near.title')}</Term>
         </h3>
         <p className="text-[11px] text-muted-foreground">{t('near.caption')}</p>
       </header>

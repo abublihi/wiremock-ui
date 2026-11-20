@@ -70,6 +70,7 @@ import {
   type Message,
   type MoveTo,
   type StepField,
+  answerLabel,
   hasErrors,
   moveStep,
   newStep,
@@ -179,6 +180,8 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
   const [saving, setSaving] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
+  // The two cards a move just swapped flash once; `round` restarts the animation on every move.
+  const [flash, setFlash] = useState<{ ids: string[]; round: number }>({ ids: [], round: 0 })
 
   const integrations = useIntegrations()
   const endpoints = useEndpoints(picked?.integration)
@@ -263,7 +266,10 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
     focusAfterMove.current = { id: step.id, dir }
     setSteps(next)
     setTouched(true)
-    setAnnouncement(t('builder.moved', { n: next.findIndex((s) => s.id === step.id) + 1 }))
+    const to = next.findIndex((s) => s.id === step.id)
+    const answer = answerLabel(step)
+    setAnnouncement(to === 0 ? t('builder.movedFirst', { answer }) : t('builder.moved', { answer, n: to + 1, state: stepState(next, to) || t('builder.step', { n: to + 1 }) }))
+    setFlash((f) => ({ ids: [step.id, next[dir === 'up' ? to + 1 : to - 1].id], round: f.round + 1 }))
   }
   const remove = (step: BuilderStep, i: number) => {
     setSteps(removeStep(steps, step.id))
@@ -689,11 +695,19 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
         )}
 
         <Section title={t('builder.section.steps')} hint={t('builder.stepsHint')}>
+          {steps.length > 1 && (
+            <p id={id('move-note')} className="-mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <InfoIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+              <span>{t('builder.moveNote')}</span>
+            </p>
+          )}
           <ol aria-label={t('builder.stepsLabel')} className="flex flex-col gap-3">
             {steps.map((step, i) => (
               <StepCard
                 key={step.id}
                 id={(name) => id(`${step.id}-${name}`)}
+                moveNoteId={steps.length > 1 ? id('move-note') : undefined}
+                flash={flash.ids.includes(step.id) ? flash.round : 0}
                 step={step}
                 index={i}
                 steps={steps}
@@ -716,7 +730,7 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
             <PlusIcon data-icon="inline-start" />
             {t('builder.add')}
           </Button>
-          <p aria-live="polite" className="sr-only">
+          <p aria-live="polite" className={announcement ? 'text-xs text-signal-fg' : 'sr-only'}>
             {announcement}
           </p>
           {lostForKept.mocks.length > 0 && (
@@ -768,6 +782,8 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
 /** One step: its state, the answer (status, headers, body, delay) and where it moves the scenario next. */
 function StepCard({
   id,
+  moveNoteId,
+  flash,
   step,
   index,
   steps,
@@ -785,6 +801,10 @@ function StepCard({
   onRemove,
 }: {
   id: (name: string) => string
+  /** The "moving a step changes the order of answers" note the move buttons point at. */
+  moveNoteId: string | undefined
+  /** Non-zero right after a move swapped this card: the highlight replays for each new value. */
+  flash: number
   step: BuilderStep
   index: number
   steps: BuilderStep[]
@@ -821,16 +841,21 @@ function StepCard({
   return (
     <li
       aria-labelledby={id('title')}
-      className="flex flex-col gap-4 rounded-md border border-line bg-surface-2/50 p-3 sm:p-4"
+      className="relative flex flex-col gap-4 rounded-md border border-line bg-surface-2/50 p-3 sm:p-4"
     >
+      {flash > 0 && <div key={flash} aria-hidden className="move-flash pointer-events-none absolute inset-0 rounded-md" />}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id={id('title')} tabIndex={-1} className="flex items-center gap-2 outline-none">
-          <span className="font-mono text-[10px] text-signal-fg">{String(n).padStart(2, '0')}</span>
+        {/* The position and the state it answers in: these stay put when answers are reordered. */}
+        <h3 id={id('title')} tabIndex={-1} className="flex flex-wrap items-center gap-x-2 gap-y-1 outline-none">
           <span className="font-display text-lg leading-none font-semibold tracking-wide uppercase">{t('builder.step', { n })}</span>
-          <span dir="ltr" className="font-mono text-xs text-muted-foreground">
-            {stateLabel}
-            {target ? ` → ${target}` : ''}
+          <span dir="ltr" className="rounded-sm border border-signal/40 bg-signal/10 px-1.5 py-0.5 font-mono text-xs text-signal-fg">
+            {n} · {state || t('builder.noState')}
           </span>
+          {target && (
+            <span dir="ltr" className="font-mono text-xs text-muted-foreground">
+              → {target}
+            </span>
+          )}
         </h3>
         <div className="flex items-center gap-1">
           {mockId && (
@@ -848,6 +873,7 @@ function StepCard({
             size="icon-sm"
             disabled={first}
             aria-label={t('builder.moveUp', { n })}
+            aria-describedby={moveNoteId}
             onClick={() => onMove('up')}
           >
             <ArrowUpIcon />
@@ -859,6 +885,7 @@ function StepCard({
             size="icon-sm"
             disabled={last}
             aria-label={t('builder.moveDown', { n })}
+            aria-describedby={moveNoteId}
             onClick={() => onMove('down')}
           >
             <ArrowDownIcon />
@@ -902,7 +929,7 @@ function StepCard({
             autoComplete="off"
             spellCheck={false}
             aria-label={t('builder.stateOf', { n })}
-            placeholder={first ? STARTED : 'approved'}
+            placeholder={first ? STARTED : 'shipped'}
             value={first ? STARTED : step.state}
             readOnly={first}
             aria-invalid={Boolean(errors.state)}
@@ -939,98 +966,104 @@ function StepCard({
         </Field>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field data-invalid={Boolean(errors.status)}>
-          <FieldLabel htmlFor={id('status')}>{t('builder.status')}</FieldLabel>
-          <Input
-            id={id('status')}
-            type="number"
-            inputMode="numeric"
-            min={100}
-            max={599}
-            className="font-mono"
-            aria-label={t('builder.statusOf', { n })}
-            value={step.status}
-            aria-invalid={Boolean(errors.status)}
-            aria-describedby={described('status')}
-            onChange={(e) => onStatus(e.target.value)}
+      {/* The answer: what the arrows move between positions. */}
+      <div role="group" aria-labelledby={id('answer')} className="flex flex-col gap-4 rounded-md border border-dashed border-line bg-canvas/40 p-3">
+        <p id={id('answer')} className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          {t('builder.answerOf', { n })}
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field data-invalid={Boolean(errors.status)}>
+            <FieldLabel htmlFor={id('status')}>{t('builder.status')}</FieldLabel>
+            <Input
+              id={id('status')}
+              type="number"
+              inputMode="numeric"
+              min={100}
+              max={599}
+              className="font-mono"
+              aria-label={t('builder.statusOf', { n })}
+              value={step.status}
+              aria-invalid={Boolean(errors.status)}
+              aria-describedby={described('status')}
+              onChange={(e) => onStatus(e.target.value)}
+            />
+            {error('status')}
+          </Field>
+          <Field data-invalid={Boolean(errors.delay)}>
+            <FieldLabel htmlFor={id('delay')}>
+              {t('builder.delay')} <span className="font-normal text-muted-foreground">({t('editor.nameOptional')})</span>
+            </FieldLabel>
+            <Input
+              id={id('delay')}
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={120}
+              className="font-mono"
+              aria-label={t('builder.delayOf', { n })}
+              placeholder="3"
+              value={step.delaySeconds}
+              aria-invalid={Boolean(errors.delay)}
+              aria-describedby={described('delay')}
+              onChange={(e) => onChange({ delaySeconds: e.target.value })}
+            />
+            {error('delay')}
+          </Field>
+        </div>
+
+        <Field data-invalid={Boolean(errors.headers)}>
+          <span className="text-sm font-medium">{t('builder.headers')}</span>
+          <HeaderRows
+            label={t('builder.headersOf', { n })}
+            rows={step.headers}
+            invalid={Boolean(errors.headers)}
+            describedBy={described('headers', catalog && id('headers-hint'))}
+            onChange={(headers) => onChange({ headers })}
           />
-          {error('status')}
+          {catalog && (
+            <FieldDescription id={id('headers-hint')} className="text-xs">
+              {t('builder.headersAdvanced')}
+            </FieldDescription>
+          )}
+          {error('headers')}
         </Field>
-        <Field data-invalid={Boolean(errors.delay)}>
-          <FieldLabel htmlFor={id('delay')}>
-            {t('builder.delay')} <span className="font-normal text-muted-foreground">({t('editor.nameOptional')})</span>
-          </FieldLabel>
-          <Input
-            id={id('delay')}
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={120}
-            className="font-mono"
-            aria-label={t('builder.delayOf', { n })}
-            placeholder="3"
-            value={step.delaySeconds}
-            aria-invalid={Boolean(errors.delay)}
-            aria-describedby={described('delay')}
-            onChange={(e) => onChange({ delaySeconds: e.target.value })}
-          />
-          {error('delay')}
+
+        <Field data-invalid={Boolean(errors.body)}>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            {bodyLanguage ? (
+              <span className="text-sm font-medium">{t('builder.body')}</span>
+            ) : (
+              <FieldLabel htmlFor={id('body')}>{t('builder.body')}</FieldLabel>
+            )}
+            {exampleShown && <span className="text-[11px] text-muted-foreground">{t('editor.bodyFromExample', { status: step.status })}</span>}
+          </div>
+          {bodyLanguage ? (
+            <CodeEditor
+              value={step.body}
+              language={bodyLanguage}
+              label={t('builder.bodyOf', { n })}
+              invalid={Boolean(errors.body)}
+              describedBy={described('body')}
+              minHeight="6rem"
+              maxHeight="20rem"
+              onChange={(body) => onChange({ body, bodyFromExample: false })}
+            />
+          ) : (
+            <Textarea
+              id={id('body')}
+              dir="ltr"
+              aria-label={t('builder.bodyOf', { n })}
+              className="min-h-24 font-mono text-xs md:text-xs"
+              spellCheck={false}
+              value={step.body}
+              aria-invalid={Boolean(errors.body)}
+              aria-describedby={described('body')}
+              onChange={(e) => onChange({ body: e.target.value, bodyFromExample: false })}
+            />
+          )}
+          {error('body')}
         </Field>
       </div>
-
-      <Field data-invalid={Boolean(errors.headers)}>
-        <span className="text-sm font-medium">{t('builder.headers')}</span>
-        <HeaderRows
-          label={t('builder.headersOf', { n })}
-          rows={step.headers}
-          invalid={Boolean(errors.headers)}
-          describedBy={described('headers', catalog && id('headers-hint'))}
-          onChange={(headers) => onChange({ headers })}
-        />
-        {catalog && (
-          <FieldDescription id={id('headers-hint')} className="text-xs">
-            {t('builder.headersAdvanced')}
-          </FieldDescription>
-        )}
-        {error('headers')}
-      </Field>
-
-      <Field data-invalid={Boolean(errors.body)}>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          {bodyLanguage ? (
-            <span className="text-sm font-medium">{t('builder.body')}</span>
-          ) : (
-            <FieldLabel htmlFor={id('body')}>{t('builder.body')}</FieldLabel>
-          )}
-          {exampleShown && <span className="text-[11px] text-muted-foreground">{t('editor.bodyFromExample', { status: step.status })}</span>}
-        </div>
-        {bodyLanguage ? (
-          <CodeEditor
-            value={step.body}
-            language={bodyLanguage}
-            label={t('builder.bodyOf', { n })}
-            invalid={Boolean(errors.body)}
-            describedBy={described('body')}
-            minHeight="6rem"
-            maxHeight="20rem"
-            onChange={(body) => onChange({ body, bodyFromExample: false })}
-          />
-        ) : (
-          <Textarea
-            id={id('body')}
-            dir="ltr"
-            aria-label={t('builder.bodyOf', { n })}
-            className="min-h-24 font-mono text-xs md:text-xs"
-            spellCheck={false}
-            value={step.body}
-            aria-invalid={Boolean(errors.body)}
-            aria-describedby={described('body')}
-            onChange={(e) => onChange({ body: e.target.value, bodyFromExample: false })}
-          />
-        )}
-        {error('body')}
-      </Field>
     </li>
   )
 }
@@ -1054,12 +1087,18 @@ function Explainer({ editing = false }: { editing?: boolean }) {
           <span className="text-muted-foreground">#1</span>
           <span className="text-signal-fg">{STARTED}</span>
           <span>→ pending</span>
-          <span className="text-muted-foreground">⇢ approved</span>
+          <span className="text-muted-foreground">⇢ shipped</span>
         </li>
         <li className="flex items-center gap-2 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
           <span className="text-muted-foreground">#2</span>
-          <span className="text-signal-fg">approved</span>
-          <span>→ approved</span>
+          <span className="text-signal-fg">shipped</span>
+          <span>→ shipped</span>
+          <span className="text-muted-foreground">⇢ delivered</span>
+        </li>
+        <li className="flex items-center gap-2 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
+          <span className="text-muted-foreground">#3</span>
+          <span className="text-signal-fg">delivered</span>
+          <span>→ delivered</span>
         </li>
       </ol>
     </section>

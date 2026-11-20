@@ -16,6 +16,7 @@ export function ImportPage() {
         </div>
         <ExportMenu scope={{ scope: 'all' }} />
       </header>
+      <p className="max-w-3xl text-xs text-muted-foreground">{t('import.ownership')}</p>
       <ImportPanel />
     </div>
   )

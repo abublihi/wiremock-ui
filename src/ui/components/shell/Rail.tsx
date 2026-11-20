@@ -3,8 +3,8 @@ import type { LucideIcon } from 'lucide-react'
 import { useT, type MessageKey } from '@/ui/i18n'
 import { cn } from '@/ui/lib/utils'
 
-/** Most used first: the daily work, then what it is built on, then people and records. */
-export type NavGroup = 'work' | 'setup' | 'admin'
+/** Most used first: the daily work, then what it is built on, then people and records, then the guide. */
+export type NavGroup = 'work' | 'setup' | 'admin' | 'help'
 export type NavItem = { to: string; label: MessageKey; icon: LucideIcon; group: NavGroup }
 
 /** A small number after a nav item (unmatched requests, say), keyed by the item's `to`; 0 or none shows nothing. */
@@ -14,6 +14,7 @@ const GROUPS: { id: NavGroup; label: MessageKey }[] = [
   { id: 'work', label: 'nav.groupWork' },
   { id: 'setup', label: 'nav.groupSetup' },
   { id: 'admin', label: 'nav.groupAdmin' },
+  { id: 'help', label: 'nav.groupHelp' },
 ]
 
 const LINK =

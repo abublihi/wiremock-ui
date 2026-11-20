@@ -2,6 +2,8 @@ import { useCallback, useEffect } from 'react'
 import { Link, createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { AlertCircleIcon, DatabaseIcon, InboxIcon } from 'lucide-react'
 import { useIntegrations, useMockPage } from '@/ui/api/queries'
+import { GettingStartedChecklist } from '@/ui/components/guide/GettingStarted'
+import { WithTerm } from '@/ui/components/guide/Term'
 import { ExportMenu } from '@/ui/components/mocks/ExportMenu'
 import { NewMockButton, ResetMineButton } from '@/ui/components/mocks/MockActions'
 import { MockFilters, type MocksSearch } from '@/ui/components/mocks/MockFilters'
@@ -111,7 +113,7 @@ export function MocksPage({
         <div>
           <h1 className="glow-text font-display text-4xl font-bold tracking-tight uppercase">{t('mocks.title')}</h1>
           <p className="text-xs text-muted-foreground">
-            {mocks.data ? t(count === 1 ? 'mocks.captionOne' : 'mocks.caption', { count, baseline }) : '//'}
+            {mocks.data ? <WithTerm text={t(count === 1 ? 'mocks.captionOne' : 'mocks.caption', { count, baseline })} word="baseline" name="baseline" /> : '//'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -120,6 +122,8 @@ export function MocksPage({
           <NewMockButton />
         </div>
       </header>
+
+      <GettingStartedChecklist />
 
       <MockFilters search={search} integrations={integrations.data ?? []} onChange={onFilterChange} />
 

@@ -118,7 +118,7 @@ describe('scenario builder', () => {
     expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Stay here (last step)', 'Step 1: Started', 'Step 2: approved'])
     await ue.click(await screen.findByRole('option', { name: 'Step 1: Started' }))
     expect(moveSelect(3).textContent).toBe('Step 1: Started')
-    expect(screen.getByRole('heading', { name: /Step 3/, level: 3 }).textContent).toContain('Step 3 → Started')
+    expect(screen.getByRole('heading', { name: /Step 3/, level: 3 }).textContent).toBe('Step 33 · no state yet→ Started')
   })
 
   it('validates on save: name, request and every step field; nothing is sent', async () => {
@@ -273,7 +273,7 @@ describe('scenario builder', () => {
     ])
   })
 
-  it('steps reorder and remove from the keyboard; focus stays on the control and the move is announced', async () => {
+  it('steps reorder and remove from the keyboard; answers move, states stay with the positions; the move is explained, highlighted and announced', async () => {
     mockApi()
     await renderApp(<ScenarioBuilder />)
     const ue = userEvent.setup()
@@ -282,18 +282,36 @@ describe('scenario builder', () => {
     await waitFor(() => expect(document.activeElement).toBe(textbox('Step 3 state')))
     await ue.keyboard('shipped')
 
+    const step3Status = screen.getByRole('spinbutton', { name: 'Step 3 response status' })
+    await ue.clear(step3Status)
+    await ue.type(step3Status, '404')
+    // Explained once, and every move button points at the explanation.
+    const note = screen.getByText('Moving a step changes the order of answers. The first step always answers in Started.')
+    expect(screen.getByRole('button', { name: 'Move step 3 up' }).getAttribute('aria-describedby')).toBe(note.parentElement?.id)
+
+    // Moving swaps the answers; the states stay with the positions.
     screen.getByRole('button', { name: 'Move step 3 up' }).focus()
     await ue.keyboard('{Enter}')
-    expect(textbox('Step 2 state').value).toBe('shipped')
-    expect(textbox('Step 3 state').value).toBe('paid')
+    expect(textbox('Step 2 state').value).toBe('paid')
+    expect(textbox('Step 3 state').value).toBe('shipped')
+    expect((screen.getByRole('spinbutton', { name: 'Step 2 response status' }) as HTMLInputElement).value).toBe('404')
+    expect((screen.getByRole('spinbutton', { name: 'Step 3 response status' }) as HTMLInputElement).value).toBe('200')
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Move step 2 up' }))
-    expect(screen.getByText('Step moved to position 2')).toBeTruthy()
+    expect(screen.getByText('Answer 404 is now step 2 (answers in paid)')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /Step 2/, level: 3 }).textContent).toContain('2 · paid')
+    // Both swapped cards flash.
+    const card = (n: number) => screen.getByRole('heading', { name: new RegExp(`Step ${n}`), level: 3 }).closest('li')!
+    expect(card(2).querySelector('.move-flash')).toBeTruthy()
+    expect(card(3).querySelector('.move-flash')).toBeTruthy()
+    expect(card(1).querySelector('.move-flash')).toBeNull()
 
-    // Into first place: the step answers in Started and the step it displaces takes over its state name.
+    // Into first place: that answer is now given in Started.
     await ue.keyboard('{Enter}')
     expect(textbox('Step 1 state').value).toBe('Started')
-    expect(textbox('Step 2 state').value).toBe('shipped')
-    expect(textbox('Step 3 state').value).toBe('paid')
+    expect(textbox('Step 2 state').value).toBe('paid')
+    expect(textbox('Step 3 state').value).toBe('shipped')
+    expect((screen.getByRole('spinbutton', { name: 'Step 1 response status' }) as HTMLInputElement).value).toBe('404')
+    expect(screen.getByText('Answer 404 is now first (answers in Started)')).toBeTruthy()
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Move step 1 down' }))
 
     await ue.click(screen.getByRole('button', { name: 'Remove step 3' }))

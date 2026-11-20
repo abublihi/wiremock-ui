@@ -108,6 +108,7 @@ function PanelBody({ initial, mockId, pathIsPattern = false, variant = 'mock' }:
   const draft: RequestDraft = { method, path, query: toPairs(query), headers: toPairs(headers), body }
   const bodyless = NO_BODY.has(method)
   const stillPattern = pathIsPattern && path === initial.path
+  const pathHintId = `${id}-path-hint`
   const methods = (METHODS as readonly string[]).includes(method) ? METHODS : [method, ...METHODS]
 
   const onSend = () => send.mutate(toRelayInput(draft))
@@ -145,6 +146,8 @@ function PanelBody({ initial, mockId, pathIsPattern = false, variant = 'mock' }:
             </Select>
             <Input
               aria-label={t('test.path')}
+              aria-describedby={pathHintId}
+              placeholder="/blog/posts/42"
               value={path}
               onChange={(e) => setPath(e.target.value)}
               spellCheck={false}
@@ -153,6 +156,9 @@ function PanelBody({ initial, mockId, pathIsPattern = false, variant = 'mock' }:
               className="min-w-0 flex-1 font-mono text-xs"
             />
           </div>
+          <p id={pathHintId} className="text-[11px] text-muted-foreground">
+            {t('test.pathHint')}
+          </p>
           {stillPattern && (
             <p role="note" className="flex items-start gap-2 text-[11px] text-hazard-fg">
               <AlertTriangleIcon aria-hidden className="mt-px size-3.5 shrink-0" />

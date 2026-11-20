@@ -353,6 +353,45 @@
   & > :nth-child(11) { animation-delay: 0.33s; }
 }
 
+/* A step card the scenario builder just moved: one signal-tinted flash on both cards that swapped. */
+@keyframes wmui-move-flash {
+  from {
+    box-shadow: 0 0 0 2px var(--signal);
+    background-color: color-mix(in oklab, var(--signal) 12%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@utility move-flash {
+  animation: wmui-move-flash 1.2s ease-out;
+}
+
+/* The guide's rendered Markdown: readable line length, console accents for code and tables. */
+@utility guide-prose {
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  & h2 { font-family: "Rajdhani", "JetBrains Mono", ui-sans-serif, sans-serif; font-size: 1.5rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; margin: 1.5rem 0 0.5rem; }
+  & h3 { font-family: "Rajdhani", "JetBrains Mono", ui-sans-serif, sans-serif; font-size: 1.15rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin: 1.25rem 0 0.4rem; color: var(--signal-fg); }
+  & h4 { font-weight: 600; margin: 1rem 0 0.25rem; }
+  & p, & ul, & ol, & table, & pre, & details, & blockquote { margin: 0.5rem 0; }
+  & ul { list-style: disc; padding-inline-start: 1.25rem; }
+  & ol { list-style: decimal; padding-inline-start: 1.25rem; }
+  & li { margin: 0.2rem 0; }
+  & li > p { margin: 0; }
+  & a { color: var(--signal-fg); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, var(--signal) 45%, transparent); }
+  & a:hover { text-decoration-color: currentColor; }
+  & strong { font-weight: 600; color: var(--foreground); }
+  & code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.92em; padding: 0.05rem 0.3rem; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--line); overflow-wrap: anywhere; }
+  & pre { overflow-x: auto; padding: 0.75rem; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); font-size: 0.75rem; line-height: 1.55; }
+  & pre code { padding: 0; border: 0; background: none; overflow-wrap: normal; }
+  & table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.75rem; }
+  & th, & td { border: 1px solid var(--line); padding: 0.35rem 0.6rem; text-align: start; vertical-align: top; }
+  & th { background: var(--surface-2); font-weight: 600; }
+  & blockquote { border-inline-start: 3px solid var(--hazard); padding-inline-start: 0.75rem; color: var(--muted-foreground); }
+  & hr { border-color: var(--line); margin: 1rem 0; }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -401,6 +440,7 @@
   .status-pulse,
   .recording-pulse,
   .live-flash,
+  .move-flash,
   .stagger-children > * {
     animation: none !important;
   }

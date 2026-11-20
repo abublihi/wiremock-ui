@@ -79,20 +79,29 @@ export function removeStep(steps: BuilderStep[], id: string): BuilderStep[] {
 }
 
 /**
- * Swaps a step with its neighbour (`by` -1 up, +1 down); the same array when it can't move. The first step always
- * answers in Started, so a step moving into first place hands its state name to the step it displaces.
+ * Swaps a step's answer (status, headers, body, delay — and, editing, its mock) with its neighbour's (`by` -1 up,
+ * +1 down); the same array when it can't move. The scenario's states stay with the positions: step 1 always answers
+ * in Started, step 2 keeps its state name and its "then move to" whichever answer sits there, and a move that pointed
+ * at one of the two positions still points at that position.
  */
 export function moveStep(steps: BuilderStep[], id: string, by: -1 | 1): BuilderStep[] {
   const i = steps.findIndex((s) => s.id === id)
   const j = i + by
   if (i === -1 || j < 0 || j >= steps.length) return steps
-  const next = [...steps]
-  ;[next[i], next[j]] = [next[j], next[i]]
-  if (i === 0 || j === 0) {
-    next[1] = { ...next[1], state: next[0].state }
-    next[0] = { ...next[0], state: '' }
-  }
+  const a = `step:${steps[i].id}`
+  const b = `step:${steps[j].id}`
+  const samePosition = (move: MoveTo): MoveTo => (move === a ? (b as MoveTo) : move === b ? (a as MoveTo) : move)
+  const next = steps.map((s) => ({ ...s, moveTo: samePosition(s.moveTo) }))
+  next[i] = { ...steps[j], state: steps[i].state, moveTo: samePosition(steps[i].moveTo) }
+  next[j] = { ...steps[i], state: steps[j].state, moveTo: samePosition(steps[j].moveTo) }
   return next
+}
+
+/** A short name for a step's answer: its status and the start of its body ("404 · {\"error\":\"not found\"}"). */
+export function answerLabel(step: BuilderStep): string {
+  const body = step.body.replace(/\s+/g, ' ').trim()
+  const snippet = body.length > 24 ? `${body.slice(0, 24)}…` : body
+  return [step.status.trim() || '—', snippet].filter(Boolean).join(' · ')
 }
 
 const isInt = (text: string) => /^-?\d+$/.test(text.trim())

@@ -42,6 +42,7 @@ for (const theme of ['dark', 'light'] as const) {
         ['/integrations/nic/endpoints/new', 'Add endpoint'],
         ['/integrations/nic/endpoints/fetch-citizen/edit', 'Edit endpoint'],
         ['/users', 'Users'],
+        ['/guide', 'Guide'],
       ]
       for (const [url, heading] of pages) {
         await test.step(url, async () => {
@@ -65,6 +66,14 @@ for (const theme of ['dark', 'light'] as const) {
       await page.goto('/mocks/new')
       await expect(page.getByRole('link', { name: 'Add one endpoint to NIC' })).toBeVisible()
       await page.waitForLoadState('networkidle')
+      await expectNoSeriousViolations(page)
+    })
+
+    test('the help panel', async ({ page }) => {
+      await signIn(page, USER_A)
+      await page.goto('/requests')
+      await page.getByRole('button', { name: /How this works/ }).click()
+      await expect(page.getByRole('dialog', { name: 'Request log and near misses' })).toBeVisible()
       await expectNoSeriousViolations(page)
     })
 

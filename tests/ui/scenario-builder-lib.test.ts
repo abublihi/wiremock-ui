@@ -9,6 +9,7 @@ import {
   hasErrors,
   lastStateMocks,
   lastStepMocks,
+  answerLabel,
   moveStep,
   movedOn,
   nextStateName,
@@ -69,6 +70,28 @@ describe('scenario builder: states and moves', () => {
     expect(moveStep(steps, 'c', -1).map((s) => s.id)).toEqual(['a', 'c', 'b'])
     expect(moveStep(steps, 'a', -1)).toBe(steps)
     expect(moveStep(steps, 'c', 1)).toBe(steps)
+  })
+
+  it('moving swaps answers only: state names and "then move to" stay with the positions', () => {
+    const steps = [
+      step('a', { status: '200', body: 'one' }),
+      step('b', { state: 'paid', status: '202', body: 'two', moveTo: 'step:a' }),
+      step('c', { state: 'shipped', status: '404', body: 'three', delaySeconds: '2', moveTo: 'stay' }),
+    ]
+    const before = steps.map((_, i) => [stepState(steps, i), targetOf(steps, i)])
+    const moved = moveStep(steps, 'c', -1)
+    expect(moved.map((s) => [s.id, s.status, s.body, s.delaySeconds])).toEqual([['a', '200', 'one', ''], ['c', '404', 'three', '2'], ['b', '202', 'two', '']])
+    // The state machine is the same: Started → paid, paid → Started, shipped stays.
+    expect(moved.map((_, i) => [stepState(moved, i), targetOf(moved, i)])).toEqual(before)
+    // A move pointing at a swapped position follows the position, not the answer.
+    const pointing = [step('a', { moveTo: 'step:c' }), step('b', { state: 'b' }), step('c', { state: 'c' })]
+    expect(targetOf(moveStep(pointing, 'c', -1), 0)).toBe('c')
+  })
+
+  it('names an answer by its status and the start of its body', () => {
+    expect(answerLabel(step('a', { status: '404', body: 'body-two' }))).toBe('404 · body-two')
+    expect(answerLabel(step('a', { status: '200', body: '{\n  "status": "pending", "id": 42 }' }))).toBe('200 · { "status": "pending", "…')
+    expect(answerLabel(step('a', { status: '' }))).toBe('—')
   })
 
   it('a step moving into first place answers in Started and hands its state name to the step it displaces', () => {

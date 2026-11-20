@@ -55,17 +55,19 @@ describe('HazardStrip', () => {
 describe('AppShell', () => {
   it('shows every nav item to a signed-in user', async () => {
     await renderShell(user())
-    expect(navLabels()).toEqual(['Mocks', 'Scenarios', 'Request log', 'Recording', 'Integrations', 'Import & export', 'Users', 'Audit'])
+    expect(navLabels()).toEqual(['Mocks', 'Scenarios', 'Request log', 'Recording', 'Integrations', 'Import & export', 'Users', 'Audit', 'Guide'])
   })
 
-  it('groups the nav by how people work: Work, Setup, Admin (Import is not under Admin)', async () => {
+  it('groups the nav by how people work: Work, Setup, Admin, then Help (Import is not under Admin)', async () => {
     await renderShell(user())
     const nav = screen.getByRole('navigation', { name: 'Main navigation' })
     const group = (name: string) => within(within(nav).getByRole('group', { name })).getAllByRole('link').map((a) => a.textContent?.trim())
-    expect(within(nav).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Work', 'Setup', 'Admin'])
+    expect(within(nav).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Work', 'Setup', 'Admin', 'Help'])
     expect(group('Work')).toEqual(['Mocks', 'Scenarios', 'Request log', 'Recording'])
     expect(group('Setup')).toEqual(['Integrations', 'Import & export'])
     expect(group('Admin')).toEqual(['Users', 'Audit'])
+    expect(group('Help')).toEqual(['Guide'])
+    expect(within(nav).getByText('// Help')).toBeTruthy()
     expect(within(nav).getByText('// Work')).toBeTruthy()
     expect(within(nav).getByText('// Setup')).toBeTruthy()
     expect(within(nav).getByText('// Admin')).toBeTruthy()
