@@ -23,6 +23,7 @@ import { EndpointInfo, EndpointPicker } from './EndpointPicker'
 import { MockEditor } from './MockEditor'
 
 /**
+ * `key`: with an endpoint, the key value the new mock starts with ("Make a mock for p-2" from a near miss).
  * `from`: a logged request id to start from ("Create mock from this request").
  * `scenario` + `state`: a step added to a scenario ("Add a mock to this scenario"): the mock starts in it, answering in `state`.
  * `after`: the scenario's current last state; once saved, the mocks answering there can be made to move on to the new state.
@@ -30,6 +31,7 @@ import { MockEditor } from './MockEditor'
 export type NewMockSearch = {
   integration?: string
   endpoint?: string
+  key?: string
   /** `json`: a blank free-form stub; `url`: a quick mock of a URL, without an integration. */
   mode?: 'json' | 'url'
   from?: string
@@ -197,6 +199,7 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
       <MockEditor
         key={`${integration.key}/${endpoint.key}`}
         catalog={{ integration, endpoint }}
+        keyValue={search.key}
         scenarioSeed={seed}
         onFormChange={seed ? onFormChange : undefined}
         onSaved={open}

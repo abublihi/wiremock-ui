@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { AlertCircleIcon, PlusIcon, RotateCwIcon, TerminalIcon } from 'lucide-react'
 import type { LoggedEvent } from '@/server/wiremock/types'
-import { useRequest } from '@/ui/api/queries'
+import { useNearMisses, useRequest } from '@/ui/api/queries'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { StatusBadge } from '@/ui/components/common/StatusBadge'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
@@ -15,7 +15,7 @@ import { useT } from '@/ui/i18n'
 import { curlFromLoggedRequest } from '@/ui/lib/curl'
 import { draftFromLoggedRequest } from '@/ui/lib/test-request'
 import { Body, HeaderTable, type Headers, Part, prettyBody } from './HttpParts'
-import { NearMissPanel } from './NearMissPanel'
+import { NearMissPanel, createMockSearch } from './NearMissPanel'
 import { NoMatchStamp } from './NoMatchStamp'
 import { LoggedTime } from './RequestTable'
 
@@ -33,6 +33,8 @@ function DrawerBody({ id }: { id: string }) {
   const event = useRequest(id)
   const publicUrl = useWiremockPublicUrl()
   const [resending, setResending] = useState(false)
+  // Shares the near-miss panel's query: the closest near miss decides where "Create mock" goes.
+  const misses = useNearMisses(id, { enabled: event.data ? !event.data.wasMatched : false })
 
   if (event.isPending) {
     return (
@@ -129,7 +131,7 @@ function DrawerBody({ id }: { id: string }) {
           {t('request.resend')}
         </Button>
         <Button asChild>
-          <Link to="/mocks/new" search={{ from: id }}>
+          <Link to="/mocks/new" search={e.wasMatched ? { from: id } : createMockSearch(id, misses.data?.[0])}>
             <PlusIcon data-icon="inline-start" />
             {t('request.createMock')}
           </Link>

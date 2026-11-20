@@ -265,7 +265,8 @@ const detail = (over: Record<string, unknown> = {}) => ({
 
 const misses = [
   {
-    stub: { id: 'stub-refund', name: 'Refund ok', owner: 'omar', integration: 'pay' },
+    stub: { id: 'stub-refund', name: 'Refund ok', owner: 'omar', integration: 'pay', endpoint: null },
+    keyValue: null,
     distance: 0.12,
     diffs: [
       { field: 'method', expected: 'equalTo POST', actual: 'POST', matched: true },
@@ -273,7 +274,17 @@ const misses = [
       { field: 'body', expected: 'matchesXPath //a', actual: null, matched: null },
     ],
   },
-  { stub: { id: 'stub-2', name: null, owner: null, integration: null }, distance: 0.4, diffs: [] },
+  { stub: { id: 'stub-2', name: null, owner: null, integration: null, endpoint: null }, keyValue: null, distance: 0.4, diffs: [] },
+]
+/** The closest near miss is a mock of the Payments "refund" endpoint, which keys on the paymentId path variable. */
+const endpointMisses = [
+  {
+    stub: { id: 'stub-p1', name: 'Refund — p-1', owner: 'omar', integration: 'pay', endpoint: 'refund' },
+    keyValue: 'p-2',
+    distance: 0.05,
+    diffs: [{ field: 'pathParam.paymentId', expected: 'equalTo p-1', actual: 'p-2', matched: false }],
+  },
+  ...misses,
 ]
 
 function mockDetail(nearMisses: unknown[] = misses) {
@@ -307,6 +318,26 @@ describe('request drawer', () => {
     await renderApp(<Harness initial={{ open: 'b' }} />)
     const create = await screen.findByRole('link', { name: 'Create mock from this request' })
     expect(create.getAttribute('href')).toBe('/mocks/new?from=b')
+  })
+
+  it('"Create mock from this request" opens Simple on the closest endpoint with its key filled in', async () => {
+    mockDetail(endpointMisses)
+    await renderApp(<Harness initial={{ open: 'b' }} />)
+    const drawer = await screen.findByRole('dialog')
+    await within(drawer).findByRole('article', { name: 'Refund — p-1' })
+    const create = within(drawer).getByRole('link', { name: 'Create mock from this request' })
+    await waitFor(() => expect(create.getAttribute('href')).toBe('/mocks/new?integration=pay&endpoint=refund&key=p-2'))
+  })
+
+  it('each endpoint near miss offers "Make a mock for <value>"', async () => {
+    mockDetail(endpointMisses)
+    await renderApp(<Harness initial={{ open: 'b' }} />)
+    const card = await screen.findByRole('article', { name: 'Refund — p-1' })
+    const make = within(card).getByRole('link', { name: 'Make a mock for p-2' })
+    expect(make.getAttribute('href')).toBe('/mocks/new?integration=pay&endpoint=refund&key=p-2')
+    // A free-form mock has no endpoint key to fill in.
+    const other = screen.getByRole('article', { name: 'Refund ok' })
+    expect(within(other).queryByRole('link', { name: /Make a mock for/ })).toBeNull()
   })
 
   it('explains the near misses: mismatches first, highlighted; unchecked rows say why', async () => {

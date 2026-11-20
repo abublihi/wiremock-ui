@@ -33,6 +33,7 @@ import {
   quickEndpoint,
   quickMockName,
   seedScenario,
+  withKey,
   toQuickInput,
   toSimpleInput,
 } from '@/ui/lib/editor-sync'
@@ -146,6 +147,7 @@ export function SimpleEditor({
   endpoint: catalogEndpoint,
   initial,
   mock,
+  keyValue,
   scenarioSeed,
   onChange,
   onSaved,
@@ -155,6 +157,8 @@ export function SimpleEditor({
   endpoint?: Endpoint
   initial?: SimpleForm
   mock?: StubMapping
+  /** A new endpoint mock's key value (when `initial` is not given). */
+  keyValue?: string
   /** A new mock's scenario (when `initial` is not given): the Scenario section starts on and filled in. */
   scenarioSeed?: ScenarioSeed
   onChange?: (form: SimpleForm) => void
@@ -168,7 +172,7 @@ export function SimpleEditor({
 
   const catalog = catalogIntegration && catalogEndpoint ? { integration: catalogIntegration, endpoint: catalogEndpoint } : undefined
   const [form, setForm] = useState<SimpleForm>(
-    () => initial ?? (catalog ? seedScenario(emptyForm(catalog.endpoint), scenarioSeed) : emptyQuickForm(scenarioSeed)),
+    () => initial ?? (catalog ? seedScenario(withKey(emptyForm(catalog.endpoint), catalog.endpoint, keyValue), scenarioSeed) : emptyQuickForm(scenarioSeed)),
   )
   // A quick mock: its request (method, URL, …) is part of the form and stands in for the endpoint below.
   const quick = form.quick

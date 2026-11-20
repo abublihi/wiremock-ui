@@ -34,6 +34,7 @@ import {
   linkOf,
   parseStubJson,
   seedScenario,
+  withKey,
   toEditable,
   toQuickInput,
   toSimpleInput,
@@ -63,6 +64,7 @@ const messageOf = (error: unknown, fallback: string) => (error instanceof Error 
 export function MockEditor({
   mock,
   catalog,
+  keyValue,
   quick,
   initialStub,
   scenarioSeed,
@@ -78,6 +80,8 @@ export function MockEditor({
   mock?: StubMapping
   /** The catalog endpoint Simple mode edits; undefined for a free-form mock. */
   catalog?: Catalog
+  /** A new endpoint mock's key value ("Make a mock for p-2"); ignored when the endpoint has no key. */
+  keyValue?: string
   /** A new quick mock of a URL ("Mock a URL directly"): opens in the quick Simple form. */
   quick?: boolean
   /** A new free-form mock's starting JSON (instead of the blank stub): in the quick form when it can show it, else Advanced. */
@@ -106,7 +110,7 @@ export function MockEditor({
     const form = catalog
       ? mock
         ? fromStub(mock, catalog.integration, catalog.endpoint)
-        : seedScenario(emptyForm(catalog.endpoint), scenarioSeed)
+        : seedScenario(withKey(emptyForm(catalog.endpoint), catalog.endpoint, keyValue), scenarioSeed)
       : quickable && mock
         ? fromQuickStub(mock)
         : quickable && quick
@@ -283,6 +287,7 @@ export function MockEditor({
               // A fresh new mock lets the body follow the catalog example; anything else is the user's draft.
               initial={mock || initialStub || simple.n > 0 ? simple.form : undefined}
               mock={mock}
+              keyValue={keyValue}
               scenarioSeed={scenarioSeed}
               onChange={(form) => {
                 formRef.current = form

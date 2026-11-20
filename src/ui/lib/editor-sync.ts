@@ -153,6 +153,11 @@ export function emptyForm(endpoint: Endpoint): SimpleForm {
 export type ScenarioSeed = { name: string; requiredState: string }
 
 /** The form with its Scenario section turned on for `seed` (unchanged without one). */
+/** A new endpoint mock starting with a key value ("Make a mock for p-2"); unchanged when the endpoint has no key. */
+export function withKey(form: SimpleForm, endpoint: Endpoint, keyValue: string | undefined): SimpleForm {
+  return keyValue !== undefined && endpoint.lookup ? { ...form, isDefault: false, keyValue } : form
+}
+
 export function seedScenario(form: SimpleForm, seed: ScenarioSeed | undefined): SimpleForm {
   return seed ? { ...form, scenario: { enabled: true, name: seed.name, requiredState: seed.requiredState, newState: '' } } : form
 }

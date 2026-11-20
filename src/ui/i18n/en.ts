@@ -719,6 +719,7 @@ export const en = {
   'near.oneLine': 'Expects {field} {expected}; this request had {actual}.',
   'near.oneLineMissing': 'Expects {field} {expected}; this request had none.',
   'near.rank': '#{rank}',
+  'near.makeFor': 'Make a mock for {value}',
   'near.field': 'Field',
   'near.expected': 'Expected',
   'near.actual': 'Actual',

@@ -8,6 +8,7 @@ import { Button } from '@/ui/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader } from '@/ui/components/ui/empty'
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { Term } from '@/ui/components/guide/Term'
+import type { NewMockSearch } from '@/ui/components/editor/NewMockPage'
 import { useT } from '@/ui/i18n'
 import { type DiffRow, type FieldState, diffRows, diffSummary } from '@/ui/lib/diff'
 import { cn } from '@/ui/lib/utils'
@@ -19,6 +20,16 @@ const STATE_TEXT: Record<FieldState, string> = {
   unchecked: 'text-muted-foreground',
 }
 const STATE_LABEL = { match: 'near.match', mismatch: 'near.mismatch', unchecked: 'near.unchecked' } as const
+
+/**
+ * Where "Create mock from this request" goes: Simple mode on the closest near miss's endpoint, its key filled in from
+ * this request, when that mock belongs to an endpoint; otherwise the quick URL form prefilled from the request.
+ */
+export function createMockSearch(requestId: string, closest: NearMissView | undefined): NewMockSearch {
+  const miss = closest?.stub.integration && closest.stub.endpoint ? closest : undefined
+  if (!miss) return { from: requestId }
+  return { integration: miss.stub.integration!, endpoint: miss.stub.endpoint!, ...(miss.keyValue !== null ? { key: miss.keyValue } : {}) }
+}
 
 /** Up to three closest mocks for an unmatched request, each explained field by field. */
 export function NearMissPanel({ requestId }: { requestId: string }) {
@@ -84,6 +95,8 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
   const nearness = miss.distance < 0.1 ? t('near.closest') : miss.distance < 0.3 ? t('near.close') : t('near.far')
   // The first difference in one plain sentence, above the table.
   const first = rows.find((r) => r.state === 'mismatch')
+  // "Make a mock for p-2": a mock of the same endpoint for the key this request had.
+  const makeFor = miss.stub.endpoint && miss.keyValue !== null ? createMockSearch('', miss) : undefined
 
   return (
     <article aria-labelledby={titleId} className="glow-border overflow-hidden rounded-md border border-line bg-surface">
@@ -126,12 +139,24 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
           </span>
         </div>
       </header>
-      {first && (
-        <p className="border-b border-line px-3 py-2 text-xs">
-          {first.actual === null
-            ? t('near.oneLineMissing', { field: first.field, expected: first.expected })
-            : t('near.oneLine', { field: first.field, expected: first.expected, actual: first.actual })}
-        </p>
+      {(first || makeFor) && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-3 py-2">
+          {first && (
+            <p className="min-w-0 text-xs">
+              {first.actual === null
+                ? t('near.oneLineMissing', { field: first.field, expected: first.expected })
+                : t('near.oneLine', { field: first.field, expected: first.expected, actual: first.actual })}
+            </p>
+          )}
+          {makeFor && (
+            <Button asChild size="sm" variant="outline" className="ms-auto">
+              <Link to="/mocks/new" search={makeFor}>
+                <PlusIcon data-icon="inline-start" />
+                <span className="min-w-0 truncate">{t('near.makeFor', { value: miss.keyValue! })}</span>
+              </Link>
+            </Button>
+          )}
+        </div>
       )}
       {rows.length === 0 ? (
         <p className="px-3 py-3 text-xs text-muted-foreground">{t('near.noFields')}</p>

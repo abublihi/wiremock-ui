@@ -98,6 +98,13 @@ describe('new mock — endpoint picker', () => {
     expect(screen.getByRole('option', { name: /Ping/ })).toBeTruthy()
   })
 
+  it('starts with the key from the URL ("Make a mock for 999" from a near miss)', async () => {
+    mockCatalog([endpoint()])
+    await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'get-citizen-info', key: '999' }} />)
+    const key = (await screen.findByLabelText('Value of $.idNo in the request body')) as HTMLInputElement
+    expect(key.value).toBe('999')
+  })
+
   it('shows the endpoint description and only http(s) links, opening in a new tab', async () => {
     mockCatalog([endpoint()])
     await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'get-citizen-info' }} />)

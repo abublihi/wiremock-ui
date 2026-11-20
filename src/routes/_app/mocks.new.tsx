@@ -8,6 +8,7 @@ export const Route = createFileRoute('/_app/mocks/new')({
   validateSearch: (raw: Record<string, unknown>): NewMockSearch => ({
     integration: str(raw.integration),
     endpoint: str(raw.endpoint),
+    key: str(raw.key),
     mode: raw.mode === 'json' || raw.mode === 'url' ? raw.mode : undefined,
     from: str(raw.from),
     scenario: str(raw.scenario),
