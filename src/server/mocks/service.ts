@@ -37,14 +37,11 @@ function matchesQuery(stub: StubMapping, q: string): boolean {
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** Shape and content rules for a stub arriving from a bundle; throws ValidationError. */
-export function assertValidStub(
-  stub: unknown,
-  opts: { allowBodyFile?: boolean } = {},
-): asserts stub is Record<string, unknown> & Pick<StubBase, 'request' | 'response'> {
+export function assertValidStub(stub: unknown): asserts stub is Record<string, unknown> & Pick<StubBase, 'request' | 'response'> {
   if (!isObject(stub)) throw new ValidationError('mock must be an object')
   if (!isObject(stub.request)) throw new ValidationError('mock.request must be an object')
   if (!isObject(stub.response)) throw new ValidationError('mock.response must be an object')
-  if (!opts.allowBodyFile && 'bodyFileName' in stub.response) throw new ValidationError('bodyFileName is not supported; put the body inline')
+  if ('bodyFileName' in stub.response) throw new ValidationError('bodyFileName is not supported; put the body inline')
 }
 
 const IGNORED_META = ['version', 'updatedAt', 'updatedBy', 'source'] as const
@@ -73,7 +70,7 @@ export function canonicalJson(value: unknown): string {
 }
 
 /** How a mock entered the store other than through the editor. */
-export type ImportSource = 'import' | 'seed' | 'adopt'
+export type ImportSource = 'import' | 'seed'
 
 const ownerOf = (stub: StubMapping) => stub.metadata?.wiremockUi?.owner ?? 'baseline'
 
@@ -190,7 +187,7 @@ export class MockService {
     source: ImportSource,
     actor: string,
   ): Promise<'created' | 'updated' | 'unchanged'> {
-    assertValidStub(stub, { allowBodyFile: source === 'adopt' })
+    assertValidStub(stub)
     const { uuid: _uuid, ...clean } = stub
     const previous = await this.store.get(stub.id)
     const ui = stub.metadata?.wiremockUi
@@ -253,8 +250,7 @@ export class MockService {
     previous: StubMapping | null,
     override?: { owner: string; version: number; source?: ImportSource },
   ): Promise<StubMapping> {
-    // An adopted stub is taken over as WireMock already serves it, file-backed body included.
-    if (override?.source !== 'adopt') this.validate(input)
+    this.validate(input)
     const prevMeta = previous?.metadata?.wiremockUi
     const wiremockUi: WireMockUiMeta = {
       integration: input.metadata?.wiremockUi?.integration,
@@ -276,7 +272,9 @@ export class MockService {
 
     if (this.storeIsWireMock) {
       await this.store.save(stub, expectedVersion)
-      return stub
+      // The store keeps a stub WireMock holds in its own files persistent: report what was stored.
+      const stored = await this.store.get(id)
+      return stored ? { ...stub, persistent: stored.persistent } : stub
     }
     await this.wiremock.importStubs([stub], { deleteAllNotInImport: false })
     try {

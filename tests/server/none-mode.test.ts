@@ -78,7 +78,10 @@ test('an edit goes straight to WireMock with the version check; a stale version 
   const stub = { name: 'own 2 edited', request: { method: 'GET', urlPath: '/two' }, response: { status: 201, body: 'edited' } }
   const res = await updateMock(rt, req(`/api/mocks/${uid(2)}`, 'PUT', { stub, version: 1 }, as), { id: uid(2) })
   expect(res.status).toBe(200)
-  expect((await res.json()).metadata.wiremockUi).toMatchObject({ owner: 'wiremock', version: 2, updatedBy: 'ui-admin' })
+  const saved = await res.json()
+  expect(saved.metadata.wiremockUi).toMatchObject({ owner: 'wiremock', version: 2, updatedBy: 'ui-admin' })
+  // The response says what was stored: the stub stays persistent in WireMock.
+  expect(saved.persistent).toBe(true)
   const served = await fetch(`${wm.url}/two`)
   expect([served.status, await served.text()]).toEqual([201, 'edited'])
   expect((await client.getStub(uid(2)))?.persistent).toBe(true)
@@ -125,6 +128,13 @@ test('the catalog is seeded from SEED_PATH into memory; healthz is up without a 
   const res = await healthz(rt, new Request('http://ui.test/healthz'))
   expect(res.status).toBe(200)
   expect(await res.json()).toMatchObject({ store: 'ok', wiremock: 'ok', lastSyncAt: null, lastSyncError: null })
+})
+
+test('an import with prune is refused (it would delete stubs from the user\'s WireMock)', async () => {
+  const res = await runImport(rt, req('/api/import?prune=true', 'POST', { mocks: [own(8, '/pruned-import')] }, auth))
+  expect(res.status).toBe(400)
+  expect(await res.json()).toEqual({ error: 'Prune is not available in WireMock-only mode' })
+  expect(await client.getStub(uid(8))).toBeNull()
 })
 
 test('an import writes into WireMock without touching other stubs', async () => {

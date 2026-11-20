@@ -42,7 +42,7 @@ test('stubs made outside the UI are presented as version 1 owned by wiremock; th
   const got = await store.get(ID1)
   expect(got?.metadata).toEqual({
     team: 'qa',
-    wiremockUi: { owner: 'wiremock', version: 1, updatedAt: '', updatedBy: 'wiremock', source: 'adopt' },
+    wiremockUi: { owner: 'wiremock', version: 1, updatedAt: '', updatedBy: 'wiremock', source: 'wiremock' },
   })
   expect(got?.uuid).toBeUndefined()
   expect(await store.get(MARKER_ID)).toBeNull()

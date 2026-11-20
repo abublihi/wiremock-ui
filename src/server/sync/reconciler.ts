@@ -8,6 +8,8 @@ import { MARKER_ID, markerStub } from './marker'
 /** Held by a full sync and by adoption, so the two never run at once (on any instance). */
 export const SYNC_LOCK = 'sync:lock'
 export const SYNC_LOCK_TTL_MS = 60_000
+/** Store flag: WireMock's existing stubs are still being adopted, so a full sync must not delete them. */
+export const ADOPTION_PENDING = 'adoption-pending'
 
 type Deps = {
   wiremock: WireMockClient
@@ -83,7 +85,10 @@ export class Reconciler {
       }
 
       const known = new Set(snapshot.map((s) => s.id))
-      for (const id of await this.wiremock.listStubIds()) {
+      // Stubs not adopted yet are not in the store: keep every live stub until adoption completes.
+      const adopting = await this.store.getFlag(ADOPTION_PENDING)
+      if (adopting) logger.warn('adoption pending: full sync keeps WireMock stubs that are not in the store')
+      for (const id of adopting ? [] : await this.wiremock.listStubIds()) {
         if (known.has(id)) continue
         // A mock saved after the snapshot is in the store: leave it alone.
         if (id !== MARKER_ID && (await this.store.get(id)) !== null) continue

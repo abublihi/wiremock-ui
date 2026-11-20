@@ -26,6 +26,8 @@ const fakeStore = (pings: boolean[] = []): Stores =>
       get: async () => null,
       acquireLock: async () => 'tok',
       releaseLock: async () => {},
+      getFlag: async () => false,
+      setFlag: async () => {},
     },
     users: { countUsers: async () => 1 },
     audit: { record: async () => {} },

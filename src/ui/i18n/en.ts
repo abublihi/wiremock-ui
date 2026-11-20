@@ -439,6 +439,7 @@ export const en = {
   'users.caption': '// {count} users',
   'users.captionOne': '// 1 user',
   'users.add': 'Add user',
+  'users.unavailable': 'User management is not available in WireMock-only mode — sign in with ADMIN_USER',
   'users.loadFailed': 'Could not load users',
   'users.retry': 'Retry',
   'users.emptyTitle': 'No users',

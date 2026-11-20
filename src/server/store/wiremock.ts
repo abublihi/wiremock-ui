@@ -21,7 +21,7 @@ export function present(stub: StubMapping): StubMapping {
     version: typeof ui?.version === 'number' ? ui.version : 1,
     updatedAt: typeof ui?.updatedAt === 'string' ? ui.updatedAt : '',
     updatedBy: typeof ui?.updatedBy === 'string' ? ui.updatedBy : WIREMOCK_OWNER,
-    source: ui?.source ?? 'adopt',
+    source: ui?.source ?? 'wiremock',
   }
   return { ...rest, metadata: { ...stub.metadata, wiremockUi } }
 }
@@ -84,6 +84,13 @@ export class WireMockMockStore implements MockStore {
   }
 
   async releaseLock(_name: string, _token: string): Promise<void> {}
+
+  /** Nothing to remember between runs in WireMock-only mode: flags are always off. */
+  async getFlag(_name: string): Promise<boolean> {
+    return false
+  }
+
+  async setFlag(_name: string, _on: boolean): Promise<void> {}
 
   ping(): Promise<boolean> {
     return this.wiremock.ping()

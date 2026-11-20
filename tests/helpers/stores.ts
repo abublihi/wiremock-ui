@@ -102,6 +102,7 @@ const TABLES = [
   'audit_log',
   'integrations',
   'endpoints',
+  'flags',
 ]
 
 function sqliteHarness(): StoreHarness {

@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS integrations (
   json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS flags (name TEXT PRIMARY KEY);
+
 CREATE TABLE IF NOT EXISTS endpoints (
   integration TEXT NOT NULL,
   key TEXT NOT NULL,

@@ -49,6 +49,18 @@ describe.each(drivers)('MockStore on %s', (driver, start) => {
     await h.probe.reset()
   })
 
+  test('flags are off until set, survive a reopen, and clear', async () => {
+    expect(await store.getFlag('adoption-pending')).toBe(false)
+    await store.setFlag('adoption-pending', true)
+    await store.setFlag('adoption-pending', true)
+    expect(await store.getFlag('adoption-pending')).toBe(true)
+    expect(await store.getFlag('other')).toBe(false)
+    if (h.reopen) store = h.reopen().mocks
+    expect(await store.getFlag('adoption-pending')).toBe(true)
+    await store.setFlag('adoption-pending', false)
+    expect(await store.getFlag('adoption-pending')).toBe(false)
+  })
+
   test('save new then get', async () => {
     const s = mk(A, { version: 1 })
     await store.save(s, 0)

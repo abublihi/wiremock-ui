@@ -5,6 +5,7 @@ import { useImport } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Spinner } from '@/ui/components/ui/spinner'
+import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 import { cn } from '@/ui/lib/utils'
 
@@ -41,6 +42,8 @@ type Loaded = { name: string; bundle: unknown; summary: ImportSummary }
 
 export function ImportPanel() {
   const t = useT()
+  // Prune would delete stubs from the user's own WireMock: not offered in WireMock-only mode.
+  const wiremockOnly = useWireMockOnly()
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
   const run = useImport()
@@ -152,24 +155,26 @@ export function ImportPanel() {
             <Stat label={t('import.summaryMocks')} value={loaded.summary.mocks} />
             {loaded.summary.oidcIdentities > 0 && <Stat label={t('import.summaryIdentities')} value={loaded.summary.oidcIdentities} />}
           </dl>
-          <div className="flex items-start gap-2">
-            <input
-              id={`${inputId}-prune`}
-              type="checkbox"
-              checked={prune}
-              onChange={(e) => setPrune(e.target.checked)}
-              aria-describedby={`${inputId}-prune-hint`}
-              className="mt-0.5 size-4 shrink-0 accent-[var(--signal)]"
-            />
-            <div className="flex flex-col gap-0.5">
-              <label htmlFor={`${inputId}-prune`} className="cursor-pointer text-[11px]">
-                {t('import.prune')}
-              </label>
-              <p id={`${inputId}-prune-hint`} className="text-[10px] text-muted-foreground">
-                {t('import.pruneHint')}
-              </p>
+          {!wiremockOnly && (
+            <div className="flex items-start gap-2">
+              <input
+                id={`${inputId}-prune`}
+                type="checkbox"
+                checked={prune}
+                onChange={(e) => setPrune(e.target.checked)}
+                aria-describedby={`${inputId}-prune-hint`}
+                className="mt-0.5 size-4 shrink-0 accent-[var(--signal)]"
+              />
+              <div className="flex flex-col gap-0.5">
+                <label htmlFor={`${inputId}-prune`} className="cursor-pointer text-[11px]">
+                  {t('import.prune')}
+                </label>
+                <p id={`${inputId}-prune-hint`} className="text-[10px] text-muted-foreground">
+                  {t('import.pruneHint')}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
           {run.isError && (
             <Alert variant="destructive" role="alert">
               <AlertCircleIcon />

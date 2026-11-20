@@ -121,6 +121,15 @@ export class SqliteMockStore implements MockStore {
     this.sql.stmt('DELETE FROM locks WHERE name = ? AND token = ?').run(name, token)
   }
 
+  async getFlag(name: string): Promise<boolean> {
+    return this.sql.stmt('SELECT 1 FROM flags WHERE name = ?').get(name) !== undefined
+  }
+
+  async setFlag(name: string, on: boolean): Promise<void> {
+    if (on) this.sql.stmt('INSERT INTO flags (name) VALUES (?) ON CONFLICT (name) DO NOTHING').run(name)
+    else this.sql.stmt('DELETE FROM flags WHERE name = ?').run(name)
+  }
+
   async ping(): Promise<boolean> {
     return this.sql.ping()
   }

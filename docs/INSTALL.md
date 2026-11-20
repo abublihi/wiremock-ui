@@ -68,7 +68,7 @@ npm start                     # http://localhost:3000 (PORT changes it)
 
 For development (`npm run dev`, hot reload on port 3000) on Node 22.12, set `NODE_OPTIONS=--experimental-sqlite` first.
 
-**Pointing it at a WireMock that already has stubs.** On a first start (a store with no mocks yet) the UI adopts every stub WireMock already serves: they keep their ids, show up in the mocks list owned by `wiremock` (or by the owner a stub's wiremock-ui metadata already names), and stay in WireMock. From then on the UI's store is the source of truth, so stubs added to WireMock behind the UI's back are removed by the next full sync. To only view and edit WireMock's own stubs without a store, see [Run against an existing WireMock (no storage)](#run-against-an-existing-wiremock-no-storage).
+**Pointing it at a WireMock that already has stubs.** On a first start (a store with no mocks yet) the UI adopts every stub WireMock already serves. They keep their ids, show up in the mocks list owned by `wiremock` (or by the owner a stub's wiremock-ui metadata already names), and stay in WireMock exactly as they are. The UI records that adoption is pending before it starts; if that first start stops part-way, the next start finishes the job, and until then no sync deletes anything from WireMock. From then on the UI's store is the source of truth, so stubs added to WireMock behind the UI's back are removed by the next full sync. To only view and edit WireMock's own stubs without a store, see [Run against an existing WireMock (no storage)](#run-against-an-existing-wiremock-no-storage).
 
 ### Run against an existing WireMock (no storage)
 
@@ -86,9 +86,9 @@ npm start
 
 What you give up, because nothing is stored:
 
-- **One account only**, the `ADMIN_USER` one: no Users page, and its password is changed by changing `ADMIN_PASSWORD` and restarting.
+- **One account only**, the `ADMIN_USER` one: the Users page only explains this, and its password is changed by changing `ADMIN_PASSWORD` and restarting.
 - **No history**, so no restore and no Undo after a delete.
-- **The catalog, the audit log (last 500 entries) and sign-in sessions live in memory** and are gone after a restart (everyone signs in again). `SEED_PATH` still loads a catalog on every start; its mocks are written into WireMock. `SEED_PRUNE` is ignored (with a warning in the log): the UI never deletes stubs from your WireMock on its own.
+- **The catalog, the audit log (last 500 entries) and sign-in sessions live in memory** and are gone after a restart (everyone signs in again). `SEED_PATH` still loads a catalog on every start; its mocks are written into WireMock. `SEED_PRUNE` is ignored (with a warning in the log) and the Import page offers no prune (the API answers 400): the UI never deletes stubs from your WireMock in bulk.
 - **Edits made while WireMock is down fail** (there is no copy to fall back to), and a WireMock restart keeps only what WireMock itself persists: a stub that came from WireMock's `mappings` folder stays persistent when you edit it; mocks you create in the UI are not written to WireMock's files.
 - **Two people saving the same mock at the same moment**: the version check catches most conflicts, but two saves within the same instant can both land (the later one wins).
 

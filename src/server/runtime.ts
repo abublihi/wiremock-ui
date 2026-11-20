@@ -9,7 +9,7 @@ import { MockService } from './mocks/service'
 import type { AuditLog } from './audit/log'
 import { createStores, type MockStore, type Stores } from './store'
 import { UserService } from './users/service'
-import { adoptStubs, stubsToAdopt } from './sync/adopt'
+import { adoptMissing, markAdoptionIfDue } from './sync/adopt'
 import { Reconciler } from './sync/reconciler'
 import { WireMockClient } from './wiremock/client'
 import { assertWireMockReady } from './wiremock/startup'
@@ -107,8 +107,9 @@ export async function bootRuntime(
     const reconciler = wiremockOnly
       ? null
       : new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000 })
-    // Read before the seed writes anything: an empty store takes over what WireMock already serves.
-    const adoptable = reconciler ? await stubsToAdopt(wiremock, store) : []
+    // Decided (and recorded durably) before the seed writes anything: an empty store takes over what WireMock
+    // already serves, and a boot that stops part-way leaves the decision for the next one.
+    const adoptionPending = reconciler ? await markAdoptionIfDue(wiremock, store) : false
     if (config.seedPath) {
       try {
         const { bundle, skipped } = await readBundleFromPath(config.seedPath)
@@ -134,7 +135,7 @@ export async function bootRuntime(
       }
     }
     // After the seed, so its catalog prefixes can name the integrations; before the first full sync.
-    await adoptStubs(adoptable, { mocks, store, catalog, audit })
+    if (adoptionPending) await adoptMissing({ wiremock, store, catalog, audit })
     if (reconciler) await reconciler.start()
     else logger.info({ wiremockUrl: config.wiremockUrl }, 'WireMock-only mode: mocks are read from and written to WireMock; accounts, catalog and audit are kept in memory')
     return { config, wiremock, store, stores, users, audit, mocks, catalog, requests, reconciler }
