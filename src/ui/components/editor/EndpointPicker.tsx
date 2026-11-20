@@ -225,7 +225,7 @@ function IntegrationGroup({
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate font-medium">{endpoint.name}</span>
             <span dir="ltr" className="truncate font-mono text-xs text-muted-foreground">
-              <span className="opacity-70">{prefixOf(integration)}</span>
+              <span>{prefixOf(integration)}</span>
               <span>{endpoint.path}</span>
             </span>
           </span>
