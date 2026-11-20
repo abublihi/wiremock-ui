@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { KeyRoundIcon, LogOutIcon } from 'lucide-react'
+import { ChevronsUpDownIcon, KeyRoundIcon, LogOutIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PublicUser } from '@/server/users/types'
 import { useChangePassword, useLogout } from '@/ui/api/queries'
@@ -26,6 +26,11 @@ import { Input } from '@/ui/components/ui/input'
 import { Spinner } from '@/ui/components/ui/spinner'
 import { useT } from '@/ui/i18n'
 
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return (parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : (parts[0] ?? '?').slice(0, 2)).toUpperCase()
+}
+
 export function UserMenu({ user }: { user: PublicUser }) {
   const t = useT()
   const logout = useLogout()
@@ -34,11 +39,26 @@ export function UserMenu({ user }: { user: PublicUser }) {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" aria-label={t('user.menu')} title={t('user.signedInAs', { name: user.displayName })}>
-            <span className="max-w-40 truncate font-medium">{user.displayName}</span>
+          <Button
+            variant="ghost"
+            aria-label={t('user.menu')}
+            title={t('user.signedInAs', { name: user.displayName })}
+            className="h-auto w-full justify-start gap-2.5 px-2 py-1.5 text-start"
+          >
+            <span
+              aria-hidden
+              className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-surface-2 text-[10px] font-semibold text-signal-fg uppercase"
+            >
+              {initials(user.displayName)}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate text-[11px] leading-none font-medium text-foreground">{user.displayName}</span>
+              <span className="truncate text-[10px] leading-none text-muted-foreground">@{user.username}</span>
+            </span>
+            <ChevronsUpDownIcon className="size-3.5 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-52">
           <DropdownMenuLabel>{t('user.signedInAs', { name: user.displayName })}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setPasswordOpen(true)}>

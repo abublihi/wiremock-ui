@@ -65,6 +65,21 @@ describe('AppShell', () => {
     expect(screen.getByRole('button', { name: 'Open navigation' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Theme' })).toBeTruthy()
   })
+
+  it('brands the shell with a decorative blinking cursor and the // caption', async () => {
+    await renderShell(user())
+    const cursors = document.querySelectorAll('.cursor-blink')
+    expect(cursors.length).toBeGreaterThan(0)
+    cursors.forEach((c) => expect(c.getAttribute('aria-hidden')).toBe('true'))
+    expect(screen.getAllByText('// WireMock mock console').length).toBeGreaterThan(0)
+  })
+
+  it('groups the nav under Control and Admin eyebrows', async () => {
+    await renderShell(user())
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' })
+    expect(within(nav).getByText('— Control')).toBeTruthy()
+    expect(within(nav).getByText('— Admin')).toBeTruthy()
+  })
 })
 
 describe('root document', () => {
@@ -74,6 +89,11 @@ describe('root document', () => {
   it('renders lang=en and carries the theme class', () => {
     const html = renderToString(<RootDocument prefs={prefsFromRequest(request('wmui_theme=dark'))}>x</RootDocument>)
     expect(html).toMatch(/<html[^>]*lang="en"/)
+    expect(html).toMatch(/<html[^>]*class="dark"/)
+  })
+
+  it('renders the dark theme when there is no theme cookie', () => {
+    const html = renderToString(<RootDocument prefs={prefsFromRequest(request(''))}>x</RootDocument>)
     expect(html).toMatch(/<html[^>]*class="dark"/)
   })
 })

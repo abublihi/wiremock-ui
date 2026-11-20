@@ -8,8 +8,10 @@ function MocksPlaceholder() {
   const t = useT()
   return (
     <div className="flex max-w-2xl flex-col gap-2">
-      <h1 className="font-condensed text-2xl font-semibold">{t('mocks.placeholderTitle')}</h1>
-      <p className="text-muted-foreground">{t('mocks.placeholderBody')}</p>
+      <h1 className="glow-text font-display text-4xl font-bold tracking-tight uppercase">
+        {t('mocks.placeholderTitle')}
+      </h1>
+      <p className="text-xs text-muted-foreground">{t('mocks.placeholderBody')}</p>
     </div>
   )
 }

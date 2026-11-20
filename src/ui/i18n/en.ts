@@ -1,9 +1,12 @@
 // English messages: every user-visible string lives here and goes through t().
 export const en = {
   'app.name': 'wiremock-ui',
+  'app.caption': '// WireMock mock console',
   'hazard.label': 'Test environment — mocks only, never real data',
 
   'nav.label': 'Main navigation',
+  'nav.groupControl': 'Control',
+  'nav.groupAdmin': 'Admin',
   'nav.mocks': 'Mocks',
   'nav.requests': 'Request log',
   'nav.catalog': 'Catalog',
@@ -23,6 +26,7 @@ export const en = {
   'user.signedInAs': 'Signed in as {name}',
 
   'login.title': 'Sign in',
+  'login.eyebrow': 'Authentication required',
   'login.subtitle': 'Use the account your admin created for you.',
   'login.username': 'Username',
   'login.password': 'Password',
@@ -30,7 +34,6 @@ export const en = {
   'login.submitting': 'Signing in…',
   'login.wrongCredentials': 'Wrong username or password',
   'login.rateLimited': 'Too many sign-in attempts from this network. Try again in 15 minutes.',
-
 
   'error.generic': 'Something went wrong. Try again.',
   'common.cancel': 'Cancel',
@@ -52,5 +55,5 @@ export const en = {
   'password.changed': 'Password changed',
 
   'mocks.placeholderTitle': 'Mocks',
-  'mocks.placeholderBody': 'Mocks arrive in the next task',
+  'mocks.placeholderBody': '// mocks arrive in the next task',
 } as const

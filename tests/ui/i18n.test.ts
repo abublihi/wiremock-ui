@@ -13,9 +13,9 @@ describe('request preferences', () => {
   // happy-dom's Request drops the browser-forbidden Cookie header, so build the server-side shape.
   const req = (cookie?: string) => ({ headers: new Headers(cookie ? { cookie } : {}) }) as Request
 
-  it('reads the theme cookie, defaulting to system', () => {
-    expect(getThemeFromRequest(req())).toBe('system')
+  it('reads the theme cookie, defaulting to dark', () => {
+    expect(getThemeFromRequest(req())).toBe('dark')
     expect(getThemeFromRequest(req('wmui_theme=dark'))).toBe('dark')
-    expect(getThemeFromRequest(req('wmui_theme=purple'))).toBe('system')
+    expect(getThemeFromRequest(req('wmui_theme=purple'))).toBe('dark')
   })
 })

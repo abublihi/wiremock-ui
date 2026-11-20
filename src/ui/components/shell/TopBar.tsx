@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { MenuIcon, MonitorIcon, MoonIcon, SunIcon, WaypointsIcon } from 'lucide-react'
+import { useRouterState } from '@tanstack/react-router'
+import { MenuIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import type { PublicUser } from '@/server/users/types'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -13,31 +14,22 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/ui/components/ui/sheet'
 import { useT } from '@/ui/i18n'
 import { THEMES, isTheme, useTheme, type Theme } from '@/ui/theme'
+import { Brand } from './Brand'
 import { Rail, type NavItem } from './Rail'
 import { UserMenu } from './UserMenu'
 
+export { Brand } from './Brand'
+
 const THEME_ICON: Record<Theme, typeof SunIcon> = { light: SunIcon, dark: MoonIcon, system: MonitorIcon }
 
-export function Brand() {
-  const t = useT()
-  return (
-    <span dir="ltr" className="inline-flex items-center gap-2 font-condensed text-base font-semibold text-ink">
-      <span aria-hidden className="flex size-5 items-center justify-center rounded-sm bg-signal text-primary-foreground">
-        <WaypointsIcon className="size-3.5" />
-      </span>
-      {t('app.name')}
-    </span>
-  )
-}
-
-function ThemeMenu() {
+export function ThemeMenu() {
   const t = useT()
   const { theme, setTheme } = useTheme()
   const Icon = THEME_ICON[theme]
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={t('theme.label')}>
+        <Button variant="ghost" size="icon" aria-label={t('theme.label')} className="text-muted-foreground">
           <Icon />
         </Button>
       </DropdownMenuTrigger>
@@ -55,30 +47,60 @@ function ThemeMenu() {
   )
 }
 
+/** Brand, navigation and the signed-in user: the desktop sidebar and the mobile nav sheet. */
+export function SidebarContent({
+  nav,
+  user,
+  onNavigate,
+}: {
+  nav: NavItem[]
+  user: PublicUser | null
+  onNavigate?: () => void
+}) {
+  return (
+    <>
+      <div className="flex-1 overflow-y-auto">
+        <Rail nav={nav} onNavigate={onNavigate} />
+      </div>
+      {user && (
+        <div className="border-t border-line/60 p-3">
+          <UserMenu user={user} />
+        </div>
+      )}
+    </>
+  )
+}
+
 export function TopBar({ nav, user }: { nav: NavItem[]; user: PublicUser | null }) {
   const t = useT()
   const [navOpen, setNavOpen] = useState(false)
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
   return (
-    <header className="flex h-14 items-center gap-2 border-b bg-surface px-3 md:px-4">
+    <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b border-line/60 bg-canvas/80 px-3 backdrop-blur-md md:px-8">
       <Sheet open={navOpen} onOpenChange={setNavOpen}>
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="md:hidden" aria-label={t('shell.openNav')}>
+          <Button variant="ghost" size="icon" className="-ms-1 md:hidden" aria-label={t('shell.openNav')}>
             <MenuIcon />
           </Button>
         </SheetTrigger>
-        <SheetContent side="start" className="w-64 gap-0 p-0">
-          <SheetHeader className="border-b">
-            <SheetTitle>
-              <Brand />
+        <SheetContent side="start" className="w-[228px] gap-0 p-0">
+          <SheetHeader className="border-b border-line/60 px-5 pt-5 pb-6">
+            <SheetTitle className="font-normal">
+              <Brand caption />
             </SheetTitle>
           </SheetHeader>
-          <Rail nav={nav} onNavigate={() => setNavOpen(false)} />
+          <SidebarContent nav={nav} user={user} onNavigate={() => setNavOpen(false)} />
         </SheetContent>
       </Sheet>
-      <Brand />
+      <span className="md:hidden">
+        <Brand />
+      </span>
+      {/* A shell prompt with the current path: decoration, the page title says where you are. */}
+      <p aria-hidden className="hidden truncate text-[11px] text-muted-foreground md:block">
+        <span className="text-signal-fg">$</span> cd ~{pathname}
+      </p>
       <div className="ms-auto flex items-center gap-1">
         <ThemeMenu />
-        {user && <UserMenu user={user} />}
       </div>
     </header>
   )
