@@ -178,7 +178,16 @@ export function ReviewList({ recording }: { recording: Recording }) {
     <section aria-labelledby={`${ids}-title`} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h2 id={`${ids}-title`} className="font-display text-xl font-semibold tracking-tight break-all uppercase">
-          {recording.kind === 'recording' ? t('recording.listRecording', { url: recording.target ?? '?' }) : t('recording.listSnapshot')}
+          {recording.kind === 'recording' ? (
+            <>
+              {t('recording.listRecording')}{' '}
+              <span dir="ltr" className="font-mono text-lg font-medium normal-case">
+                {recording.target ?? '?'}
+              </span>
+            </>
+          ) : (
+            t('recording.listSnapshot')
+          )}
         </h2>
         <p className="text-xs text-muted-foreground">
           {t(items.length === 1 ? 'recording.listMetaOne' : 'recording.listMeta', {

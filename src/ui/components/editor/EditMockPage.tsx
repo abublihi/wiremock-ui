@@ -67,13 +67,14 @@ export function EditMockPage({ id }: { id: string }) {
   const integration = integrations.data?.find((i) => i.key === meta?.integration)
   const endpoint = endpoints.data?.find((e) => e.key === meta?.endpoint)
   const catalog = integration && endpoint ? { integration, endpoint } : undefined
-  const ref = catalog ? t('editor.endpointRef', { integration: catalog.integration.name, endpoint: catalog.endpoint.name }) : opened.id
+  const ref = catalog ? t('editor.endpointRef', { integration: catalog.integration.name, endpoint: catalog.endpoint.name }) : meta?.integration ? opened.id : t('editor.quickRef')
   const tested = draftFromStub(opened, endpoint)
   const scenario = typeof opened.scenarioName === 'string' && opened.scenarioName !== '' ? opened.scenarioName : undefined
   const unavailable = meta?.endpoint ? t('editor.endpointMissing', { ref: `${meta.integration}/${meta.endpoint}` }) : t('editor.noCatalog')
 
   return (
     <EditorShell
+      valueTitle
       title={opened.name || opened.id}
       caption={t('editor.editCaption', { ref, version: meta?.version ?? 0 })}
       aside={catalog && <EndpointInfo integration={catalog.integration} endpoint={catalog.endpoint} />}

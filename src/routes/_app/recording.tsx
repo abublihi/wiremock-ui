@@ -152,7 +152,7 @@ function AllLists() {
         <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line bg-surface p-3">
           <div className="min-w-0">
             <p className="text-sm font-medium break-all">
-              {r.kind === 'recording' ? t('recording.listRecording', { url: r.target ?? '?' }) : t('recording.listSnapshot')}
+              {r.kind === 'recording' ? `${t('recording.listRecording')} ${r.target ?? '?'}` : t('recording.listSnapshot')}
             </p>
             <p className="text-xs text-muted-foreground">
               {t(r.itemCount === 1 ? 'recording.listMetaOne' : 'recording.listMeta', {

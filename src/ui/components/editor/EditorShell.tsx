@@ -11,9 +11,12 @@ export function EditorShell({
   aside,
   back,
   notice,
+  valueTitle = false,
   children,
 }: {
   title: string
+  /** The title is a value the user typed (a mock name holding a path, say): shown as typed, not upper-cased. */
+  valueTitle?: boolean
   caption: string
   actions?: ReactNode
   aside?: ReactNode
@@ -35,7 +38,7 @@ export function EditorShell({
         )}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="glow-text font-display text-4xl font-bold tracking-tight break-words uppercase">{title}</h1>
+            <h1 className={`glow-text font-display text-4xl font-bold tracking-tight break-words ${valueTitle ? 'normal-case' : 'uppercase'}`}>{title}</h1>
             <p className="truncate text-xs text-muted-foreground">{caption}</p>
           </div>
           {actions && <div className="flex items-center gap-2">{actions}</div>}
