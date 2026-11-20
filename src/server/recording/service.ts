@@ -3,7 +3,7 @@ import { safeRecord, type AuditLog } from '../audit/log'
 import { buildStub, MIME, type SimpleMockInput } from '../catalog/build'
 import type { CatalogService } from '../catalog/service'
 import type { Endpoint, Integration } from '../catalog/types'
-import type { Config } from '../config'
+import { prunesBaseline, type Config } from '../config'
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../errors'
 import { logger } from '../logger'
 import type { MockInput, MockService } from '../mocks/service'
@@ -37,6 +37,8 @@ const MAX_SNAPSHOT_IDS = 1000
 const DELETE_BATCH = 20
 // Long enough for an accept of 1000 rows; the lock is released as soon as the work is done.
 const LIST_LOCK_TTL_MS = 120_000
+export const BASELINE_PRUNED =
+  'Baseline mocks accepted here would be deleted on the next restart because SEED_PRUNE is on. Accept them as your own mocks, or add them to the seed.'
 export const TOO_LARGE = 'This answer is over 1 MB, too large to review here, so it was not kept. Create this mock by hand or record a smaller response.'
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'TRACE'] as const
@@ -140,7 +142,7 @@ type Deps = {
   mocks: MockService
   catalog: CatalogService
   audit: AuditLog
-  config: Pick<Config, 'recordingAllowed' | 'wiremockUrl' | 'wiremockPublicUrl' | 'publicUiUrl'>
+  config: Pick<Config, 'recordingAllowed' | 'wiremockUrl' | 'wiremockPublicUrl' | 'publicUiUrl' | 'seedPrune' | 'seedPath' | 'storeDriver'>
   now?: () => Date
   newId?: () => string
 }
@@ -373,6 +375,7 @@ export class RecordingService {
 
   /** Creates a mock per item through the normal create path; accepted items leave the review list. */
   async accept(id: string, input: AcceptInput, actor: PublicUser): Promise<AcceptResult> {
+    if (input.owner === 'baseline' && prunesBaseline(this.deps.config)) throw new ValidationError(BASELINE_PRUNED)
     await this.get(id)
     return this.locked(id, () => this.acceptLocked(id, input, actor))
   }

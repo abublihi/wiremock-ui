@@ -14,7 +14,7 @@ import {
   stopRecording,
 } from '../../../src/server/http/handlers/recordings'
 import type { Recording } from '../../../src/server/recording/types'
-import { RECORDING_DISABLED } from '../../../src/server/recording/service'
+import { BASELINE_PRUNED, RECORDING_DISABLED } from '../../../src/server/recording/service'
 import type { Runtime } from '../../../src/server/runtime'
 import { MARKER_ID } from '../../../src/server/sync/marker'
 import { startRecordingPair } from '../../helpers/containers'
@@ -285,4 +285,23 @@ test('two recordings of one endpoint become two scenarios when accepted; each re
   }
   await rt.wiremock.resetScenarios()
   expect([await (await fetch(`${W()}/shop/seq`)).text(), await (await fetch(`${W()}/shop/seq`)).text()]).toEqual(['one', 'two'])
+})
+
+test.skipIf(STORELESS)('SEED_PRUNE on: accepting as baseline is refused (a restart would delete them); as my own works; /api/config says so', async () => {
+  await start({ targetUrl: pair.upstreamInternalUrl })
+  await fetch(`${W()}/shop/items/1`)
+  const rec = (await stop()).body.recording as Recording
+  const before = { seedPrune: rt.config.seedPrune, seedPath: rt.config.seedPath }
+  rt.config.seedPrune = true
+  rt.config.seedPath = '/seed'
+  try {
+    expect(await accept(rec.id, { items: [{ id: rec.items[0].id }], owner: 'baseline' })).toEqual({ status: 400, body: { error: BASELINE_PRUNED } })
+    expect((await call(getConfig, req('/api/config'))).body.seedPrune).toBe(true)
+    expect(await mocks()).toEqual([])
+    const mine = await accept(rec.id, { items: [{ id: rec.items[0].id }] })
+    expect(mine.body.created).toHaveLength(1)
+  } finally {
+    Object.assign(rt.config, before)
+  }
+  expect((await call(getConfig, req('/api/config'))).body.seedPrune).toBe(false)
 })

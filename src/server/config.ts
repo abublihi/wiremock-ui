@@ -67,6 +67,10 @@ const schema = z.object({
 /** Every environment variable loadConfig reads (the README's configuration table is checked against it). */
 export const CONFIG_ENV_VARS: readonly string[] = Object.keys(schema.shape)
 
+/** Whether a restart deletes baseline mocks missing from the seed: SEED_PRUNE with a SEED_PATH, outside WireMock-only mode. */
+export const prunesBaseline = (config: Pick<Config, 'seedPrune' | 'seedPath' | 'storeDriver'>): boolean =>
+  config.seedPrune && Boolean(config.seedPath) && config.storeDriver !== 'none'
+
 export function loadConfig(env: Record<string, string | undefined>): Config {
   // Treat empty strings as unset so `FOO=` in an env file behaves like absent.
   const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ''))

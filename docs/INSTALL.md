@@ -115,7 +115,7 @@ Run the UI and WireMock as two containers in **one pod**:
 - The UI container sets `WIREMOCK_URL=http://localhost:8080`, the same admin credentials, `ADMIN_USER`, `ADMIN_PASSWORD` and `SESSION_SECRET` (Secrets), and exposes port 3000 through a Service/Ingress.
 - With SQLite, mount a PersistentVolumeClaim at `/data` and keep `replicas: 1`. For more replicas, point `REDIS_URL` at a Redis with persistence.
 - Behind an Ingress set `TRUST_PROXY=true` and `PUBLIC_UI_URL=https://…`.
-- Baseline mocks: put bundle or WireMock mapping files in a ConfigMap, mount it as a folder and set `SEED_PATH` to that folder. ConfigMap symlinks are followed. Add `SEED_PRUNE=true` if removing a file from the ConfigMap should remove its mocks.
+- Baseline mocks: put bundle or WireMock mapping files in a ConfigMap, mount it as a folder and set `SEED_PATH` to that folder. ConfigMap symlinks are followed. Add `SEED_PRUNE=true` if removing a file from the ConfigMap should remove its mocks. With `SEED_PRUNE` on, every restart deletes baseline mocks that are not in the seed, so the Recording page cannot accept recorded mocks as baseline (the API answers 400): accept them as your own mocks, or add them to the seed.
 - Probes: `GET /healthz` on port 3000 needs no auth and answers 200 when the store and WireMock are reachable.
 
 ## Backups
