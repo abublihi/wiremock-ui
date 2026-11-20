@@ -60,3 +60,11 @@ test('WIREMOCK_PUBLIC_URL defaults to WIREMOCK_URL and must be an http(s) URL', 
   expect(() => loadConfig({ ...base, WIREMOCK_PUBLIC_URL: 'mocks.test.example' })).toThrow('WIREMOCK_PUBLIC_URL must be an http:// or https:// URL')
   expect(() => loadConfig({ ...base, WIREMOCK_PUBLIC_URL: 'ftp://mocks.test.example' })).toThrow('WIREMOCK_PUBLIC_URL must be an http:// or https:// URL')
 })
+test('RECORDING_ALLOWED defaults to true; false or 0 turns recording off; anything else is refused', () => {
+  expect(loadConfig(base).recordingAllowed).toBe(true)
+  expect(loadConfig({ ...base, RECORDING_ALLOWED: 'false' }).recordingAllowed).toBe(false)
+  expect(loadConfig({ ...base, RECORDING_ALLOWED: '0' }).recordingAllowed).toBe(false)
+  expect(loadConfig({ ...base, RECORDING_ALLOWED: 'TRUE' }).recordingAllowed).toBe(true)
+  expect(loadConfig({ ...base, RECORDING_ALLOWED: '' }).recordingAllowed).toBe(true)
+  expect(() => loadConfig({ ...base, RECORDING_ALLOWED: 'off' })).toThrow(/RECORDING_ALLOWED/)
+})

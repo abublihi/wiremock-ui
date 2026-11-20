@@ -14,6 +14,20 @@ export function isScenarioNameSettable(name: string): boolean {
   return SETTABLE_SCENARIO_NAME.test(name) && !name.startsWith('.')
 }
 
+export type RecordingStatus = 'NeverStarted' | 'Recording' | 'Stopped'
+
+/** `{ errors: [{ title, detail }] }` → "title: first line of detail"; undefined when the text is not that shape. */
+export function recordingErrorMessage(text: string): string | undefined {
+  try {
+    const first = (JSON.parse(text) as { errors?: { title?: string; detail?: string }[] }).errors?.[0]
+    if (!first) return undefined
+    const detail = first.detail?.split('\n')[0]?.trim()
+    return [first.title, detail].filter(Boolean).join(': ') || undefined
+  } catch {
+    return text.trim() || undefined
+  }
+}
+
 class GatewayTimeoutError extends AppError {
   constructor(message: string) {
     super(message, 504)
@@ -244,6 +258,60 @@ export class WireMockClient {
       durationMs,
       matchedStubId: res.headers.get('matched-stub-id'),
     }
+  }
+
+  /** WireMock's recorder: `NeverStarted`, `Recording` or `Stopped`. */
+  async recordingStatus(): Promise<RecordingStatus> {
+    const res = await this.request('/__admin/recordings/status')
+    if (!res.ok) await this.fail(res, 'recording status')
+    return (await this.json<{ status: RecordingStatus }>(res)).status
+  }
+
+  /**
+   * Starts recording: WireMock adds one proxy stub (`{ request: { method: ANY }, response: { proxyBaseUrl } }`) and
+   * removes it on stop. WireMock does not check the target URL: callers validate it first.
+   */
+  async startRecording(spec: Record<string, unknown>): Promise<void> {
+    const res = await this.request('/__admin/recordings/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(spec),
+    })
+    if (!res.ok) await this.failRecording(res, 'start recording')
+  }
+
+  /**
+   * Stops recording and returns the stubs it made, or null when WireMock was not recording. Even with
+   * `persist: false` WireMock has already added these stubs to its own mappings (pinned in recording.test.ts).
+   */
+  async stopRecording(): Promise<StubMapping[] | null> {
+    const res = await this.request('/__admin/recordings/stop', { method: 'POST' }, this.importTimeoutMs)
+    if (res.status === 400) {
+      const text = await res.text().catch(() => '')
+      if (/Not currently recording/i.test(text)) return null
+      throw new ValidationError(recordingErrorMessage(text) ?? 'WireMock refused to stop recording')
+    }
+    if (!res.ok) await this.failRecording(res, 'stop recording')
+    return (await this.json<{ mappings: StubMapping[] }>(res)).mappings
+  }
+
+  /** Turns journal entries into stubs. Like stop, WireMock also adds them to its mappings. */
+  async snapshotRecording(spec: Record<string, unknown>): Promise<StubMapping[]> {
+    const res = await this.request(
+      '/__admin/recordings/snapshot',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(spec) },
+      this.importTimeoutMs,
+    )
+    if (!res.ok) await this.failRecording(res, 'snapshot')
+    return (await this.json<{ mappings: StubMapping[] }>(res)).mappings
+  }
+
+  /** WireMock answers a bad recording spec with 422 and a JSON error list: report its detail, not the raw JSON. */
+  private async failRecording(res: Response, what: string): Promise<never> {
+    if (res.status === 401 || res.status === 403) throw new ConfigError('WireMock admin credentials rejected')
+    const text = await res.text().catch(() => '')
+    if (res.status >= 400 && res.status < 500) throw new ValidationError(recordingErrorMessage(text) ?? `${what} rejected (${res.status})`)
+    throw new UpstreamError(`WireMock ${what} failed: ${res.status} ${text}`.trim())
   }
 
   async version(): Promise<string> {

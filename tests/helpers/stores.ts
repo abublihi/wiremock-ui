@@ -103,6 +103,7 @@ const TABLES = [
   'integrations',
   'endpoints',
   'flags',
+  'recordings',
 ]
 
 function sqliteHarness(): StoreHarness {

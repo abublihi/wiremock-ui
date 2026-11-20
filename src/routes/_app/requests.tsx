@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
-import { AlertCircleIcon, PauseIcon, PlayIcon, RadioTowerIcon, Trash2Icon } from 'lucide-react'
+import { AlertCircleIcon, FileStackIcon, PauseIcon, PlayIcon, RadioTowerIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
-import { MAX_REQUEST_ROWS, type RequestFilter, useClearRequests, useDocumentVisible, useIntegrations, useRequests } from '@/ui/api/queries'
+import { MAX_REQUEST_ROWS, type RequestFilter, useClearRequests, useDocumentVisible, useIntegrations, useRequests, useSnapshot } from '@/ui/api/queries'
+import { useRecordingAllowed } from '@/ui/config'
 import { LiveDot } from '@/ui/components/common/LiveDot'
 import { CountTool } from '@/ui/components/requests/CountTool'
 import { RequestDrawer } from '@/ui/components/requests/RequestDrawer'
@@ -107,6 +108,7 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
             {live ? t('requests.pause') : t('requests.resume')}
           </Button>
           <CountTool />
+          <CreateMocksButton ids={rows.map((r) => r.id)} />
           <ClearLogButton />
         </div>
       </header>
@@ -164,6 +166,34 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
 
       <RequestDrawer id={search.open} onClose={() => onSearchChange({ open: undefined })} />
     </div>
+  )
+}
+
+/** Turns the requests the log shows (its current filter) into a review list on the Recording page (spec A12). */
+function CreateMocksButton({ ids }: { ids: string[] }) {
+  const t = useT()
+  const allowed = useRecordingAllowed()
+  const snapshot = useSnapshot()
+  const navigate = useNavigate()
+  if (!allowed || ids.length === 0) return null
+  const onClick = async () => {
+    try {
+      const { recording } = await snapshot.mutateAsync({ ids })
+      if (!recording) {
+        toast.info(t('recording.snapshotEmpty'))
+        return
+      }
+      toast.success(t(recording.items.length === 1 ? 'recording.snapshotDoneOne' : 'recording.snapshotDone', { count: recording.items.length }))
+      void navigate({ to: '/recording', search: { review: recording.id } })
+    } catch (error) {
+      toast.error(t('recording.snapshotFailed'), { description: error instanceof Error ? error.message : undefined })
+    }
+  }
+  return (
+    <Button variant="outline" size="sm" disabled={snapshot.isPending} title={t('requests.toMocksTitle', { count: ids.length })} onClick={() => void onClick()}>
+      <FileStackIcon data-icon="inline-start" />
+      {t('requests.toMocks')}
+    </Button>
   )
 }
 

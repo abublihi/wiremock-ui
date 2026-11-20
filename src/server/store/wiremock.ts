@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { ConflictError } from '../errors'
 import { MARKER_ID } from '../sync/marker'
+import { isRecordingProxy } from '../recording/proxy'
 import type { WireMockClient } from '../wiremock/client'
 import type { StubMapping, WireMockUiMeta } from '../wiremock/types'
 import type { MockStore } from './types'
@@ -56,7 +57,8 @@ export class WireMockMockStore implements MockStore {
   }
 
   async listAll(): Promise<StubMapping[]> {
-    return (await this.wiremock.listStubs()).filter((s) => s.id !== MARKER_ID).map(present)
+    // The proxy stub of a running recording is WireMock's, not a mock (spec A12).
+    return (await this.wiremock.listStubs()).filter((s) => s.id !== MARKER_ID && !isRecordingProxy(s)).map(present)
   }
 
   async save(stub: StubMapping, expectedVersion: number): Promise<void> {

@@ -15,6 +15,8 @@ import { SqliteDb } from './sqlite/db'
 import { SqliteMockStore } from './sqlite/mocks'
 import { SqliteUserStore } from './sqlite/users'
 import type { MockStore } from './types'
+import { MemoryRecordingStore, RedisRecordingStore, SqliteRecordingStore } from '../recording/store'
+import type { RecordingStore } from '../recording/types'
 import { WireMockMockStore } from './wiremock'
 
 export type { MockStore } from './types'
@@ -25,6 +27,8 @@ export type Stores = {
   users: UserStore
   audit: AuditLog
   catalog: CatalogStore
+  /** Review lists from recordings and snapshots (spec A12). */
+  recordings: RecordingStore
   ping(): Promise<boolean>
   close(): Promise<void>
 }
@@ -49,6 +53,7 @@ function createWireMockOnlyStores(wiremock: WireMockClient): Stores {
     users: new MemoryUserStore(),
     audit: new MemoryAuditLog(),
     catalog: new MemoryCatalogStore(),
+    recordings: new MemoryRecordingStore(),
     ping: () => mocks.ping(),
     close: async () => {},
   }
@@ -63,6 +68,7 @@ function createRedisStores(url: string | undefined): Stores {
     users: new RedisUserStore(redis),
     audit: new RedisAuditLog(redis),
     catalog: new RedisCatalogStore(redis),
+    recordings: new RedisRecordingStore(redis),
     ping: () => mocks.ping(),
     async close() {
       await mocks.close()
@@ -84,6 +90,7 @@ function createSqliteStores(path: string): Stores {
     users: new SqliteUserStore(sql),
     audit: new SqliteAuditLog(sql),
     catalog: new SqliteCatalogStore(sql),
+    recordings: new SqliteRecordingStore(sql),
     ping: async () => sql.ping(),
     close: async () => sql.close(),
   }

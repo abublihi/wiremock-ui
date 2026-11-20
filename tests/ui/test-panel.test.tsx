@@ -24,7 +24,7 @@ afterAll(() => server.close())
 
 const PUBLIC = 'http://mocks.test:8080'
 const withConfig = (ui: ReactNode) => (
-  <ServerConfigProvider config={{ storeDriver: 'sqlite', wiremockPublicUrl: PUBLIC }}>{ui}</ServerConfigProvider>
+  <ServerConfigProvider config={{ storeDriver: 'sqlite', wiremockPublicUrl: PUBLIC, recordingAllowed: true }}>{ui}</ServerConfigProvider>
 )
 
 const result = (over: Partial<TestRequestResult> = {}): TestRequestResult => ({

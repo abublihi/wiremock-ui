@@ -8,6 +8,7 @@ A web console for [WireMock](https://wiremock.org) built for testers. Describe t
 - **Simple mode** builds a mock from an integration endpoint: a key value, a status preset and a body prefilled from the endpoint's example. **Mock a URL directly** does the same for a method and URL without an integration. **Advanced mode** edits the full stub JSON.
 - **Test a mock** from the editor (or **Try it** on an endpoint) and see which mock answered; **Copy as curl** for any mock or logged request.
 - **Forward to a real service** (proxy), **call back after responding** (webhooks) and **scenarios** ("pending" first, "approved" after), built step by step on one page, with a live state view.
+- **Record real traffic**: point your application at WireMock, record a real service's answers, and accept the ones you want from a review list (or turn logged requests into mocks). Recorded bodies are real data, so review them first; `RECORDING_ALLOWED=false` turns it off.
 - **Request log** updates live and stamps unmatched requests **No match**, with the closest mocks and the fields that differed.
 - **History and restore** for every mock, conflict detection when two people edit the same one, an **audit log** of every change.
 - **Import** bundles or WireMock exports, and seed baseline mocks on start.
@@ -33,7 +34,7 @@ Other ways to run it: with Redis, from source, or **against a WireMock you alrea
 ## Documentation
 
 - [Installing](docs/INSTALL.md): the ways to run it (Compose without Redis, Compose with Redis, from source, or against an existing WireMock with no storage), every setting, Kubernetes, backups, upgrades and troubleshooting.
-- [Using it](docs/USAGE.md): the concepts (integration → endpoint → mock), a walkthrough from integrations to the request log, testing and curl, proxies, webhooks, scenarios, WireMock-only mode, Advanced mode and history, users and audit, import from files and Postman collections, export, seeding, and the API for scripts and CI.
+- [Using it](docs/USAGE.md): the concepts (integration → endpoint → mock), a walkthrough from integrations to the request log, testing and curl, proxies, webhooks, recording real traffic, scenarios, WireMock-only mode, Advanced mode and history, users and audit, import from files and Postman collections, export, seeding, and the API for scripts and CI.
 
 ## Development
 

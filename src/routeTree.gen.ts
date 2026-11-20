@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAuditRouteImport } from './routes/_app/audit'
 import { Route as AppImportRouteImport } from './routes/_app/import'
+import { Route as AppRecordingRouteImport } from './routes/_app/recording'
 import { Route as AppRequestsRouteImport } from './routes/_app/requests'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as ApiAuditRouteImport } from './routes/api/audit'
@@ -23,6 +24,7 @@ import { Route as ApiExportRouteImport } from './routes/api/export'
 import { Route as ApiImportRouteImport } from './routes/api/import'
 import { Route as ApiIntegrationsRouteImport } from './routes/api/integrations'
 import { Route as ApiMocksRouteImport } from './routes/api/mocks'
+import { Route as ApiRecordingsRouteImport } from './routes/api/recordings'
 import { Route as ApiRequestsRouteImport } from './routes/api/requests'
 import { Route as ApiScenariosRouteImport } from './routes/api/scenarios'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
@@ -40,6 +42,11 @@ import { Route as ApiIntegrationsKeyRouteImport } from './routes/api/integration
 import { Route as ApiMocksIdRouteImport } from './routes/api/mocks.$id'
 import { Route as ApiMocksPreviewRouteImport } from './routes/api/mocks.preview'
 import { Route as ApiMocksResetMineRouteImport } from './routes/api/mocks.reset-mine'
+import { Route as ApiRecordingsIdRouteImport } from './routes/api/recordings.$id'
+import { Route as ApiRecordingsSnapshotRouteImport } from './routes/api/recordings.snapshot'
+import { Route as ApiRecordingsStartRouteImport } from './routes/api/recordings.start'
+import { Route as ApiRecordingsStatusRouteImport } from './routes/api/recordings.status'
+import { Route as ApiRecordingsStopRouteImport } from './routes/api/recordings.stop'
 import { Route as ApiRequestsIdRouteImport } from './routes/api/requests.$id'
 import { Route as ApiRequestsCountRouteImport } from './routes/api/requests.count'
 import { Route as ApiScenariosResetRouteImport } from './routes/api/scenarios.reset'
@@ -51,6 +58,8 @@ import { Route as ApiIntegrationsKeyEndpointsRouteImport } from './routes/api/in
 import { Route as ApiMocksIdDuplicateRouteImport } from './routes/api/mocks.$id.duplicate'
 import { Route as ApiMocksIdHistoryRouteImport } from './routes/api/mocks.$id.history'
 import { Route as ApiMocksIdRestoreRouteImport } from './routes/api/mocks.$id.restore'
+import { Route as ApiRecordingsIdAcceptRouteImport } from './routes/api/recordings.$id.accept'
+import { Route as ApiRecordingsIdDiscardRouteImport } from './routes/api/recordings.$id.discard'
 import { Route as ApiRequestsIdNearMissesRouteImport } from './routes/api/requests.$id.near-misses'
 import { Route as ApiScenariosNameStateRouteImport } from './routes/api/scenarios.$name.state'
 import { Route as AppIntegrationsKeyEndpointsNewRouteImport } from './routes/_app/integrations.$key.endpoints.new'
@@ -86,6 +95,11 @@ const AppAuditRoute = AppAuditRouteImport.update({
 const AppImportRoute = AppImportRouteImport.update({
   id: '/import',
   path: '/import',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRecordingRoute = AppRecordingRouteImport.update({
+  id: '/recording',
+  path: '/recording',
   getParentRoute: () => AppRoute,
 } as any)
 const AppRequestsRoute = AppRequestsRouteImport.update({
@@ -126,6 +140,11 @@ const ApiIntegrationsRoute = ApiIntegrationsRouteImport.update({
 const ApiMocksRoute = ApiMocksRouteImport.update({
   id: '/api/mocks',
   path: '/api/mocks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRecordingsRoute = ApiRecordingsRouteImport.update({
+  id: '/api/recordings',
+  path: '/api/recordings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiRequestsRoute = ApiRequestsRouteImport.update({
@@ -213,6 +232,31 @@ const ApiMocksResetMineRoute = ApiMocksResetMineRouteImport.update({
   path: '/reset-mine',
   getParentRoute: () => ApiMocksRoute,
 } as any)
+const ApiRecordingsIdRoute = ApiRecordingsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiRecordingsRoute,
+} as any)
+const ApiRecordingsSnapshotRoute = ApiRecordingsSnapshotRouteImport.update({
+  id: '/snapshot',
+  path: '/snapshot',
+  getParentRoute: () => ApiRecordingsRoute,
+} as any)
+const ApiRecordingsStartRoute = ApiRecordingsStartRouteImport.update({
+  id: '/start',
+  path: '/start',
+  getParentRoute: () => ApiRecordingsRoute,
+} as any)
+const ApiRecordingsStatusRoute = ApiRecordingsStatusRouteImport.update({
+  id: '/status',
+  path: '/status',
+  getParentRoute: () => ApiRecordingsRoute,
+} as any)
+const ApiRecordingsStopRoute = ApiRecordingsStopRouteImport.update({
+  id: '/stop',
+  path: '/stop',
+  getParentRoute: () => ApiRecordingsRoute,
+} as any)
 const ApiRequestsIdRoute = ApiRequestsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -269,6 +313,16 @@ const ApiMocksIdRestoreRoute = ApiMocksIdRestoreRouteImport.update({
   path: '/restore',
   getParentRoute: () => ApiMocksIdRoute,
 } as any)
+const ApiRecordingsIdAcceptRoute = ApiRecordingsIdAcceptRouteImport.update({
+  id: '/accept',
+  path: '/accept',
+  getParentRoute: () => ApiRecordingsIdRoute,
+} as any)
+const ApiRecordingsIdDiscardRoute = ApiRecordingsIdDiscardRouteImport.update({
+  id: '/discard',
+  path: '/discard',
+  getParentRoute: () => ApiRecordingsIdRoute,
+} as any)
 const ApiRequestsIdNearMissesRoute = ApiRequestsIdNearMissesRouteImport.update({
   id: '/near-misses',
   path: '/near-misses',
@@ -316,6 +370,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/audit': typeof AppAuditRoute
   '/import': typeof AppImportRoute
+  '/recording': typeof AppRecordingRoute
   '/requests': typeof AppRequestsRoute
   '/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
@@ -324,6 +379,7 @@ export interface FileRoutesByFullPath {
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/recordings': typeof ApiRecordingsRouteWithChildren
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
@@ -338,6 +394,11 @@ export interface FileRoutesByFullPath {
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/preview': typeof ApiMocksPreviewRoute
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
+  '/api/recordings/$id': typeof ApiRecordingsIdRouteWithChildren
+  '/api/recordings/snapshot': typeof ApiRecordingsSnapshotRoute
+  '/api/recordings/start': typeof ApiRecordingsStartRoute
+  '/api/recordings/status': typeof ApiRecordingsStatusRoute
+  '/api/recordings/stop': typeof ApiRecordingsStopRoute
   '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/scenarios/reset': typeof ApiScenariosResetRoute
@@ -351,6 +412,8 @@ export interface FileRoutesByFullPath {
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
+  '/api/recordings/$id/accept': typeof ApiRecordingsIdAcceptRoute
+  '/api/recordings/$id/discard': typeof ApiRecordingsIdDiscardRoute
   '/api/requests/$id/near-misses': typeof ApiRequestsIdNearMissesRoute
   '/api/scenarios/$name/state': typeof ApiScenariosNameStateRoute
   '/integrations/$key/': typeof AppIntegrationsKeyIndexRoute
@@ -365,6 +428,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/audit': typeof AppAuditRoute
   '/import': typeof AppImportRoute
+  '/recording': typeof AppRecordingRoute
   '/requests': typeof AppRequestsRoute
   '/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
@@ -373,6 +437,7 @@ export interface FileRoutesByTo {
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/recordings': typeof ApiRecordingsRouteWithChildren
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
@@ -388,6 +453,11 @@ export interface FileRoutesByTo {
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/preview': typeof ApiMocksPreviewRoute
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
+  '/api/recordings/$id': typeof ApiRecordingsIdRouteWithChildren
+  '/api/recordings/snapshot': typeof ApiRecordingsSnapshotRoute
+  '/api/recordings/start': typeof ApiRecordingsStartRoute
+  '/api/recordings/status': typeof ApiRecordingsStatusRoute
+  '/api/recordings/stop': typeof ApiRecordingsStopRoute
   '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/scenarios/reset': typeof ApiScenariosResetRoute
@@ -401,6 +471,8 @@ export interface FileRoutesByTo {
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
+  '/api/recordings/$id/accept': typeof ApiRecordingsIdAcceptRoute
+  '/api/recordings/$id/discard': typeof ApiRecordingsIdDiscardRoute
   '/api/requests/$id/near-misses': typeof ApiRequestsIdNearMissesRoute
   '/api/scenarios/$name/state': typeof ApiScenariosNameStateRoute
   '/integrations/$key': typeof AppIntegrationsKeyIndexRoute
@@ -417,6 +489,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_app/audit': typeof AppAuditRoute
   '/_app/import': typeof AppImportRoute
+  '/_app/recording': typeof AppRecordingRoute
   '/_app/requests': typeof AppRequestsRoute
   '/_app/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
@@ -425,6 +498,7 @@ export interface FileRoutesById {
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
+  '/api/recordings': typeof ApiRecordingsRouteWithChildren
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
@@ -440,6 +514,11 @@ export interface FileRoutesById {
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/preview': typeof ApiMocksPreviewRoute
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
+  '/api/recordings/$id': typeof ApiRecordingsIdRouteWithChildren
+  '/api/recordings/snapshot': typeof ApiRecordingsSnapshotRoute
+  '/api/recordings/start': typeof ApiRecordingsStartRoute
+  '/api/recordings/status': typeof ApiRecordingsStatusRoute
+  '/api/recordings/stop': typeof ApiRecordingsStopRoute
   '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/scenarios/reset': typeof ApiScenariosResetRoute
@@ -453,6 +532,8 @@ export interface FileRoutesById {
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
+  '/api/recordings/$id/accept': typeof ApiRecordingsIdAcceptRoute
+  '/api/recordings/$id/discard': typeof ApiRecordingsIdDiscardRoute
   '/api/requests/$id/near-misses': typeof ApiRequestsIdNearMissesRoute
   '/api/scenarios/$name/state': typeof ApiScenariosNameStateRoute
   '/_app/integrations/$key/': typeof AppIntegrationsKeyIndexRoute
@@ -470,6 +551,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/audit'
     | '/import'
+    | '/recording'
     | '/requests'
     | '/users'
     | '/api/audit'
@@ -478,6 +560,7 @@ export interface FileRouteTypes {
     | '/api/import'
     | '/api/integrations'
     | '/api/mocks'
+    | '/api/recordings'
     | '/api/requests'
     | '/api/scenarios'
     | '/api/session'
@@ -492,6 +575,11 @@ export interface FileRouteTypes {
     | '/api/mocks/$id'
     | '/api/mocks/preview'
     | '/api/mocks/reset-mine'
+    | '/api/recordings/$id'
+    | '/api/recordings/snapshot'
+    | '/api/recordings/start'
+    | '/api/recordings/status'
+    | '/api/recordings/stop'
     | '/api/requests/$id'
     | '/api/requests/count'
     | '/api/scenarios/reset'
@@ -505,6 +593,8 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
+    | '/api/recordings/$id/accept'
+    | '/api/recordings/$id/discard'
     | '/api/requests/$id/near-misses'
     | '/api/scenarios/$name/state'
     | '/integrations/$key/'
@@ -519,6 +609,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/audit'
     | '/import'
+    | '/recording'
     | '/requests'
     | '/users'
     | '/api/audit'
@@ -527,6 +618,7 @@ export interface FileRouteTypes {
     | '/api/import'
     | '/api/integrations'
     | '/api/mocks'
+    | '/api/recordings'
     | '/api/requests'
     | '/api/scenarios'
     | '/api/session'
@@ -542,6 +634,11 @@ export interface FileRouteTypes {
     | '/api/mocks/$id'
     | '/api/mocks/preview'
     | '/api/mocks/reset-mine'
+    | '/api/recordings/$id'
+    | '/api/recordings/snapshot'
+    | '/api/recordings/start'
+    | '/api/recordings/status'
+    | '/api/recordings/stop'
     | '/api/requests/$id'
     | '/api/requests/count'
     | '/api/scenarios/reset'
@@ -555,6 +652,8 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
+    | '/api/recordings/$id/accept'
+    | '/api/recordings/$id/discard'
     | '/api/requests/$id/near-misses'
     | '/api/scenarios/$name/state'
     | '/integrations/$key'
@@ -570,6 +669,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_app/audit'
     | '/_app/import'
+    | '/_app/recording'
     | '/_app/requests'
     | '/_app/users'
     | '/api/audit'
@@ -578,6 +678,7 @@ export interface FileRouteTypes {
     | '/api/import'
     | '/api/integrations'
     | '/api/mocks'
+    | '/api/recordings'
     | '/api/requests'
     | '/api/scenarios'
     | '/api/session'
@@ -593,6 +694,11 @@ export interface FileRouteTypes {
     | '/api/mocks/$id'
     | '/api/mocks/preview'
     | '/api/mocks/reset-mine'
+    | '/api/recordings/$id'
+    | '/api/recordings/snapshot'
+    | '/api/recordings/start'
+    | '/api/recordings/status'
+    | '/api/recordings/stop'
     | '/api/requests/$id'
     | '/api/requests/count'
     | '/api/scenarios/reset'
@@ -606,6 +712,8 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
+    | '/api/recordings/$id/accept'
+    | '/api/recordings/$id/discard'
     | '/api/requests/$id/near-misses'
     | '/api/scenarios/$name/state'
     | '/_app/integrations/$key/'
@@ -626,6 +734,7 @@ export interface RootRouteChildren {
   ApiImportRoute: typeof ApiImportRoute
   ApiIntegrationsRoute: typeof ApiIntegrationsRouteWithChildren
   ApiMocksRoute: typeof ApiMocksRouteWithChildren
+  ApiRecordingsRoute: typeof ApiRecordingsRouteWithChildren
   ApiRequestsRoute: typeof ApiRequestsRouteWithChildren
   ApiScenariosRoute: typeof ApiScenariosRouteWithChildren
   ApiSessionRoute: typeof ApiSessionRouteWithChildren
@@ -677,6 +786,13 @@ declare module '@tanstack/react-router' {
       path: '/import'
       fullPath: '/import'
       preLoaderRoute: typeof AppImportRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/recording': {
+      id: '/_app/recording'
+      path: '/recording'
+      fullPath: '/recording'
+      preLoaderRoute: typeof AppRecordingRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/requests': {
@@ -733,6 +849,13 @@ declare module '@tanstack/react-router' {
       path: '/api/mocks'
       fullPath: '/api/mocks'
       preLoaderRoute: typeof ApiMocksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/recordings': {
+      id: '/api/recordings'
+      path: '/api/recordings'
+      fullPath: '/api/recordings'
+      preLoaderRoute: typeof ApiRecordingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/requests': {
@@ -854,6 +977,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMocksResetMineRouteImport
       parentRoute: typeof ApiMocksRoute
     }
+    '/api/recordings/$id': {
+      id: '/api/recordings/$id'
+      path: '/$id'
+      fullPath: '/api/recordings/$id'
+      preLoaderRoute: typeof ApiRecordingsIdRouteImport
+      parentRoute: typeof ApiRecordingsRoute
+    }
+    '/api/recordings/snapshot': {
+      id: '/api/recordings/snapshot'
+      path: '/snapshot'
+      fullPath: '/api/recordings/snapshot'
+      preLoaderRoute: typeof ApiRecordingsSnapshotRouteImport
+      parentRoute: typeof ApiRecordingsRoute
+    }
+    '/api/recordings/start': {
+      id: '/api/recordings/start'
+      path: '/start'
+      fullPath: '/api/recordings/start'
+      preLoaderRoute: typeof ApiRecordingsStartRouteImport
+      parentRoute: typeof ApiRecordingsRoute
+    }
+    '/api/recordings/status': {
+      id: '/api/recordings/status'
+      path: '/status'
+      fullPath: '/api/recordings/status'
+      preLoaderRoute: typeof ApiRecordingsStatusRouteImport
+      parentRoute: typeof ApiRecordingsRoute
+    }
+    '/api/recordings/stop': {
+      id: '/api/recordings/stop'
+      path: '/stop'
+      fullPath: '/api/recordings/stop'
+      preLoaderRoute: typeof ApiRecordingsStopRouteImport
+      parentRoute: typeof ApiRecordingsRoute
+    }
     '/api/requests/$id': {
       id: '/api/requests/$id'
       path: '/$id'
@@ -931,6 +1089,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMocksIdRestoreRouteImport
       parentRoute: typeof ApiMocksIdRoute
     }
+    '/api/recordings/$id/accept': {
+      id: '/api/recordings/$id/accept'
+      path: '/accept'
+      fullPath: '/api/recordings/$id/accept'
+      preLoaderRoute: typeof ApiRecordingsIdAcceptRouteImport
+      parentRoute: typeof ApiRecordingsIdRoute
+    }
+    '/api/recordings/$id/discard': {
+      id: '/api/recordings/$id/discard'
+      path: '/discard'
+      fullPath: '/api/recordings/$id/discard'
+      preLoaderRoute: typeof ApiRecordingsIdDiscardRouteImport
+      parentRoute: typeof ApiRecordingsIdRoute
+    }
     '/api/requests/$id/near-misses': {
       id: '/api/requests/$id/near-misses'
       path: '/near-misses'
@@ -986,6 +1158,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAuditRoute: typeof AppAuditRoute
   AppImportRoute: typeof AppImportRoute
+  AppRecordingRoute: typeof AppRecordingRoute
   AppRequestsRoute: typeof AppRequestsRoute
   AppUsersRoute: typeof AppUsersRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -1004,6 +1177,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAuditRoute: AppAuditRoute,
   AppImportRoute: AppImportRoute,
+  AppRecordingRoute: AppRecordingRoute,
   AppRequestsRoute: AppRequestsRoute,
   AppUsersRoute: AppUsersRoute,
   AppIndexRoute: AppIndexRoute,
@@ -1111,6 +1285,40 @@ const ApiMocksRouteWithChildren = ApiMocksRoute._addFileChildren(
   ApiMocksRouteChildren,
 )
 
+interface ApiRecordingsIdRouteChildren {
+  ApiRecordingsIdAcceptRoute: typeof ApiRecordingsIdAcceptRoute
+  ApiRecordingsIdDiscardRoute: typeof ApiRecordingsIdDiscardRoute
+}
+
+const ApiRecordingsIdRouteChildren: ApiRecordingsIdRouteChildren = {
+  ApiRecordingsIdAcceptRoute: ApiRecordingsIdAcceptRoute,
+  ApiRecordingsIdDiscardRoute: ApiRecordingsIdDiscardRoute,
+}
+
+const ApiRecordingsIdRouteWithChildren = ApiRecordingsIdRoute._addFileChildren(
+  ApiRecordingsIdRouteChildren,
+)
+
+interface ApiRecordingsRouteChildren {
+  ApiRecordingsIdRoute: typeof ApiRecordingsIdRouteWithChildren
+  ApiRecordingsSnapshotRoute: typeof ApiRecordingsSnapshotRoute
+  ApiRecordingsStartRoute: typeof ApiRecordingsStartRoute
+  ApiRecordingsStatusRoute: typeof ApiRecordingsStatusRoute
+  ApiRecordingsStopRoute: typeof ApiRecordingsStopRoute
+}
+
+const ApiRecordingsRouteChildren: ApiRecordingsRouteChildren = {
+  ApiRecordingsIdRoute: ApiRecordingsIdRouteWithChildren,
+  ApiRecordingsSnapshotRoute: ApiRecordingsSnapshotRoute,
+  ApiRecordingsStartRoute: ApiRecordingsStartRoute,
+  ApiRecordingsStatusRoute: ApiRecordingsStatusRoute,
+  ApiRecordingsStopRoute: ApiRecordingsStopRoute,
+}
+
+const ApiRecordingsRouteWithChildren = ApiRecordingsRoute._addFileChildren(
+  ApiRecordingsRouteChildren,
+)
+
 interface ApiRequestsIdRouteChildren {
   ApiRequestsIdNearMissesRoute: typeof ApiRequestsIdNearMissesRoute
 }
@@ -1185,6 +1393,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiImportRoute: ApiImportRoute,
   ApiIntegrationsRoute: ApiIntegrationsRouteWithChildren,
   ApiMocksRoute: ApiMocksRouteWithChildren,
+  ApiRecordingsRoute: ApiRecordingsRouteWithChildren,
   ApiRequestsRoute: ApiRequestsRouteWithChildren,
   ApiScenariosRoute: ApiScenariosRouteWithChildren,
   ApiSessionRoute: ApiSessionRouteWithChildren,

@@ -76,6 +76,8 @@ export function canonicalJson(value: unknown): string {
 
 /** How a mock entered the store other than through the editor. */
 export type ImportSource = 'import' | 'seed'
+/** How a mock entered the store other than through the editor or an import: an accepted recording (spec A12). */
+export type CreateSource = ImportSource | 'recording'
 
 const ownerOf = (stub: StubMapping) => stub.metadata?.wiremockUi?.owner ?? 'baseline'
 
@@ -99,6 +101,14 @@ export class MockService {
   async create(input: MockInput, actor: PublicUser): Promise<StubMapping> {
     const stub = await this.save(this.newId(), input, 0, actor.username, null)
     await this.record({ actor: actor.username, action: 'mock.create', target: stub.id })
+    return stub
+  }
+
+  /** A stub accepted from a recording's review list (spec A12): the normal create path, for `owner` (the user or baseline). */
+  async createRecorded(input: MockInput, owner: string, actor: PublicUser): Promise<StubMapping> {
+    this.validate(input)
+    const stub = await this.save(this.newId(), input, 0, actor.username, null, { owner, version: 1, source: 'recording' })
+    await this.record({ actor: actor.username, action: 'mock.create', target: stub.id, details: { source: 'recording' } })
     return stub
   }
 
@@ -267,7 +277,7 @@ export class MockService {
     expectedVersion: number,
     user: string,
     previous: StubMapping | null,
-    override?: { owner: string; version: number; source?: ImportSource },
+    override?: { owner: string; version: number; source?: CreateSource },
   ): Promise<StubMapping> {
     this.validate(input)
     const prevMeta = previous?.metadata?.wiremockUi

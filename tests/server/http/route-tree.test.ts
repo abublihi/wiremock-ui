@@ -66,3 +66,11 @@ test('Integrations pages resolve under /integrations; old /catalog URLs land on 
   expect(leaf('/catalog/nic')).toBe('/catalog/$')
   expect(leaf('/catalog/nic/endpoints/fetch/edit')).toBe('/catalog/$')
 })
+
+test('recording routes are not captured by /api/recordings/$id', () => {
+  expect(leaf('/api/recordings')).toBe('/api/recordings')
+  for (const name of ['status', 'start', 'stop', 'snapshot']) expect(leaf(`/api/recordings/${name}`)).toBe(`/api/recordings/${name}`)
+  expect(leaf('/api/recordings/abc')).toBe('/api/recordings/$id')
+  expect(leaf('/api/recordings/abc/accept')).toBe('/api/recordings/$id/accept')
+  expect(leaf('/api/recordings/abc/discard')).toBe('/api/recordings/$id/discard')
+})

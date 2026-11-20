@@ -27,3 +27,8 @@ export function useWiremockPublicUrl(): string | undefined {
   const fetched = useQuery({ ...serverConfigQueryOptions(), enabled: config === null })
   return config?.wiremockPublicUrl ?? fetched.data?.wiremockPublicUrl
 }
+
+/** True only when the layout's config says recording is allowed (RECORDING_ALLOWED, spec A12): unknown hides it. */
+export function useRecordingAllowed(): boolean {
+  return useContext(ServerConfigContext)?.recordingAllowed === true
+}

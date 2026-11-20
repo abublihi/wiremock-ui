@@ -316,6 +316,21 @@
 @utility fade-up {
   animation: wmui-fade-up 0.3s ease-out;
 }
+/* The recording banner's dot: a slow on-air pulse. */
+@keyframes wmui-recording-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--mismatch) 55%, transparent);
+  }
+  50% {
+    opacity: 0.45;
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+@utility recording-pulse {
+  animation: wmui-recording-pulse 1.4s ease-in-out infinite;
+}
 @utility status-pulse {
   animation: wmui-status-pulse 2s infinite;
 }
@@ -384,6 +399,7 @@
   .slide-in,
   .fade-up,
   .status-pulse,
+  .recording-pulse,
   .live-flash,
   .stagger-children > * {
     animation: none !important;

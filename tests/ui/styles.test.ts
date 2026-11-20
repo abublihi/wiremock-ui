@@ -32,7 +32,7 @@ describe('styles.css', () => {
 
   it('switches off every new animation under prefers-reduced-motion', () => {
     const block = reducedMotionBlocks(css)
-    for (const cls of ['.cursor-blink', '.fade-up', '.sidebar-enter', '.stagger-children', '.status-pulse', '.live-flash']) {
+    for (const cls of ['.cursor-blink', '.fade-up', '.sidebar-enter', '.stagger-children', '.status-pulse', '.recording-pulse', '.live-flash']) {
       expect(block, cls).toContain(cls)
     }
     expect(block).toMatch(/animation:\s*none/)

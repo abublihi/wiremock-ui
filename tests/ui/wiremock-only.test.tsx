@@ -30,7 +30,7 @@ afterEach(() => {
 afterAll(() => server.close())
 
 const BASE = 'http://localhost:3000'
-const none = (ui: ReactNode) => <ServerConfigProvider config={{ storeDriver: 'none', wiremockPublicUrl: 'http://localhost:8080' }}>{ui}</ServerConfigProvider>
+const none = (ui: ReactNode) => <ServerConfigProvider config={{ storeDriver: 'none', wiremockPublicUrl: 'http://localhost:8080', recordingAllowed: true }}>{ui}</ServerConfigProvider>
 const outside = {
   id: '0000b0b0-0000-4000-8000-000000000001',
   name: 'Made in WireMock',
@@ -49,8 +49,8 @@ const pageOf = (mocks: unknown[]) => pageMocks(mocks as StubMapping[], { limit: 
 
 describe('WireMock-only mode (STORE_DRIVER=none)', () => {
   it('nav has no Users entry; with a store it does', () => {
-    expect(navFor({ storeDriver: 'none', wiremockPublicUrl: 'http://localhost:8080' }).map((i) => i.to)).not.toContain('/users')
-    expect(navFor({ storeDriver: 'sqlite', wiremockPublicUrl: 'http://localhost:8080' })).toEqual(APP_NAV)
+    expect(navFor({ storeDriver: 'none', wiremockPublicUrl: 'http://localhost:8080', recordingAllowed: true }).map((i) => i.to)).not.toContain('/users')
+    expect(navFor({ storeDriver: 'sqlite', wiremockPublicUrl: 'http://localhost:8080', recordingAllowed: true })).toEqual(APP_NAV)
     expect(navFor(null)).toEqual(APP_NAV)
   })
 

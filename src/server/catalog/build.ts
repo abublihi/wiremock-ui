@@ -97,7 +97,8 @@ export const simpleMockSchema = z.strictObject(
 
 export type SimpleMockInput = z.infer<typeof simpleMockSchema>
 
-const MIME: Record<Endpoint['contentType'], string> = {
+/** The Content-Type the Simple form writes for each endpoint content type. */
+export const MIME: Record<Endpoint['contentType'], string> = {
   json: 'application/json',
   xml: 'application/xml',
   text: 'text/plain; charset=utf-8',

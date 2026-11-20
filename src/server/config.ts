@@ -21,18 +21,20 @@ export type Config = {
   publicUiUrl?: string
   seedPath?: string
   seedPrune: boolean
+  /** RECORDING_ALLOWED (default true): false turns recording and snapshots off (spec A12). */
+  recordingAllowed: boolean
 }
 
 const required = (name: string) =>
   z.string({ error: `${name} is required` }).min(1, `${name} is required`)
 
-const boolean = (name: string) =>
+const boolean = (name: string, fallback = false) =>
   z
     .string()
     .transform((v) => v.toLowerCase())
     .pipe(z.enum(['true', 'false', '1', '0'], { error: `${name} must be true, false, 1 or 0` }))
     .transform((v) => v === 'true' || v === '1')
-    .default(false)
+    .default(fallback)
 
 const schema = z.object({
   WIREMOCK_URL: z.string().min(1).default('http://localhost:8080'),
@@ -58,6 +60,7 @@ const schema = z.object({
   PUBLIC_UI_URL: z.string().min(1).optional(),
   SEED_PATH: z.string().min(1).optional(),
   SEED_PRUNE: boolean('SEED_PRUNE'),
+  RECORDING_ALLOWED: boolean('RECORDING_ALLOWED', true),
 })
 
 function isHttpUrl(value: string): boolean {
@@ -114,5 +117,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     publicUiUrl: data.PUBLIC_UI_URL,
     seedPath: data.SEED_PATH,
     seedPrune: data.SEED_PRUNE,
+    recordingAllowed: data.RECORDING_ALLOWED,
   }
 }

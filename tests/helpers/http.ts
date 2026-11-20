@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { bootRuntime, type Runtime } from '../../src/server/runtime'
 import { login as loginHandler } from '../../src/server/http/handlers/session'
-import { startRedis, startWireMock } from './containers'
+import { startRedis, startWireMock, type WireMockHandle } from './containers'
 
 export const URL_ = 'http://ui.test'
 
@@ -34,8 +34,9 @@ async function startStore(): Promise<{ env: Record<string, string>; stop(): Prom
   return { env: { REDIS_URL: redis.url }, stop: () => redis.stop() }
 }
 
-export async function startTestRuntime(adminUser = 'ui-admin', adminPassword = 'ui-admin-pass') {
-  const wm = await startWireMock()
+/** `opts.wm`: a WireMock the caller started (and stops); otherwise one is started here. */
+export async function startTestRuntime(adminUser = 'ui-admin', adminPassword = 'ui-admin-pass', opts: { wm?: WireMockHandle } = {}) {
+  const wm = opts.wm ?? (await startWireMock())
   const store = await startStore()
   const rt = await bootRuntime({
     WIREMOCK_URL: wm.url,
@@ -54,7 +55,7 @@ export async function startTestRuntime(adminUser = 'ui-admin', adminPassword = '
       rt.reconciler?.stop()
       await rt.stores.close()
       await store.stop()
-      await wm.stop().catch(() => {})
+      if (!opts.wm) await wm.stop().catch(() => {})
     },
   }
 }

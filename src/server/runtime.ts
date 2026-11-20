@@ -8,6 +8,7 @@ import { RequestJournal } from './requests/journal'
 import { MockService } from './mocks/service'
 import type { AuditLog } from './audit/log'
 import { ScenarioService } from './scenarios/service'
+import { RecordingService } from './recording/service'
 import { createStores, type MockStore, type Stores } from './store'
 import { UserService } from './users/service'
 import { adoptMissing, markAdoptionIfDue } from './sync/adopt'
@@ -26,6 +27,8 @@ export type Runtime = {
   catalog: CatalogService
   requests: RequestJournal
   scenarios: ScenarioService
+  /** Recording and snapshots with a review list (spec A12). */
+  recordings: RecordingService
   /** null in WireMock-only mode (spec A10): WireMock is the store, so there is nothing to sync. */
   reconciler: Reconciler | null
 }
@@ -107,6 +110,7 @@ export async function bootRuntime(
     const catalog = new CatalogService({ catalog: stores.catalog, audit, mocks: store })
     const requests = new RequestJournal({ wiremock, catalog, audit })
     const scenarios = new ScenarioService({ wiremock, store, audit })
+    const recordings = new RecordingService({ wiremock, store: stores.recordings, mocks, catalog, audit, config })
     const reconciler = wiremockOnly
       ? null
       : new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000 })
@@ -141,7 +145,7 @@ export async function bootRuntime(
     if (adoptionPending) await adoptMissing({ wiremock, store, catalog, audit })
     if (reconciler) await reconciler.start()
     else logger.info({ wiremockUrl: config.wiremockUrl }, 'WireMock-only mode: mocks are read from and written to WireMock; accounts, catalog and audit are kept in memory')
-    return { config, wiremock, store, stores, users, audit, mocks, catalog, requests, scenarios, reconciler }
+    return { config, wiremock, store, stores, users, audit, mocks, catalog, requests, scenarios, recordings, reconciler }
   } catch (err) {
     await stores?.close().catch(() => {})
     logger.error({ err }, 'runtime boot failed')

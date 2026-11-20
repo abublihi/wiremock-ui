@@ -13,6 +13,9 @@ import type { PublicUser } from '@/server/users/types'
 import type { NearMissView, RequestSummary } from '@/server/requests/journal'
 import type { TestRequestInput, TestRequestResult } from '@/server/wiremock/relay'
 import type { Scenario } from '@/server/scenarios/service'
+import type { AcceptResult, RecordingState, SnapshotInput, StartInput } from '@/server/recording/service'
+import type { Recording } from '@/server/recording/types'
+import type { AcceptItem } from '@/ui/lib/recording'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
 import { SESSION_KEY, apiFetch, type SessionData } from './client'
 
@@ -49,6 +52,9 @@ export const queryKeys = {
   users: ['users'] as const,
   audit: ['audit'] as const,
   scenarios: ['scenarios'] as const,
+  recordingState: ['recordings', 'state'] as const,
+  recordings: ['recordings', 'lists'] as const,
+  recording: (id: string) => ['recordings', 'lists', id] as const,
 } as const
 
 export const sessionQueryOptions = (fetchSession: () => Promise<SessionData> = defaultFetchSession) =>
@@ -562,5 +568,89 @@ export function useImport() {
         queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
         queryClient.invalidateQueries({ queryKey: queryKeys.audit }),
       ]),
+  })
+}
+
+// ── Recording (spec A12) ─────────────────────────────────────────────────────────
+
+export const RECORDING_POLL_MS = 5000
+
+/** Whether WireMock is recording, polled while the tab is visible (the app-wide banner and the Recording page). */
+export function useRecordingState(options: { enabled?: boolean } = {}) {
+  const visible = useDocumentVisible()
+  return useQuery({
+    queryKey: queryKeys.recordingState,
+    queryFn: () => apiFetch<RecordingState>('/api/recordings/status'),
+    enabled: options.enabled ?? true,
+    refetchInterval: visible ? RECORDING_POLL_MS : false,
+    refetchIntervalInBackground: false,
+    retry: false,
+  })
+}
+
+export function useStartRecording() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: StartInput) => apiFetch<RecordingState>('/api/recordings/start', { method: 'POST', body: input }),
+    onSuccess: (state) => queryClient.setQueryData(queryKeys.recordingState, state),
+  })
+}
+
+export function useStopRecording() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiFetch<{ recording: Recording | null }>('/api/recordings/stop', { method: 'POST' }),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.recordingState }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
+      ]),
+  })
+}
+
+export function useSnapshot() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: SnapshotInput) => apiFetch<{ recording: Recording | null }>('/api/recordings/snapshot', { method: 'POST', body: input }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
+  })
+}
+
+/** Review lists waiting to be accepted (they expire after 24 hours). */
+export function useRecordings(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.recordings,
+    queryFn: async () => (await apiFetch<{ recordings: Recording[] }>('/api/recordings')).recordings,
+    enabled: options.enabled ?? true,
+  })
+}
+
+export function useAcceptRecording() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, items, owner }: { id: string; items: AcceptItem[]; owner: 'me' | 'baseline' }) =>
+      apiFetch<AcceptResult>(`/api/recordings/${encodeURIComponent(id)}/accept`, { method: 'POST', body: { items, owner } }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
+      ]),
+  })
+}
+
+/** Drops the given rows, or the whole review list when `ids` is left out. */
+export function useDiscardRecording() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ids }: { id: string; ids?: string[] }): Promise<Recording | null> => {
+      const path = `/api/recordings/${encodeURIComponent(id)}`
+      if (!ids) {
+        await apiFetch<void>(path, { method: 'DELETE' })
+        return null
+      }
+      return (await apiFetch<{ recording: Recording | null }>(`${path}/discard`, { method: 'POST', body: { ids } })).recording
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
   })
 }

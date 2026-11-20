@@ -179,6 +179,20 @@ Turn on **Call back after responding** to have WireMock send a request of its ow
 
 The callback is sent from WireMock's machine: `http://localhost:…` means WireMock's own host, not yours.
 
+## Record real traffic
+
+**Recording** (in the sidebar under Work) turns a real service's answers into mocks, so you do not have to type them.
+
+1. Enter the service's base URL as **Target URL** (`https://api.test.example`; `http` or `https` only, not WireMock itself and not this app) and, if you like, narrow which requests become mocks: a method, a **URL path pattern** (a regular expression such as `/api/.*`), **Request headers to match**, and whether repeated requests become a scenario. **Start recording**.
+2. Point your application at WireMock (`WIREMOCK_PUBLIC_URL`) instead of the real service, and use it as usual. While recording, WireMock forwards **every** request to the target and records the answer; only mocks with priority 1–4 still answer themselves. Every page shows a banner, "Recording traffic to …", with **Stop**.
+3. **Stop** opens the **review list**: one row per recorded request with its method, URL, status, body size and recorded answer. Rows that an existing mock already answers are marked **Duplicate of …** and are not selected. Give a row a name, and link it to an integration and endpoint if you want it in the catalog (the UI suggests one by path prefix and offers **New endpoint** from the request). **Accept selected** creates the mocks as yours (or as baseline); **Discard** drops rows.
+
+Nothing is a mock until you accept it: recorded stubs are kept apart, not in WireMock, and an unaccepted review list is deleted after **24 hours**. Accepted mocks open in Simple mode when the form can show them.
+
+**From the request log.** The **From the request log** tab, or **Create mocks from these** on the Request log (for the requests the current filter shows), turns requests WireMock already logged into a review list the same way, including requests a mock answered. Requests no mock answered are marked **No mock answered**.
+
+**Security.** Recorded bodies and headers are real data from the target: tokens, personal details or secrets end up in the mock as they are. Only record test services, open each row's recorded answer and leave out anything sensitive before accepting, and remember the test-environment banner still applies: accepted mocks are visible to everyone who signs in. Set `RECORDING_ALLOWED=false` to turn recording off on an environment (the page disappears and the API answers 403).
+
 ## Scenarios: answer differently on later calls
 
 Some flows need the same request to get a different answer the second time: "pending" first, "approved" after. That is a **scenario**: a set of mocks for the same request that answer differently as the scenario moves from state to state.
@@ -462,6 +476,12 @@ curl -u $AUTH -X POST $UI/api/test-request -H "$JSON" \
 curl -u $AUTH $UI/api/scenarios
 curl -u $AUTH -X PUT $UI/api/scenarios/order-flow/state -H "$JSON" -d '{"state":"approved"}'
 curl -u $AUTH -X POST $UI/api/scenarios/reset -H "$JSON" -d '{"name":"order-flow"}'   # or {} for all
+
+# Record: start (target and filters), stop (returns the review list), accept rows from it
+curl -u $AUTH -X POST $UI/api/recordings/start -H "$JSON" -d '{"targetUrl":"https://api.test.example","urlPathPattern":"/api/.*"}'
+curl -u $AUTH -X POST $UI/api/recordings/stop      # {"recording":{"id":"<list id>","items":[{"id":"<row id>",…}],…}}
+curl -u $AUTH -X POST $UI/api/recordings/<list id>/accept -H "$JSON" -d '{"items":[{"id":"<row id>","name":"Get user"}]}'
+curl -u $AUTH -X POST $UI/api/recordings/snapshot -H "$JSON" -d '{"method":"GET"}'   # from the request log instead
 
 # Clean up after a run
 curl -u $AUTH -X POST $UI/api/mocks/reset-mine      # {"deleted":4}

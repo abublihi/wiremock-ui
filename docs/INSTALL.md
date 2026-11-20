@@ -116,6 +116,7 @@ Everything is set through environment variables. Empty values count as unset.
 | `PUBLIC_UI_URL` | (none) | The address people use to reach the UI, for example `https://mocks.example.com`. An `https` URL makes session cookies `Secure`. |
 | `SEED_PATH` | (none) | A bundle file or a folder of `*.json` files to import as baseline mocks on every start. See [USAGE.md](USAGE.md#bundle-files-and-seeding-baseline-mocks). |
 | `SEED_PRUNE` | `false` | With `SEED_PATH`: also delete baseline mocks that are no longer in the seed. People's own mocks are never touched. Ignored with `STORE_DRIVER=none`. |
+| `RECORDING_ALLOWED` | `true` | `false` turns recording and "create mocks from the request log" off on this environment: the Recording page is hidden and the API answers 403. See [Record real traffic](USAGE.md#record-real-traffic). |
 | `PORT` | `3000` | Port the UI listens on. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. Logs are JSON lines on stdout. |
 

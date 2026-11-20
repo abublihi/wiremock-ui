@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
-import { ArrowDownUpIcon, DatabaseIcon, FileClockIcon, ListIcon, ScrollTextIcon, UsersIcon, WorkflowIcon } from 'lucide-react'
+import { ArrowDownUpIcon, CircleDotIcon, DatabaseIcon, FileClockIcon, ListIcon, ScrollTextIcon, UsersIcon, WorkflowIcon } from 'lucide-react'
 import type { PublicUser } from '@/server/users/types'
 import type { ServerConfig } from '@/ui/api/queries'
 import { useT } from '@/ui/i18n'
 import { Brand } from './Brand'
 import { HazardStrip } from './HazardStrip'
+import { RecordingBanner } from './RecordingBanner'
 import type { NavCounts, NavItem } from './Rail'
 import { SidebarContent, TopBar } from './TopBar'
 
@@ -19,15 +20,21 @@ export const APP_NAV: NavItem[] = [
   { to: '/mocks', label: 'nav.mocks', icon: ListIcon, group: 'work' },
   { to: '/scenarios', label: 'nav.scenarios', icon: WorkflowIcon, group: 'work' },
   { to: '/requests', label: 'nav.requests', icon: ScrollTextIcon, group: 'work' },
+  { to: '/recording', label: 'nav.recording', icon: CircleDotIcon, group: 'work' },
   { to: '/integrations', label: 'nav.integrations', icon: DatabaseIcon, group: 'setup' },
   { to: '/import', label: 'nav.import', icon: ArrowDownUpIcon, group: 'setup' },
   { to: '/users', label: 'nav.users', icon: UsersIcon, group: 'admin' },
   { to: '/audit', label: 'nav.audit', icon: FileClockIcon, group: 'admin' },
 ]
 
-/** The nav for how the server runs: WireMock-only mode has no accounts to manage, so no Users page. */
+/**
+ * The nav for how the server runs: WireMock-only mode has no accounts to manage, so no Users page; with
+ * RECORDING_ALLOWED=false there is no Recording page. An unknown config shows everything.
+ */
 export function navFor(config: ServerConfig | null): NavItem[] {
-  return config?.storeDriver === 'none' ? APP_NAV.filter((item) => item.to !== '/users') : APP_NAV
+  return APP_NAV.filter(
+    (item) => !(item.to === '/users' && config?.storeDriver === 'none') && !(item.to === '/recording' && config?.recordingAllowed === false),
+  )
 }
 
 export function AppShell({ nav, counts, user, children }: { nav: NavItem[]; counts?: NavCounts; user: PublicUser | null; children: ReactNode }) {
@@ -42,6 +49,7 @@ export function AppShell({ nav, counts, user, children }: { nav: NavItem[]; coun
         {t('shell.skipToContent')}
       </a>
       <HazardStrip />
+      <RecordingBanner />
       <div className="flex min-h-0 flex-1">
         <aside className="sidebar-enter hidden w-[228px] shrink-0 flex-col border-e bg-surface md:flex">
           <div className="border-b border-line/60 px-5 pt-5 pb-6">
