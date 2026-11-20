@@ -11,3 +11,6 @@ tests
 !.env.example
 *.tsbuildinfo
 data
+e2e
+test-results
+playwright-report

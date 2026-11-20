@@ -2,6 +2,7 @@ import * as React from "react"
 import { cn } from "@/ui/lib/utils"
 import { useT } from "@/ui/i18n"
 import { Dialog as DialogPrimitive } from "radix-ui"
+import { useReturnFocus } from "@/ui/lib/return-focus"
 
 import { Button } from "@/ui/components/ui/button"
 import { XIcon } from "lucide-react"
@@ -48,6 +49,8 @@ function DialogOverlay({
 
 function DialogContent({
   className,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   children,
   showCloseButton = true,
   closeLabel,
@@ -57,11 +60,13 @@ function DialogContent({
   /** Defaults to the translated "Close". */
   closeLabel?: string
 }) {
+  const returnFocus = useReturnFocus({ onOpenAutoFocus, onCloseAutoFocus })
   const t = useT()
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
+        {...returnFocus}
         data-slot="dialog-content"
         className={cn(
           "fixed top-1/2 start-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 rtl:translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl glass-panel p-4 text-sm text-popover-foreground duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",

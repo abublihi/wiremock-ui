@@ -69,7 +69,7 @@ describe('safeNext', () => {
 
 async function openMenu() {
   const ue = userEvent.setup()
-  await ue.click(await screen.findByRole('button', { name: 'Account menu' }))
+  await ue.click(await screen.findByRole('button', { name: /Account menu/ }))
   return ue
 }
 

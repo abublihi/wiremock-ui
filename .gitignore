@@ -15,3 +15,7 @@ docs/superpowers/
 
 # Default SQLite store (SQLITE_PATH)
 data/
+
+# Playwright output
+test-results/
+playwright-report/

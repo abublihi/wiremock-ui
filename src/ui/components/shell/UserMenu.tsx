@@ -41,7 +41,6 @@ export function UserMenu({ user }: { user: PublicUser }) {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            aria-label={t('user.menu')}
             title={t('user.signedInAs', { name: user.displayName })}
             className="h-auto w-full justify-start gap-2.5 px-2 py-1.5 text-start"
           >
@@ -55,6 +54,8 @@ export function UserMenu({ user }: { user: PublicUser }) {
               <span className="truncate text-[11px] leading-none font-medium text-foreground">{user.displayName}</span>
               <span className="truncate text-[10px] leading-none text-muted-foreground">@{user.username}</span>
             </span>
+            {/* Named by its visible text plus this hint (WCAG 2.5.3: the label contains the visible text). */}
+            <span className="sr-only">{t('user.menu')}</span>
             <ChevronsUpDownIcon className="size-3.5 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>

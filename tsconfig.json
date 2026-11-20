@@ -29,6 +29,7 @@
   "include": [
     "src",
     "tests",
+    "e2e",
     "*.ts"
   ]
 }

@@ -2,6 +2,7 @@ import * as React from "react"
 import { cn } from "@/ui/lib/utils"
 import { useT } from "@/ui/i18n"
 import { Dialog as SheetPrimitive } from "radix-ui"
+import { useReturnFocus } from "@/ui/lib/return-focus"
 
 import { Button } from "@/ui/components/ui/button"
 import { XIcon } from "lucide-react"
@@ -46,6 +47,8 @@ function SheetOverlay({
 
 function SheetContent({
   className,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   children,
   side = "end",
   showCloseButton = true,
@@ -58,11 +61,13 @@ function SheetContent({
   /** Defaults to the translated "Close". */
   closeLabel?: string
 }) {
+  const returnFocus = useReturnFocus({ onOpenAutoFocus, onCloseAutoFocus })
   const t = useT()
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
+        {...returnFocus}
         data-slot="sheet-content"
         data-side={side}
         className={cn(
