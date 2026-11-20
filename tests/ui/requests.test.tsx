@@ -317,6 +317,8 @@ describe('request drawer', () => {
     expect(within(card).getByRole('link', { name: 'Refund ok' }).getAttribute('href')).toBe('/mocks/stub-refund')
     expect(within(card).getByText('omar')).toBeTruthy()
     expect(within(card).getByText('1 of 3 fields differ')).toBeTruthy()
+    expect(within(card).getByText('Expects urlPath equalTo /pay/refunds; this request had /pay/refund.')).toBeTruthy()
+    expect(within(card).getByText('Close')).toBeTruthy()
 
     const rows = within(card).getAllByRole('row').slice(1)
     expect(rows.map((r) => r.getAttribute('data-state'))).toEqual(['mismatch', 'match', 'unchecked'])

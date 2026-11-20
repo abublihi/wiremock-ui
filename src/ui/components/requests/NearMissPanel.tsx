@@ -81,6 +81,9 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
   const name = miss.stub.name || t('requests.unnamedMock')
   // WireMock's distance: 0 is identical, 1 shares nothing. Shown as how close the mock came.
   const closeness = Math.round(Math.max(0, Math.min(1, 1 - miss.distance)) * 100)
+  const nearness = miss.distance < 0.1 ? t('near.closest') : miss.distance < 0.3 ? t('near.close') : t('near.far')
+  // The first difference in one plain sentence, above the table.
+  const first = rows.find((r) => r.state === 'mismatch')
 
   return (
     <article aria-labelledby={titleId} className="glow-border overflow-hidden rounded-md border border-line bg-surface">
@@ -119,12 +122,17 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
             <span aria-hidden className="h-1 w-16 overflow-hidden rounded-full bg-surface-2">
               <span className="block h-full rounded-full bg-hazard" style={{ width: `${closeness}%` }} />
             </span>
-            <span className="tabular-nums">
-              {t('near.distance')} {miss.distance.toFixed(2)}
-            </span>
+            <span>{nearness}</span>
           </span>
         </div>
       </header>
+      {first && (
+        <p className="border-b border-line px-3 py-2 text-xs">
+          {first.actual === null
+            ? t('near.oneLineMissing', { field: first.field, expected: first.expected })
+            : t('near.oneLine', { field: first.field, expected: first.expected, actual: first.actual })}
+        </p>
+      )}
       {rows.length === 0 ? (
         <p className="px-3 py-3 text-xs text-muted-foreground">{t('near.noFields')}</p>
       ) : (
