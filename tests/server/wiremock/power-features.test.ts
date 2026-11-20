@@ -77,10 +77,25 @@ test('scenarios: WireMock 3.13.1 does not decode the name in the admin path, so 
   expect(await raw.text()).toContain('Scenario Order%20Flow does not exist')
   // The client refuses up front instead of sending a request WireMock cannot match.
   await expect(wm.setScenarioState('Order Flow', 'Started')).rejects.toThrow(/can't set the state of a scenario whose name/)
-  // Sub-delimiters, ':' and '@' are sent unencoded and work.
-  await wm.importStubs(flow("a+b:c@d!e(f)_g.h~i-j;k,l=m*'$&"), { deleteAllNotInImport: false })
-  await wm.setScenarioState("a+b:c@d!e(f)_g.h~i-j;k,l=m*'$&", 'approved')
+  // Sub-delimiters (but ';', which starts path parameters), ':' and '@' are sent unencoded and work.
+  await wm.importStubs(flow("a+b:c@d!e(f)_g.h~i-j,l=m*'$&"), { deleteAllNotInImport: false })
+  await wm.setScenarioState("a+b:c@d!e(f)_g.h~i-j,l=m*'$&", 'approved')
   expect((await wm.listScenarios()).find((s) => s.name.startsWith('a+b'))?.state).toBe('approved')
+  for (const name of ['a;b', '.hidden', '..']) {
+    await expect(wm.setScenarioState(name, 'Started')).rejects.toThrow(/can't set the state of a scenario whose name/)
+  }
+})
+
+test('webhook: WireMock accepts a lognormal delay and a non-standard method token', async () => {
+  const parameters = { method: 'PURGE', url: 'http://localhost:8080/cb', delay: { type: 'lognormal', median: 80, sigma: 0.4 } }
+  await wm.importStubs(
+    [{ id: uid(9), request: { method: 'GET', urlPath: '/ln' }, response: { status: 200 }, serveEventListeners: [{ name: 'webhook', parameters }] }],
+    { deleteAllNotInImport: false },
+  )
+  expect((await wm.getStub(uid(9)))?.serveEventListeners).toEqual([{ name: 'webhook', parameters }])
+  expect((await fetch(`${handle.url}/ln`)).status).toBe(200)
+  const call = await waitFor(async () => (await wm.listRequests({ limit: 10 })).find((e) => e.request.url === '/cb'))
+  expect(call.request.method).toBe('PURGE')
 })
 
 test('Matched-Stub-Id names the stub that served the request', async () => {

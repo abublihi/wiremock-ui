@@ -8,8 +8,10 @@ import { ValidationError } from '../errors'
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/** The form offers these; any RFC 9110 method token is accepted (and stored upper-cased), as WireMock does. */
 export const WEBHOOK_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
-export const MAX_WEBHOOK_DELAY_MS = 60_000
+const METHOD_TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+export const MAX_WEBHOOK_DELAY_MS = 600_000
 
 function httpUrl(value: unknown, field: string, opts: { templated?: boolean } = {}): void {
   const message = `${field} must be an http:// or https:// URL`
@@ -41,7 +43,7 @@ function delayMs(value: unknown, field: string): number {
 
 function webhookDelay(value: unknown, field: string): void {
   if (value === undefined) return
-  const shape = `${field} must be { type: "fixed", milliseconds } or { type: "uniform", lower, upper }`
+  const shape = `${field} must be { type: "fixed", milliseconds }, { type: "uniform", lower, upper } or { type: "lognormal", median, sigma }`
   if (!isObject(value)) throw new ValidationError(shape)
   if (value.type === 'fixed') {
     delayMs(value.milliseconds, `${field}.milliseconds`)
@@ -49,6 +51,12 @@ function webhookDelay(value: unknown, field: string): void {
     const lower = delayMs(value.lower, `${field}.lower`)
     const upper = delayMs(value.upper, `${field}.upper`)
     if (lower > upper) throw new ValidationError(`${field}.lower must not be greater than upper`)
+  } else if (value.type === 'lognormal') {
+    delayMs(value.median, `${field}.median`)
+    if (typeof value.sigma !== 'number' || !Number.isFinite(value.sigma) || value.sigma < 0) {
+      throw new ValidationError(`${field}.sigma must be a number of 0 or more`)
+    }
+    if (value.maxValue !== undefined) delayMs(value.maxValue, `${field}.maxValue`)
   } else {
     throw new ValidationError(shape)
   }
@@ -56,8 +64,8 @@ function webhookDelay(value: unknown, field: string): void {
 
 function webhook(parameters: unknown, field: string): void {
   if (!isObject(parameters)) throw new ValidationError(`${field} must be an object`)
-  if (typeof parameters.method !== 'string' || !(WEBHOOK_METHODS as readonly string[]).includes(parameters.method)) {
-    throw new ValidationError(`${field}.method must be one of ${WEBHOOK_METHODS.join(', ')}`)
+  if (typeof parameters.method !== 'string' || !METHOD_TOKEN.test(parameters.method)) {
+    throw new ValidationError(`${field}.method must be an HTTP method such as ${WEBHOOK_METHODS.join(', ')}`)
   }
   httpUrl(parameters.url, `${field}.url`, { templated: true })
   stringMap(parameters.headers, `${field}.headers`)
@@ -66,9 +74,7 @@ function webhook(parameters: unknown, field: string): void {
 }
 
 function proxy(response: Record<string, unknown>): void {
-  const has = (k: string) => response[k] !== undefined
-  if (!has('proxyBaseUrl')) return
-  httpUrl(response.proxyBaseUrl, 'response.proxyBaseUrl')
+  if (response.proxyBaseUrl !== undefined) httpUrl(response.proxyBaseUrl, 'response.proxyBaseUrl')
   stringMap(response.additionalProxyRequestHeaders, 'response.additionalProxyRequestHeaders')
   const remove = response.removeProxyRequestHeaders
   if (remove !== undefined && (!Array.isArray(remove) || !remove.every((h) => typeof h === 'string'))) {
@@ -109,11 +115,26 @@ export function assertPowerFields(stub: { response: Record<string, unknown> } & 
 }
 
 /**
- * WireMock 3.13.1 only removes proxy request headers listed in lower case (power-features.test.ts); header names
- * are case-insensitive, so the list is stored lower-cased.
+ * Stored forms WireMock 3.13.1 needs: it only removes proxy request headers listed in lower case
+ * (power-features.test.ts), and header names are case-insensitive, so that list is lower-cased; webhook methods
+ * are upper-cased. Call after assertPowerFields.
  */
-export function normaliseProxyHeaders(response: Record<string, unknown>): Record<string, unknown> {
-  const remove = response.removeProxyRequestHeaders
-  if (!Array.isArray(remove)) return response
-  return { ...response, removeProxyRequestHeaders: remove.map((h) => (typeof h === 'string' ? h.toLowerCase() : h)) }
+export function normalisePowerFields<T extends { response: Record<string, unknown> } & Record<string, unknown>>(stub: T): T {
+  let out = stub
+  const remove = stub.response.removeProxyRequestHeaders
+  if (Array.isArray(remove)) {
+    out = { ...out, response: { ...out.response, removeProxyRequestHeaders: remove.map((h) => (typeof h === 'string' ? h.toLowerCase() : h)) } }
+  }
+  const listeners = stub.serveEventListeners
+  if (Array.isArray(listeners)) {
+    out = {
+      ...out,
+      serveEventListeners: listeners.map((l: unknown) =>
+        isObject(l) && l.name === 'webhook' && isObject(l.parameters) && typeof l.parameters.method === 'string'
+          ? { ...l, parameters: { ...l.parameters, method: l.parameters.method.toUpperCase() } }
+          : l,
+      ),
+    }
+  }
+  return out
 }

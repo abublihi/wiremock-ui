@@ -12,7 +12,10 @@ test('the relay never sends the admin credentials and never follows redirects', 
   expect(res).toMatchObject({ status: 302, matchedStubId: 'abc', body: 'moved', headers: { location: 'http://elsewhere.test/' } })
   expect(calls[0].url).toBe('http://wm.test:8080/r')
   expect(calls[0].init.redirect).toBe('manual')
-  expect(calls[0].init.headers).toEqual({ 'X-A': '1' })
+  // identity unless the tester asks otherwise, so the reported headers describe the body as sent.
+  expect(calls[0].init.headers).toEqual({ 'X-A': '1', 'Accept-Encoding': 'identity' })
+  await wm.sendTestRequest({ method: 'GET', path: '/r', headers: { 'accept-encoding': 'gzip' } })
+  expect(calls[1].init.headers).toEqual({ 'accept-encoding': 'gzip' })
 })
 
 test('a WireMock that does not answer in time is a 504 naming the limit', async () => {

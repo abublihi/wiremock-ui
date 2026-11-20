@@ -15,6 +15,9 @@ describe('relayTarget refuses anything but a stub path on WIREMOCK_URL', () => {
     ['admin root', '/__admin'],
     ['admin, other case', '/__ADMIN/mappings'],
     ['admin with matrix param', '/__admin;x=1/mappings'],
+    ['admin after a matrix-only segment', '/;x/__admin/mappings'],
+    ['admin after a bare ; segment', '/;/__admin/mappings'],
+    ['admin after an encoded matrix-only segment', '/%3Bx/__admin/mappings'],
     ['dot-dot segment', '/a/../__admin/mappings'],
     ['dot-dot segment at the end', '/a/..'],
     ['single dot segment', '/./__admin'],
@@ -90,6 +93,7 @@ describe('relayHeaders', () => {
     ['space in a name', { 'X A': 'v' }],
     ['colon in a name', { 'X:A': 'v' }],
     ['empty name', { '': 'v' }],
+    ['a value beyond Latin-1', { 'X-A': 'price €5' }],
   ])('refuses %s', (_label, headers) => {
     expect(() => relayHeaders(headers)).toThrow(ValidationError)
   })

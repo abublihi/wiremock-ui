@@ -99,6 +99,7 @@ test.each([
   ['dot-dot to admin', { method: 'GET', path: '/x/../__admin/mappings' }],
   ['encoded dot-dot to admin', { method: 'GET', path: '/x/%2e%2e/__admin/mappings' }],
   ['dot-dot with matrix param', { method: 'GET', path: '/x/..;/__admin/mappings' }],
+  ['admin after a matrix-only segment', { method: 'GET', path: '/;x/__admin/mappings' }],
   ['encoded slash', { method: 'GET', path: '/x%2f..%2f__admin%2fmappings' }],
   ['CRLF in a header value', { method: 'GET', path: '/x', headers: { 'X-A': 'v\r\nX-Injected: 1' } }],
   ['CRLF in a header name', { method: 'GET', path: '/x', headers: { 'X-A\r\nX-Injected': '1' } }],
@@ -116,6 +117,33 @@ test.each([
 test('refuses a request body over 1 MB with 413', async () => {
   const { status } = await relay({ method: 'POST', path: '/x', body: 'x'.repeat(1024 * 1024 + 1) })
   expect(status).toBe(413)
+})
+
+test('refuses an oversized chunked request (no Content-Length) with 413 before parsing it', async () => {
+  const chunk = new TextEncoder().encode('x'.repeat(64 * 1024))
+  let sent = 0
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent === 0) controller.enqueue(new TextEncoder().encode('{"method":"POST","path":"/x","body":"'))
+      if (sent > 3 * 1024 * 1024) return controller.close()
+      controller.enqueue(chunk)
+      sent += chunk.byteLength
+    },
+  })
+  const request = new Request('http://ui.test/api/test-request', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...auth }, body: stream, duplex: 'half',
+  } as RequestInit)
+  expect(request.headers.get('content-length')).toBeNull()
+  const res = await sendTestRequest(rt, request)
+  expect(res.status).toBe(413)
+  expect(sent).toBeLessThan(3 * 1024 * 1024)
+  expect(await journal()).toEqual([])
+})
+
+test('a header value beyond Latin-1 is a 400, not a WireMock failure', async () => {
+  const { status, json } = await relay({ method: 'GET', path: '/x', headers: { 'X-Price': '€5' } })
+  expect(status).toBe(400)
+  expect(json.error).toMatch(/X-Price may only contain Latin-1/)
 })
 
 test('a webhook mock created through the API really calls its target; a proxy mock really proxies', async () => {

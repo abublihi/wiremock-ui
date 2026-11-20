@@ -6,11 +6,12 @@ const PAGE = 1000
 
 // WireMock 3.13.1 matches the scenario name in /__admin/scenarios/{name}/state without percent-decoding it, so
 // only names made of characters a path segment carries unencoded can be addressed (pinned in power-features.test.ts).
-const SETTABLE_SCENARIO_NAME = /^[A-Za-z0-9\-._~!$&'()*+,;=:@]+$/
+// ';' is left out: servlet containers treat it as the start of path parameters.
+const SETTABLE_SCENARIO_NAME = /^[A-Za-z0-9\-._~!$&'()*+,=:@]+$/
 
 /** Whether WireMock's admin API can change this scenario's state (see SETTABLE_SCENARIO_NAME). */
 export function isScenarioNameSettable(name: string): boolean {
-  return SETTABLE_SCENARIO_NAME.test(name) && name !== '.' && name !== '..'
+  return SETTABLE_SCENARIO_NAME.test(name) && !name.startsWith('.')
 }
 
 class GatewayTimeoutError extends AppError {
@@ -209,6 +210,8 @@ export class WireMockClient {
   async sendTestRequest(input: TestRequestInput): Promise<TestRequestResult> {
     const target = relayTarget(this.baseUrl, input.path, input.query)
     const headers = relayHeaders(input.headers)
+    // Without this, fetch asks for gzip and decompresses, so the reported headers would not describe the body.
+    if (!Object.keys(headers).some((h) => h.toLowerCase() === 'accept-encoding')) headers['Accept-Encoding'] = 'identity'
     const started = performance.now()
     let res: Response
     const signal = AbortSignal.timeout(this.relayTimeoutMs)

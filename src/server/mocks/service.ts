@@ -1,7 +1,7 @@
 import { safeRecord, type AuditLog } from '../audit/log'
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../errors'
 import { logger } from '../logger'
-import { assertPowerFields, normaliseProxyHeaders } from './power-fields'
+import { assertPowerFields, normalisePowerFields } from './power-fields'
 import type { MockStore } from '../store/types'
 import type { PublicUser } from '../users/types'
 import type { WireMockClient } from '../wiremock/client'
@@ -43,6 +43,8 @@ export function assertValidStub(stub: unknown): asserts stub is Record<string, u
   if (!isObject(stub.request)) throw new ValidationError('mock.request must be an object')
   if (!isObject(stub.response)) throw new ValidationError('mock.response must be an object')
   if ('bodyFileName' in stub.response) throw new ValidationError('bodyFileName is not supported; put the body inline')
+  // Here too, so a bundle import refuses a bad proxy, webhook or scenario field before writing anything.
+  assertPowerFields(stub as Pick<StubBase, 'response'> & Record<string, unknown>)
 }
 
 const IGNORED_META = ['version', 'updatedAt', 'updatedBy', 'source'] as const
@@ -52,8 +54,8 @@ function comparable(stub: StubMapping): string {
   const { persistent: _p, ...rest } = stub
   const ui = { ...(stub.metadata?.wiremockUi ?? {}) } as Record<string, unknown>
   for (const k of IGNORED_META) delete ui[k]
-  // Saving lower-cases the proxy header removal list, so an import of the mixed-case original is unchanged.
-  return canonicalJson({ ...rest, response: normaliseProxyHeaders(stub.response), metadata: { ...stub.metadata, wiremockUi: ui } })
+  // Saving normalises proxy/webhook fields, so an import of the un-normalised original is unchanged.
+  return canonicalJson(normalisePowerFields({ ...rest, metadata: { ...stub.metadata, wiremockUi: ui } }))
 }
 
 export function canonicalJson(value: unknown): string {
@@ -266,13 +268,12 @@ export class MockService {
     }
     // WireMock treats `id` and `uuid` as one field (last wins): a body value could retarget another stub.
     const { id: _id, uuid: _uuid, ...body } = input as MockInput & { id?: unknown; uuid?: unknown }
-    const stub: StubMapping = {
+    const stub: StubMapping = normalisePowerFields({
       ...body,
-      response: normaliseProxyHeaders(body.response),
       id,
       persistent: false,
       metadata: { ...input.metadata, wiremockUi },
-    }
+    } as StubMapping)
 
     if (this.storeIsWireMock) {
       await this.store.save(stub, expectedVersion)

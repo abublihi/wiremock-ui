@@ -49,17 +49,22 @@ const invalid: [string, MockInput, RegExp][] = [
   ['serveEventListeners not a list', { ...hook(okHook), serveEventListeners: {} } as MockInput, /serveEventListeners must be a list/],
   ['listener without a name', { ...hook(okHook), serveEventListeners: [{ parameters: {} }] } as MockInput, /serveEventListeners\[0\]\.name/],
   ['webhook without parameters', { ...hook(okHook), serveEventListeners: [{ name: 'webhook' }] } as MockInput, /serveEventListeners\[0\]\.parameters must be an object/],
-  ['webhook method', hook({ ...okHook, method: 'TRACE' }), /serveEventListeners\[0\]\.parameters\.method must be one of GET, POST, PUT, PATCH, DELETE/],
+  ['webhook method', hook({ ...okHook, method: 'NOT A METHOD' }), /serveEventListeners\[0\]\.parameters\.method must be an HTTP method such as GET, POST, PUT, PATCH, DELETE/],
+  ['webhook method missing', hook({ ...okHook, method: undefined }), /parameters\.method must be an HTTP method/],
   ['webhook url missing', hook({ ...okHook, url: undefined }), /serveEventListeners\[0\]\.parameters\.url must be an http:\/\/ or https:\/\/ URL/],
   ['webhook url scheme', hook({ ...okHook, url: 'file:///etc/passwd' }), /parameters\.url must be an http:\/\/ or https:\/\//],
   ['webhook url not a URL', hook({ ...okHook, url: 'http://' }), /parameters\.url/],
   ['webhook headers', hook({ ...okHook, headers: { a: ['x'] } }), /parameters\.headers\.a must be a string/],
   ['webhook body', hook({ ...okHook, body: { a: 1 } }), /parameters\.body must be a string/],
-  ['delay type', hook({ ...okHook, delay: { type: 'lognormal', median: 5 } }), /parameters\.delay must be \{ type: "fixed", milliseconds \} or \{ type: "uniform", lower, upper \}/],
-  ['fixed delay too long', hook({ ...okHook, delay: { type: 'fixed', milliseconds: 60001 } }), /parameters\.delay\.milliseconds must be an integer between 0 and 60000/],
+  ['delay type', hook({ ...okHook, delay: { type: 'gaussian', median: 5 } }), /parameters\.delay must be \{ type: "fixed", milliseconds \}, \{ type: "uniform", lower, upper \} or \{ type: "lognormal", median, sigma \}/],
+  ['fixed delay too long', hook({ ...okHook, delay: { type: 'fixed', milliseconds: 600001 } }), /parameters\.delay\.milliseconds must be an integer between 0 and 600000/],
+  ['lognormal without sigma', hook({ ...okHook, delay: { type: 'lognormal', median: 5 } }), /parameters\.delay\.sigma must be a number/],
+  ['lognormal median too long', hook({ ...okHook, delay: { type: 'lognormal', median: 600001, sigma: 1 } }), /parameters\.delay\.median must be an integer between 0 and 600000/],
   ['fixed delay negative', hook({ ...okHook, delay: { type: 'fixed', milliseconds: -1 } }), /delay\.milliseconds/],
   ['uniform lower above upper', hook({ ...okHook, delay: { type: 'uniform', lower: 50, upper: 10 } }), /parameters\.delay\.lower must not be greater than upper/],
-  ['uniform upper too long', hook({ ...okHook, delay: { type: 'uniform', lower: 0, upper: 70000 } }), /parameters\.delay\.upper must be an integer between 0 and 60000/],
+  ['uniform upper too long', hook({ ...okHook, delay: { type: 'uniform', lower: 0, upper: 700000 } }), /parameters\.delay\.upper must be an integer between 0 and 600000/],
+  ['proxy prefix without a base URL', proxy({ status: 200, proxyUrlPrefixToRemove: 'api' }), /response\.proxyUrlPrefixToRemove must start with \//],
+  ['proxy headers without a base URL', proxy({ status: 200, additionalProxyRequestHeaders: { a: 1 } }), /response\.additionalProxyRequestHeaders\.a must be a string/],
   ['scenarioName empty', { request: { method: 'GET', urlPath: '/s' }, response: { status: 200 }, scenarioName: '' } as MockInput, /scenarioName must be a non-empty string/],
   ['requiredScenarioState without a scenario', { request: { method: 'GET', urlPath: '/s' }, response: { status: 200 }, requiredScenarioState: 'x' } as MockInput, /requiredScenarioState needs scenarioName/],
   ['newScenarioState not a string', { request: { method: 'GET', urlPath: '/s' }, response: { status: 200 }, scenarioName: 's', newScenarioState: 3 } as MockInput, /newScenarioState must be a non-empty string/],
@@ -88,7 +93,7 @@ test('valid proxy, webhook and scenario fields are stored as given (header remov
     additionalProxyRequestHeaders: { 'X-A': '1' },
     removeProxyRequestHeaders: ['x-secret', 'cookie'],
   })
-  for (const delay of [undefined, { type: 'fixed', milliseconds: 0 }, { type: 'fixed', milliseconds: 60000 }, { type: 'uniform', lower: 10, upper: 10 }]) {
+  for (const delay of [undefined, { type: 'fixed', milliseconds: 0 }, { type: 'fixed', milliseconds: 600000 }, { type: 'uniform', lower: 10, upper: 10 }, { type: 'lognormal', median: 90, sigma: 0.1 }, { type: 'lognormal', median: 90, sigma: 0.1, maxValue: 500 }]) {
     const parameters = { ...okHook, url: 'http://{{request.headers.X-Callback-Host}}/cb', delay }
     await svc.create(hook(parameters, { scenarioName: 'flow', requiredScenarioState: 'Started', newScenarioState: 'done' }), user)
     expect(imported.at(-1)![0]).toMatchObject({
@@ -110,6 +115,15 @@ test('listeners other than webhook pass through untouched', async () => {
 test('re-importing a proxy mock with mixed-case header names is unchanged, not an update', async () => {
   const { svc } = harness()
   const stub = { id: 'id-9', ...proxy({ proxyBaseUrl: 'http://up.test', removeProxyRequestHeaders: ['X-Secret'] }) } as StubMapping
+  expect(await svc.upsertImported(stub, 'baseline', 'import', 'u')).toBe('created')
+  expect(await svc.upsertImported(stub, 'baseline', 'import', 'u')).toBe('unchanged')
+})
+
+test('a webhook method is any method token, stored upper-cased; re-import of the lower-case original is unchanged', async () => {
+  const { svc, imported } = harness()
+  await svc.create(hook({ ...okHook, method: 'purge' }), user)
+  expect((imported[0][0].serveEventListeners as { parameters: { method: string } }[])[0].parameters.method).toBe('PURGE')
+  const stub = { id: 'id-8', ...hook({ ...okHook, method: 'post' }) } as StubMapping
   expect(await svc.upsertImported(stub, 'baseline', 'import', 'u')).toBe('created')
   expect(await svc.upsertImported(stub, 'baseline', 'import', 'u')).toBe('unchanged')
 })

@@ -99,10 +99,17 @@ function decodingLevels(path: string): string[] {
   return levels
 }
 
-/** True for `/__admin` and anything below it, however the servlet container might read the segment. */
+/**
+ * True for `/__admin` and anything below it, however the servlet container might read the path: empty and
+ * matrix-only (`;x`) segments are skipped when finding the first real one, and matrix parameters are ignored.
+ */
 function isAdminPath(path: string): boolean {
-  const first = (path.split('/')[1] ?? '').split(';')[0].toLowerCase()
-  return first === '__admin'
+  const first = path
+    .split('/')
+    .slice(1)
+    .map((segment) => segment.split(';')[0])
+    .find((segment) => segment !== '')
+  return first?.toLowerCase() === '__admin'
 }
 
 function assertStubPath(path: string): void {
@@ -157,6 +164,8 @@ export function relayTarget(baseUrl: string, path: string, query?: RelayQuery): 
 // RFC 9110 token.
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 const BAD_VALUE = /[\r\n\u0000]/
+// fetch only sends ByteStrings: anything above U+00FF would fail there as a 502 instead of a clear 400.
+const NOT_BYTESTRING = /[^\u0000-\u00ff]/
 /** Hop-by-hop headers (RFC 9110 §7.6.1) plus what the relay itself controls. */
 const NOT_FORWARDED = new Set([
   'connection',
@@ -182,6 +191,7 @@ export function relayHeaders(headers: Record<string, string> = {}): Record<strin
   for (const [name, value] of entries) {
     if (!HEADER_NAME.test(name)) throw new ValidationError(`headers: "${name.replace(/[\r\n]/g, ' ')}" is not a valid header name`)
     if (BAD_VALUE.test(value)) throw new ValidationError(`headers.${name} must not contain line breaks or NUL`)
+    if (NOT_BYTESTRING.test(value)) throw new ValidationError(`headers.${name} may only contain Latin-1 characters (encode others, e.g. percent-encoding)`)
     // Headers named in Connection are hop-by-hop too.
     if (name.toLowerCase() === 'connection') {
       for (const listed of value.split(',')) if (listed.trim()) dropped.add(listed.trim().toLowerCase())
