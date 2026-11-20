@@ -702,6 +702,11 @@ export const en = {
   'request.total': 'Total',
   'request.loggedAt': 'Logged at',
   'request.matchedBy': 'Matched by',
+  'request.didTitle': 'What the mock did',
+  'request.forwardedTo': 'Forwarded to',
+  'request.callsBack': 'Calls back:',
+  'request.callbackUnreported': 'WireMock does not report the result',
+  'request.callbackHelp': 'If a callback never arrives',
   'request.createMock': 'Create mock from this request',
 
   'near.title': 'Near misses',

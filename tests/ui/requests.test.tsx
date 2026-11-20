@@ -369,6 +369,31 @@ describe('request drawer', () => {
     expect(await screen.findByText('No mock comes close. Create one from this request.')).toBeTruthy()
   })
 
+  it('a forwarding mock says where the request went; a call-back mock says what it calls', async () => {
+    mockList([[row('a')]])
+    const stubMapping = {
+      id: 'stub-a',
+      name: 'Pay passthrough',
+      request: {},
+      response: { proxyBaseUrl: 'http://pay.internal:8080', proxyUrlPrefixToRemove: '/pay' },
+      serveEventListeners: [{ name: 'webhook', parameters: { method: 'POST', url: 'http://my-app.test/hooks/paid' } }],
+    }
+    server.use(
+      http.get(`${BASE}/api/requests/a`, () =>
+        HttpResponse.json(
+          detail({ id: 'a', wasMatched: true, stubMapping, request: { ...detail().request, url: '/pay/a?x=1' }, response: { status: 502, headers: {}, body: '' } }),
+        ),
+      ),
+    )
+    await renderApp(<Harness initial={{ open: 'a' }} />)
+    const drawer = await screen.findByRole('dialog')
+    const where = await within(drawer).findByRole('region', { name: 'What the mock did' })
+    expect(within(where).getByText('http://pay.internal:8080/a?x=1')).toBeTruthy()
+    expect(where.textContent).toContain('Forwarded to http://pay.internal:8080/a?x=1 (502)')
+    expect(where.textContent).toContain('Calls back: POST http://my-app.test/hooks/paid — WireMock does not report the result')
+    expect(within(where).getByRole('link', { name: 'If a callback never arrives' }).getAttribute('href')).toBe('/guide#troubleshooting--a-webhook-never-arrives')
+  })
+
   it('a matched request shows the mock it matched instead of near misses', async () => {
     mockList([[row('a')]])
     server.use(

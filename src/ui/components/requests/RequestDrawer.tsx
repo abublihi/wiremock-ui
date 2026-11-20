@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { AlertCircleIcon, PlusIcon, RotateCwIcon, TerminalIcon } from 'lucide-react'
+import { AlertCircleIcon, ArrowRightIcon, BookOpenIcon, PlusIcon, RotateCwIcon, TerminalIcon, WebhookIcon } from 'lucide-react'
 import type { LoggedEvent } from '@/server/wiremock/types'
 import { useNearMisses, useRequest } from '@/ui/api/queries'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
@@ -13,6 +13,8 @@ import { TestPanel, copyCurl } from '@/ui/components/editor/TestPanel'
 import { useWiremockPublicUrl } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 import { curlFromLoggedRequest } from '@/ui/lib/curl'
+import { callbacksOf, forwardedUrl } from '@/ui/lib/forwarding'
+import { topicId } from '@/ui/lib/guide'
 import { draftFromLoggedRequest } from '@/ui/lib/test-request'
 import { Body, HeaderTable, type Headers, Part, prettyBody } from './HttpParts'
 import { NearMissPanel, createMockSearch } from './NearMissPanel'
@@ -105,6 +107,7 @@ function DrawerBody({ id }: { id: string }) {
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto px-4 py-4">
         {!e.wasMatched && <NearMissPanel requestId={id} />}
+        {e.wasMatched && <WhatItDid event={e} status={status} />}
         <Part title={t('request.request')}>
           <HeaderTable headers={e.request.headers} />
           <Body text={prettyBody(e.request.body)} />
@@ -139,6 +142,51 @@ function DrawerBody({ id }: { id: string }) {
       </SheetFooter>
       <TestPanel open={resending} onOpenChange={setResending} initial={draftFromLoggedRequest(e)} variant="resend" />
     </>
+  )
+}
+
+/** For a mock that forwards or calls back: where the request went, and what it calls (WireMock reports no result). */
+function WhatItDid({ event, status }: { event: LoggedEvent; status: number | undefined }) {
+  const t = useT()
+  const forwarded = forwardedUrl(event.stubMapping, event.request.url)
+  const callbacks = callbacksOf(event.stubMapping)
+  if (!forwarded && callbacks.length === 0) return null
+  return (
+    <Part title={t('request.didTitle')}>
+      <ul className="flex flex-col gap-2 text-sm">
+        {forwarded && (
+          <li className="flex items-start gap-2">
+            <ArrowRightIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-signal-fg" />
+            <span className="min-w-0">
+              {t('request.forwardedTo')}{' '}
+              <code dir="ltr" className="font-mono wrap-anywhere">
+                {forwarded}
+              </code>
+              {typeof status === 'number' && ` (${status})`}
+            </span>
+          </li>
+        )}
+        {callbacks.map((c, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <WebhookIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-hazard-fg" />
+            <span className="min-w-0">
+              {t('request.callsBack')}{' '}
+              <code dir="ltr" className="font-mono wrap-anywhere">
+                {c.method} {c.url}
+              </code>
+              {' — '}
+              <span className="text-muted-foreground">{t('request.callbackUnreported')}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {callbacks.length > 0 && (
+        <Link to="/guide" hash={topicId('troubleshooting', 'A webhook never arrives')} className="flex w-fit items-center gap-1.5 text-xs text-signal-fg hover:underline">
+          <BookOpenIcon aria-hidden className="size-3.5" />
+          {t('request.callbackHelp')}
+        </Link>
+      )}
+    </Part>
   )
 }
 
