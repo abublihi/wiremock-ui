@@ -42,7 +42,7 @@ test('every /api route method answers 401 JSON { error } without credentials, ex
   const routes = await apiRoutes()
   expect(routes.length).toBeGreaterThan(30)
   for (const { path, method, handler } of routes) {
-    if (PUBLIC.has(`${method} ${path}`) || method === 'ANY') continue
+    if (PUBLIC.has(`${method} ${path}`) || method === 'ANY' || method === 'HEAD') continue
     const url = `http://ui.test${path.replace(/\$(\w+)/g, 'x-$1')}`
     const body = ['GET', 'HEAD', 'DELETE'].includes(method) ? undefined : '{}'
     const res = await handler({
@@ -67,4 +67,15 @@ test('a method a route has no handler for, and an /api URL no route matches, ans
   const missing = await splat.handler({ request: new Request('http://ui.test/api/nope'), params: {} })
   expect(missing.status).toBe(404)
   expect(await missing.json()).toEqual({ error: 'No API route at /api/nope.' })
+})
+
+test('HEAD on every GET route answers like GET, without a body', async () => {
+  const routes = await apiRoutes()
+  const gets = routes.filter((r) => r.method === 'GET')
+  expect(gets.filter((g) => !routes.some((r) => r.path === g.path && r.method === 'HEAD')).map((g) => g.path)).toEqual([])
+  const head = routes.find((r) => r.path === '/api/config' && r.method === 'HEAD')!
+  const res = await head.handler({ request: new Request('http://ui.test/api/config', { method: 'HEAD' }), params: {} })
+  expect(res.status).toBe(401)
+  expect(res.headers.get('content-type')).toContain('application/json')
+  expect(await res.text()).toBe('')
 })

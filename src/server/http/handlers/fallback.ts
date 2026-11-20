@@ -19,3 +19,10 @@ export function apiNotFound(request: Request): Response {
   const path = pathOf(request)
   return json({ error: `No API route at ${path}.${missingPart(path)}` }, 404)
 }
+
+/** HEAD on a GET route: the GET's status and headers, without the body. */
+export async function headOf(response: Response | Promise<Response>): Promise<Response> {
+  const res = await response
+  await res.body?.cancel()
+  return new Response(null, { status: res.status, statusText: res.statusText, headers: res.headers })
+}
