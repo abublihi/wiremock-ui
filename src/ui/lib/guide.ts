@@ -54,6 +54,9 @@ export function parseGuideFile(slug: string, source: string): GuideSection {
 const FILES = import.meta.glob('../../../docs/guide/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
 export function sectionsFrom(files: Record<string, string>): GuideSection[] {
+  // An empty glob means docs/guide was left out of the build (a .dockerignore or a partial checkout): fail the build
+  // loudly instead of shipping a Guide page with no sections.
+  if (Object.keys(files).length === 0) throw new Error('docs/guide/*.md: no guide sections found; the build needs the docs/guide folder')
   return Object.entries(files)
     .map(([path, source]) => parseGuideFile(path.replace(/^.*\//, '').replace(/\.md$/, ''), source))
     .sort((a, b) => a.order - b.order || a.slug.localeCompare(b.slug))

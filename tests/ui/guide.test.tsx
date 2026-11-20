@@ -19,6 +19,7 @@ import {
   GUIDE_SECTIONS,
   guideHref,
   parseGuideFile,
+  sectionsFrom,
   filterMenu,
   topicsOf,
   sectionForPath,
@@ -37,6 +38,10 @@ beforeEach(() => window.localStorage.clear())
 const BASE = 'http://localhost:3000'
 
 describe('guide content (docs/guide/*.md)', () => {
+  it('refuses to build an empty guide (docs/guide missing from the build context)', () => {
+    expect(() => sectionsFrom({})).toThrow(/docs\/guide/)
+  })
+
   it('has every section the brief asks for, in order, each read from its own file', () => {
     expect(GUIDE_SECTIONS.map((s) => s.slug)).toEqual([
       'getting-started',
