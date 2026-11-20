@@ -133,7 +133,7 @@ export function QuickRequestFields({
           rows={3}
           className="font-mono text-xs md:text-xs"
           spellCheck={false}
-          placeholder='{"idNo": "1012345678"}'
+          placeholder='{"userId": 7}'
           value={quick.body}
           aria-describedby={id('body-hint')}
           onChange={(e) => onChange({ body: e.target.value }, [])}

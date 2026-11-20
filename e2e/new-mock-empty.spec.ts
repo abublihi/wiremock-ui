@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { USER_A, wiremockUrl } from './env'
 import { signIn } from './helpers'
 
-// A fresh install has no integrations. The shared e2e stack is seeded (NIC), so the first integrations list is
+// A fresh install has no integrations. The shared e2e stack is seeded (Blog API), so the first integrations list is
 // answered empty here: what the page shows then, and the way from it to a served mock, is what this spec covers.
 // Everything it creates is deleted afterwards.
 
@@ -68,8 +68,8 @@ test('Mock a URL directly: a quick mock is served and opens again in the same fo
 
 test('old /catalog links land on Integrations with their search kept', async ({ page }) => {
   await signIn(page, USER_A)
-  await page.goto('/catalog/nic/endpoints/new?next=mock')
-  await expect(page).toHaveURL(/\/integrations\/nic\/endpoints\/new\?next=mock$/)
+  await page.goto('/catalog/blog/endpoints/new?next=mock')
+  await expect(page).toHaveURL(/\/integrations\/blog\/endpoints\/new\?next=mock$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Add endpoint' })).toBeVisible()
   const nav = page.getByRole('navigation', { name: 'Main navigation' })
   await expect(nav.getByRole('link', { name: 'Integrations' })).toHaveAttribute('data-status', 'active')

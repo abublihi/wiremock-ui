@@ -64,18 +64,18 @@ test('a PNG uploaded as the body in Simple mode comes back from WireMock byte fo
     Buffer.from(Array.from({ length: 256 }, (_, i) => i)),
   ])
   await signIn(page, USER_A)
-  await page.goto('/mocks/new?integration=nic&endpoint=fetch-citizen')
-  await page.getByLabel('Value of $.idNo in the request body').fill('4000000004')
+  await page.goto('/mocks/new?integration=blog&endpoint=create-post')
+  await page.getByLabel('Value of $.userId in the request body').fill('4000000004')
   await page.getByLabel('Upload body from file').setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png })
   await expect(page.getByRole('group', { name: 'Binary body' })).toContainText('photo.png')
   await page.getByRole('button', { name: 'Save mock' }).click()
   await expect(page).toHaveURL(/\/mocks\/[0-9a-f-]{36}$/)
   made.push(page.url().split('/').pop()!)
 
-  const res = await fetch(`${wiremockUrl()}/nic/citizens/fetch`, {
+  const res = await fetch(`${wiremockUrl()}/blog/posts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idNo: '4000000004' }),
+    body: JSON.stringify({ userId: 4000000004, title: 'Hello' }),
   })
   expect(res.headers.get('content-type')).toBe('image/png')
   expect(Buffer.from(await res.arrayBuffer()).equals(png)).toBe(true)

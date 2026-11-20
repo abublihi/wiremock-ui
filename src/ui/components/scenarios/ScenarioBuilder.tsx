@@ -678,7 +678,7 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
                   className="font-mono"
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="/orders/42/status"
+                  placeholder="/orders/1001"
                   value={free.url}
                   aria-invalid={Boolean(shown.request)}
                   aria-describedby={[id('url-hint'), shown.request && id('request-error')].filter(Boolean).join(' ')}

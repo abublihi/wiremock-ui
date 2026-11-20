@@ -253,12 +253,12 @@ describe('integration page', () => {
 describe('how it fits together', () => {
   afterEach(() => localStorage.clear())
 
-  it('explains integration, endpoint and mock with the NIC example, and stays hidden once dismissed', async () => {
+  it('explains integration, endpoint and mock with the Blog API example, and stays hidden once dismissed', async () => {
     mockApi()
     await renderApp(<CatalogPage />)
     const strip = await screen.findByRole('region', { name: 'How it fits together' })
     for (const word of ['Integration', 'Endpoint', 'Mock']) expect(within(strip).getByRole('heading', { name: word })).toBeTruthy()
-    expect(within(strip).getByText('POST /nic/citizens/fetch')).toBeTruthy()
+    expect(within(strip).getByText('GET /blog/posts/{id}')).toBeTruthy()
     const ue = userEvent.setup()
     await ue.click(within(strip).getByRole('button', { name: 'Hide this explainer' }))
     expect(screen.queryByRole('region', { name: 'How it fits together' })).toBeNull()
@@ -364,17 +364,17 @@ describe('endpoint page', () => {
     const ue = userEvent.setup()
     await screen.findByText(/must equal this text/)
     await ue.click(screen.getByRole('radio', { name: 'Template' }))
-    expect(screen.getByText(/\/citizens\/\{id\} matches \/nic\/citizens\/42/)).toBeTruthy()
+    expect(screen.getByText(/\/posts\/\{id\} matches \/nic\/posts\/42/)).toBeTruthy()
     await ue.click(screen.getByRole('radio', { name: 'Regex' }))
     expect(screen.getByText(/regular expression/)).toBeTruthy()
     const where = screen.getByRole('combobox', { name: 'Where the key is' })
     const cases: [string, string, RegExp][] = [
-      ['JSON body (JSONPath)', '$.idNo', /\{"idNo":"1012345678"\}/],
-      ['XML body (XPath)', '/Envelope/Body/id', /<id>1012345678<\/id>/],
-      ['Query parameter', 'id', /\?id=1012345678/],
+      ['JSON body (JSONPath)', '$.userId', /\{"userId": 7, "title": "Hello"\}/],
+      ['XML body (XPath)', '/Envelope/Body/postId', /<postId>42<\/postId>/],
+      ['Query parameter', 'userId', /\?userId=7/],
       ['Path variable', 'id', /the key id reads 42/],
-      ['Header', 'X-Account-Id', /X-Account-Id: 1012345678/],
-      ['Form field', 'accountId', /accountId=1012345678/],
+      ['Header', 'X-User-Id', /X-User-Id: 7/],
+      ['Form field', 'userId', /userId=7&lang=en/],
     ]
     for (const [option, placeholder, example] of cases) {
       await ue.click(where)

@@ -31,7 +31,7 @@ export function AdvancedEditor({
   onTextChange: (text: string) => void
   /** The saved version this draft started from; undefined for a new mock. */
   mock?: StubMapping
-  /** "NIC → Fetch citizen" when the mock belongs to a catalog endpoint. */
+  /** "Blog API → Get post" when the mock belongs to a catalog endpoint. */
   endpointLabel?: string
   /** The mock's endpoint answers JSON: a text file that parses goes in as jsonBody. */
   jsonEndpoint?: boolean

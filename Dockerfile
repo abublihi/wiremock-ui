@@ -13,6 +13,8 @@ ENV NODE_ENV=production PORT=3000 SQLITE_PATH=/data/wiremock-ui.db
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY server.mjs ./
+# The example catalog and mocks: SEED_PATH=/app/examples/seed.json to try the app with something in it.
+COPY examples ./examples
 COPY --from=build /app/dist ./dist
 RUN mkdir -p /data && chown node:node /data && chmod 700 /data
 VOLUME /data

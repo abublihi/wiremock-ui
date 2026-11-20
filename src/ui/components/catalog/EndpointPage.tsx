@@ -43,12 +43,12 @@ const TAB =
 
 /** What the key expression looks like for each location (the "path" one names a {variable} of the path). */
 const EXPRESSION_PLACEHOLDER: Record<KeyLocation, string> = {
-  jsonPath: '$.idNo',
-  xPath: '/Envelope/Body/id',
-  query: 'id',
+  jsonPath: '$.userId',
+  xPath: '/Envelope/Body/postId',
+  query: 'userId',
   path: 'id',
-  header: 'X-Account-Id',
-  form: 'accountId',
+  header: 'X-User-Id',
+  form: 'userId',
 }
 
 type Form = {
@@ -352,12 +352,12 @@ function EndpointEditor({
         <Section title={t('catalog.endpoint.section.request')}>
           <FieldGroup className="gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              {text('name', t('catalog.endpoint.name'), { placeholder: 'Fetch citizen' })}
+              {text('name', t('catalog.endpoint.name'), { placeholder: 'Get post' })}
               {text('key', t('catalog.endpoint.key'), {
                 mono: true,
                 disabled: Boolean(endpoint),
                 hint: endpoint ? undefined : t('catalog.endpoint.keyHint'),
-                placeholder: 'fetch-citizen',
+                placeholder: 'get-post',
               })}
             </div>
             <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-4">
@@ -379,7 +379,7 @@ function EndpointEditor({
               </Field>
               {text('path', t('catalog.endpoint.path'), {
                 mono: true,
-                placeholder: form.pathType === 'template' ? '/citizens/{id}' : form.pathType === 'regex' ? '/citizens/[0-9]+' : '/citizens/fetch',
+                placeholder: form.pathType === 'template' ? '/posts/{id}' : form.pathType === 'regex' ? '/posts/[0-9]+' : '/posts',
               })}
             </div>
             <FieldSet className="gap-2">

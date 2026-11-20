@@ -9,7 +9,7 @@ import { HeaderRows } from './HeaderRows'
 
 export type ProxyErrors = Partial<Record<'baseUrl' | 'stripPrefix' | 'headers', string>>
 
-/** Where a request to the endpoint's own path would go: `/nic/accounts` → `https://real/api/accounts`. */
+/** Where a request to the endpoint's own path would go: `/blog/posts` → `https://real/api/posts`. */
 export function proxyRoute(integration: Integration, endpoint: Endpoint, proxy: ProxyForm): { from: string; to: string } {
   const from = (integration.prefix === '/' ? '' : integration.prefix) + endpoint.path
   const prefix = proxy.stripPrefix.trim()

@@ -39,17 +39,17 @@ export function ShowExplainerButton({ onClick }: { onClick: () => void }) {
   )
 }
 
-/** Integration → Endpoint → Mock in one glance, with the NIC example. */
+/** Integration → Endpoint → Mock in one glance, with the Blog API example. */
 export function HowItFits({ onHide }: { onHide: () => void }) {
   const t = useT()
   const titleId = useId()
   const steps = [
-    { n: '01', title: t('catalog.explainer.integration'), body: t('catalog.explainer.integrationBody'), example: ['NIC · /nic'] },
+    { n: '01', title: t('catalog.explainer.integration'), body: t('catalog.explainer.integrationBody'), example: ['Blog API · /blog'] },
     {
       n: '02',
       title: t('catalog.explainer.endpoint'),
       body: t('catalog.explainer.endpointBody'),
-      example: ['POST /nic/citizens/fetch', t('catalog.explainer.endpointKey')],
+      example: ['GET /blog/posts/{id}', t('catalog.explainer.endpointKey')],
     },
     { n: '03', title: t('catalog.explainer.mock'), body: t('catalog.explainer.mockBody'), example: [t('catalog.explainer.mockExample')] },
   ]

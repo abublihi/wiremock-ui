@@ -83,7 +83,7 @@ export function ScenarioSection({
               className="font-mono"
               autoComplete="off"
               spellCheck={false}
-              placeholder="loan-approval"
+              placeholder="order-status"
               value={scenario.name}
               aria-invalid={Boolean(errors.name)}
               aria-describedby={described('name', id('name-hint'), unsettable && id('name-warn'))}
@@ -160,7 +160,7 @@ export function ScenarioSection({
                 className="font-mono"
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="approved"
+                placeholder="shipped"
                 value={scenario.newState}
                 aria-invalid={Boolean(errors.newState)}
                 aria-describedby={described('newState', id('new-hint'))}

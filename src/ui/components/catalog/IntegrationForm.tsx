@@ -131,9 +131,9 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
         </Alert>
       )}
       <FieldGroup className="gap-4">
-        {input('key', t('catalog.integration.key'), { mono: true, disabled: Boolean(integration), hint: integration ? undefined : t('catalog.integration.keyHint'), placeholder: 'nic' })}
+        {input('key', t('catalog.integration.key'), { mono: true, disabled: Boolean(integration), hint: integration ? undefined : t('catalog.integration.keyHint'), placeholder: 'blog' })}
         {input('name', t('catalog.integration.name'))}
-        {input('prefix', t('catalog.integration.prefix'), { mono: true, hint: t('catalog.integration.prefixHint'), placeholder: '/nic' })}
+        {input('prefix', t('catalog.integration.prefix'), { mono: true, hint: t('catalog.integration.prefixHint'), placeholder: '/blog' })}
         <Field data-invalid={Boolean(errors.description)}>
           <FieldLabel htmlFor={id('description')}>{t('catalog.integration.descriptionLabel')}</FieldLabel>
           <Textarea
