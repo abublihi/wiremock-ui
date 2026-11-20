@@ -55,6 +55,17 @@ export function filtersText(filters: { method?: string; urlPathPattern?: string 
 }
 
 /** The filter fields as the API takes them (empty ones left out). */
+/** A wildcard that keeps no path (only "?query" typed): no filter at all, rather than one that matches nothing. */
+const emptyWildcard = (f: Pick<Filters, 'urlPathPattern' | 'urlPathMode'>) => {
+  const typed = f.urlPathPattern.trim()
+  if (!typed) return false
+  const path = resolvePathFilter(typed, f.urlPathMode)
+  return path.kind === 'wildcard' && path.regex === '^$'
+}
+
+/** A regex that uses * the wildcard way: after /, at the start, or after another * (not after ., ], ) or a letter class). */
+export const wildcardStarInRegex = (pattern: string) => /(^|[/*^])\*/.test(pattern.trim())
+
 function filterInput(f: Filters): Omit<SnapshotInput, 'ids'> {
   const headers = f.captureHeaders
     .split(/[,\s]+/)
@@ -62,7 +73,7 @@ function filterInput(f: Filters): Omit<SnapshotInput, 'ids'> {
     .filter(Boolean)
   return {
     ...(f.method !== ALL ? { method: f.method as SnapshotInput['method'] } : {}),
-    ...(f.urlPathPattern.trim() ? { urlPathPattern: f.urlPathPattern.trim(), ...(f.urlPathMode !== 'auto' ? { urlPathMode: f.urlPathMode } : {}) } : {}),
+    ...(f.urlPathPattern.trim() && !emptyWildcard(f) ? { urlPathPattern: f.urlPathPattern.trim(), ...(f.urlPathMode !== 'auto' ? { urlPathMode: f.urlPathMode } : {}) } : {}),
     ...(headers.length > 0 ? { captureHeaders: headers } : {}),
     repeatsAsScenarios: f.repeatsAsScenarios,
   }
@@ -77,6 +88,7 @@ function FilterFields({ value, onChange }: { value: Filters; onChange: (next: Fi
   // never match a path, with its fix.
   const path = typed ? resolvePathFilter(typed, value.urlPathMode) : null
   const problem = path?.kind === 'regex' ? path.problem : null
+  const mixed = path?.kind === 'regex' && !problem && wildcardStarInRegex(path.regex)
   return (
     <fieldset className="flex flex-col gap-4">
       <legend className="mb-3 text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">// {t('recording.filters')}</legend>
@@ -130,6 +142,13 @@ function FilterFields({ value, onChange }: { value: Filters; onChange: (next: Fi
                 <span className="text-hazard-fg">{t('recording.pathDroppedQuery', { query: path.droppedQuery })}</span>
               )}
               {path.kind === 'wildcard' && path.addedSlash && <span>{t('recording.pathAddedSlash')}</span>}
+              {path.kind === 'wildcard' && path.regex === '^$' && <span className="text-hazard-fg">{t('recording.pathEmpty')}</span>}
+              {mixed && (
+                <span role="note" className="flex items-start gap-1.5 text-hazard-fg">
+                  <TriangleAlertIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+                  {t('recording.pathMixed')}
+                </span>
+              )}
               {problem && (
                 <span role="alert" className="flex flex-col items-start gap-1.5 text-hazard-fg">
                   <span className="flex items-start gap-1.5">

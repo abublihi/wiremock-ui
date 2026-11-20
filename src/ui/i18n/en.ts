@@ -1170,6 +1170,8 @@ export const en = {
   'recording.pathMatchesRegex': 'Matches every path this regular expression matches in full (Java dialect, as WireMock reads it). Sent to WireMock as typed.',
   'recording.pathDroppedQuery': 'The query string {query} is left out: WireMock matches the path only.',
   'recording.pathAddedSlash': 'A path starts with /, so one is put in front.',
+  'recording.pathEmpty': 'There is no path before the ?, so no path filter is used: every path is recorded.',
+  'recording.pathMixed': 'In a regular expression * repeats the character before it (/api/* means /api followed by slashes). For “anything” write .* — /api/.* — or switch to wildcards.',
   'recording.pathRegexQuery': 'This matches the path only, without the query string. To record {typed} use {suggestion}',
   'recording.pathRegexStart': 'A path always starts with /, and the pattern must match all of it. To record {typed} use {suggestion}',
   'recording.pathUse': 'Use {suggestion}',

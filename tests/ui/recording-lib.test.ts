@@ -103,3 +103,13 @@ describe('empty recording message', () => {
     expect(filtersText(undefined)).toBeNull()
   })
 })
+
+describe('path filter checks', () => {
+  it('spots * used the wildcard way inside a regex', async () => {
+    const { wildcardStarInRegex } = await import('@/ui/components/recording/RecordForms')
+    expect(wildcardStarInRegex('^/api/*')).toBe(true)
+    expect(wildcardStarInRegex('*')).toBe(true)
+    expect(wildcardStarInRegex('^/api/.*$')).toBe(false)
+    expect(wildcardStarInRegex('/a[0-9]*')).toBe(false)
+  })
+})
