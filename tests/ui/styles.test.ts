@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -32,9 +32,18 @@ describe('styles.css', () => {
 
   it('switches off every new animation under prefers-reduced-motion', () => {
     const block = reducedMotionBlocks(css)
-    for (const cls of ['.cursor-blink', '.fade-up', '.sidebar-enter', '.stagger-children', '.status-pulse']) {
+    for (const cls of ['.cursor-blink', '.fade-up', '.sidebar-enter', '.stagger-children', '.status-pulse', '.live-flash']) {
       expect(block, cls).toContain(cls)
     }
     expect(block).toMatch(/animation:\s*none/)
+  })
+
+  it('keeps the hatch for the signature only: the hazard strip and the No match stamp', () => {
+    const root = path.resolve(__dirname, '../../src')
+    const users = (readdirSync(root, { recursive: true }) as string[])
+      .filter((file) => file.endsWith('.tsx') && /\bhatch\b/.test(readFileSync(path.join(root, file), 'utf8').replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')))
+      .map((file) => path.basename(file))
+      .sort()
+    expect(users).toEqual(['HazardStrip.tsx', 'NoMatchStamp.tsx'])
   })
 })

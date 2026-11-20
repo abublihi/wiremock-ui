@@ -1,0 +1,204 @@
+import { useCallback, useMemo, useState } from 'react'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
+import { AlertCircleIcon, PauseIcon, PlayIcon, RadioTowerIcon, Trash2Icon } from 'lucide-react'
+import { toast } from 'sonner'
+import { MAX_REQUEST_ROWS, type RequestFilter, useClearRequests, useDocumentVisible, useIntegrations, useRequests } from '@/ui/api/queries'
+import { LiveDot } from '@/ui/components/common/LiveDot'
+import { CountTool } from '@/ui/components/requests/CountTool'
+import { RequestDrawer } from '@/ui/components/requests/RequestDrawer'
+import { RequestFilters, type RequestsSearch } from '@/ui/components/requests/RequestFilters'
+import { RequestTable, RequestTableSkeleton, useFreshIds } from '@/ui/components/requests/RequestTable'
+import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/ui/components/ui/alert-dialog'
+import { Button } from '@/ui/components/ui/button'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
+import { useT } from '@/ui/i18n'
+
+export type { RequestsSearch }
+
+// The router JSON-parses search values, so `?status=404` arrives as a number: accept strings and numbers.
+const str = (v: unknown) => {
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v)
+  return typeof v === 'string' && v !== '' ? v : undefined
+}
+const bool = (v: unknown) => (v === true || v === 'true' ? 'true' : v === false || v === 'false' ? 'false' : undefined)
+
+export const Route = createFileRoute('/_app/requests')({
+  validateSearch: (raw: Record<string, unknown>): RequestsSearch => ({
+    integration: str(raw.integration),
+    matched: bool(raw.matched),
+    status: str(raw.status),
+    q: str(raw.q),
+    range: raw.range === '15m' || raw.range === '1h' ? raw.range : undefined,
+    open: str(raw.open),
+  }),
+  component: RequestsRoute,
+})
+
+export function RequestsRoute() {
+  const search = useSearch({ strict: false }) as RequestsSearch
+  const navigate = useNavigate()
+  const onSearchChange = useCallback(
+    (next: RequestsSearch) =>
+      void navigate({ to: '.', search: ((prev: RequestsSearch) => ({ ...prev, ...next })) as never, replace: true }),
+    [navigate],
+  )
+  return <RequestsPage search={search} onSearchChange={onSearchChange} />
+}
+
+const WINDOW_MINUTES = { '15m': 15, '1h': 60 } as const
+
+/** The live request log. `search` is the URL state; `onSearchChange` merges a patch into it (undefined clears a key). */
+export function RequestsPage({ search, onSearchChange }: { search: RequestsSearch; onSearchChange: (next: RequestsSearch) => void }) {
+  const t = useT()
+  const [live, setLive] = useState(true)
+  const visible = useDocumentVisible()
+  const filter = useMemo<RequestFilter>(
+    () => ({
+      matched: search.matched,
+      integration: search.integration,
+      status: search.status,
+      q: search.q,
+      windowMinutes: search.range ? WINDOW_MINUTES[search.range] : undefined,
+    }),
+    [search.matched, search.integration, search.status, search.q, search.range],
+  )
+  const requests = useRequests(filter, { live })
+  const integrations = useIntegrations()
+  const filtered = Boolean(search.matched || search.integration || search.status || search.q || search.range)
+
+  const rows = requests.data ?? []
+  const fresh = useFreshIds(rows, requests.isSuccess && !requests.isPlaceholderData, JSON.stringify(filter))
+  const unmatched = rows.filter((r) => !r.matched).length
+  const clearFilters = () =>
+    onSearchChange({ matched: undefined, integration: undefined, status: undefined, q: undefined, range: undefined })
+  const open = useCallback((id: string) => onSearchChange({ open: id }), [onSearchChange])
+
+  return (
+    <div className="fade-up flex flex-col gap-5">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="glow-text font-display text-4xl font-bold tracking-tight uppercase">{t('requests.title')}</h1>
+            <LiveDot
+              active={live && visible && !requests.isError}
+              label={live ? (visible ? t('requests.live') : t('requests.pausedHidden')) : t('requests.paused')}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {requests.data
+              ? t(rows.length === 1 ? 'requests.captionOne' : 'requests.caption', { count: rows.length, unmatched })
+              : '//'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setLive((v) => !v)}>
+            {live ? <PauseIcon data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}
+            {live ? t('requests.pause') : t('requests.resume')}
+          </Button>
+          <CountTool />
+          <ClearLogButton />
+        </div>
+      </header>
+
+      <RequestFilters search={search} integrations={integrations.data ?? []} onChange={onSearchChange} />
+
+      {requests.isError && requests.data && (
+        <p role="alert" className="flex items-center gap-2 text-xs text-mismatch">
+          <AlertCircleIcon className="size-3.5" />
+          {t('requests.refreshFailed', { message: requests.error.message })}
+          <Button variant="ghost" size="xs" onClick={() => void requests.refetch()}>
+            {t('requests.retry')}
+          </Button>
+        </p>
+      )}
+
+      {requests.isPending ? (
+        <RequestTableSkeleton />
+      ) : requests.isError && !requests.data ? (
+        <Alert variant="destructive">
+          <AlertCircleIcon />
+          <AlertTitle>{t('requests.loadFailed')}</AlertTitle>
+          <AlertDescription>
+            <p>{requests.error?.message}</p>
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => void requests.refetch()}>
+              {t('requests.retry')}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : rows.length === 0 ? (
+        <Empty className="rounded-md border border-dashed border-line">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <RadioTowerIcon />
+            </EmptyMedia>
+            <EmptyTitle>{t(filtered ? 'requests.noMatchTitle' : 'requests.emptyTitle')}</EmptyTitle>
+            <EmptyDescription>{t(filtered ? 'requests.noMatchBody' : 'requests.emptyBody')}</EmptyDescription>
+          </EmptyHeader>
+          {filtered && (
+            <EmptyContent>
+              <Button variant="outline" onClick={clearFilters}>
+                {t('requests.clearFilters')}
+              </Button>
+            </EmptyContent>
+          )}
+        </Empty>
+      ) : (
+        <>
+          <RequestTable rows={rows} fresh={fresh} selectedId={search.open} onOpen={open} />
+          {rows.length >= MAX_REQUEST_ROWS && (
+            <p className="text-center text-[11px] text-muted-foreground">{t('requests.capped', { max: MAX_REQUEST_ROWS })}</p>
+          )}
+        </>
+      )}
+
+      <RequestDrawer id={search.open} onClose={() => onSearchChange({ open: undefined })} />
+    </div>
+  )
+}
+
+function ClearLogButton() {
+  const t = useT()
+  const clear = useClearRequests()
+  const [open, setOpen] = useState(false)
+  const confirm = async () => {
+    try {
+      await clear.mutateAsync()
+      toast.success(t('requests.cleared'))
+    } catch (error) {
+      toast.error(t('requests.clearFailed'), { description: error instanceof Error ? error.message : undefined })
+    }
+  }
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger asChild>
+        <Button variant="outline" size="sm" className="hover:border-mismatch/50 hover:text-mismatch">
+          <Trash2Icon data-icon="inline-start" />
+          {t('requests.clear')}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent className="glass-panel">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('requests.clearTitle')}</AlertDialogTitle>
+          <AlertDialogDescription>{t('requests.clearBody')}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => void confirm()}>
+            {t('requests.clear')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}

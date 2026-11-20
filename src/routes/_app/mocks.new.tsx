@@ -9,6 +9,7 @@ export const Route = createFileRoute('/_app/mocks/new')({
     integration: str(raw.integration),
     endpoint: str(raw.endpoint),
     mode: raw.mode === 'json' ? 'json' : undefined,
+    from: str(raw.from),
   }),
   component: NewMockRoute,
 })

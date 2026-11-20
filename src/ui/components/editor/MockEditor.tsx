@@ -57,6 +57,7 @@ const messageOf = (error: unknown, fallback: string) => (error instanceof Error 
 export function MockEditor({
   mock,
   catalog,
+  initialStub,
   simpleUnavailable,
   initialMode,
   onModeChange,
@@ -68,6 +69,8 @@ export function MockEditor({
   mock?: StubMapping
   /** The catalog endpoint Simple mode edits; undefined for a free-form mock. */
   catalog?: Catalog
+  /** A new free-form mock's starting JSON (instead of the blank stub); opens in Advanced and is created with POST. */
+  initialStub?: EditableStub
   /** Why Simple mode can't be used at all (no catalog link, endpoint gone). */
   simpleUnavailable?: string
   initialMode?: EditorMode
@@ -83,7 +86,7 @@ export function MockEditor({
 
   const [init] = useState(() => {
     const form = catalog ? (mock ? fromStub(mock, catalog.integration, catalog.endpoint) : emptyForm(catalog.endpoint)) : null
-    const text = mock ? pretty(toEditable(mock)) : catalog ? '' : BLANK
+    const text = mock ? pretty(toEditable(mock)) : catalog ? '' : initialStub ? pretty(initialStub) : BLANK
     const mode: EditorMode = form && initialMode !== 'advanced' ? 'simple' : 'advanced'
     return { form, text, mode }
   })

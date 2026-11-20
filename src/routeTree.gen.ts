@@ -13,6 +13,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as HealthzRouteImport } from './routes/healthz'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppRequestsRouteImport } from './routes/_app/requests'
 import { Route as ApiAuditRouteImport } from './routes/api/audit'
 import { Route as ApiImportRouteImport } from './routes/api/import'
 import { Route as ApiIntegrationsRouteImport } from './routes/api/integrations'
@@ -56,6 +57,11 @@ const LoginRoute = LoginRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRequestsRoute = AppRequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
   getParentRoute: () => AppRoute,
 } as any)
 const ApiAuditRoute = ApiAuditRouteImport.update({
@@ -192,6 +198,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/healthz': typeof HealthzRoute
   '/login': typeof LoginRoute
+  '/requests': typeof AppRequestsRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
@@ -221,6 +228,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/healthz': typeof HealthzRoute
   '/login': typeof LoginRoute
+  '/requests': typeof AppRequestsRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
@@ -253,6 +261,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/healthz': typeof HealthzRoute
   '/login': typeof LoginRoute
+  '/_app/requests': typeof AppRequestsRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
@@ -286,6 +295,7 @@ export interface FileRouteTypes {
     | '/'
     | '/healthz'
     | '/login'
+    | '/requests'
     | '/api/audit'
     | '/api/import'
     | '/api/integrations'
@@ -315,6 +325,7 @@ export interface FileRouteTypes {
   to:
     | '/healthz'
     | '/login'
+    | '/requests'
     | '/api/audit'
     | '/api/import'
     | '/api/integrations'
@@ -346,6 +357,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/healthz'
     | '/login'
+    | '/_app/requests'
     | '/api/audit'
     | '/api/import'
     | '/api/integrations'
@@ -415,6 +427,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/requests': {
+      id: '/_app/requests'
+      path: '/requests'
+      fullPath: '/requests'
+      preLoaderRoute: typeof AppRequestsRouteImport
       parentRoute: typeof AppRoute
     }
     '/api/audit': {
@@ -596,6 +615,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppRequestsRoute: typeof AppRequestsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppMocksIdRoute: typeof AppMocksIdRoute
   AppMocksNewRoute: typeof AppMocksNewRoute
@@ -603,6 +623,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppRequestsRoute: AppRequestsRoute,
   AppIndexRoute: AppIndexRoute,
   AppMocksIdRoute: AppMocksIdRoute,
   AppMocksNewRoute: AppMocksNewRoute,

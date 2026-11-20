@@ -51,7 +51,7 @@ export async function renderApp(ui: ReactNode, opts: { path?: string; session?: 
   })
   render(<RouterProvider router={router} />)
   await waitFor(() => expect(router.state.status).toBe('idle'))
-  await screen.findAllByRole('main')
+  await screen.findAllByRole('main', { hidden: true }) // hidden: a modal open on load (a drawer from the URL) hides it
   return { router, queryClient }
 }
 
