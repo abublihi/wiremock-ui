@@ -37,3 +37,8 @@ export function useRecordingAllowed(): boolean {
 export function useSeedPrune(): boolean {
   return useContext(ServerConfigContext)?.seedPrune === true
 }
+
+/** WireMock's public URL from the layout's config only (no fetch, so it works outside a query client); undefined if unknown. */
+export function useConfiguredPublicUrl(): string | undefined {
+  return useContext(ServerConfigContext)?.wiremockPublicUrl
+}

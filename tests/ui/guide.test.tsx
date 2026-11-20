@@ -388,3 +388,15 @@ describe('Getting started checklist', () => {
     expect(await screen.findByRole('heading', { name: 'Getting started' })).toBeTruthy()
   })
 })
+
+describe('this install\'s WireMock address', () => {
+  it('replaces the default address in guide examples with WIREMOCK_PUBLIC_URL', async () => {
+    const { ServerConfigProvider } = await import('@/ui/config')
+    render(
+      <ServerConfigProvider config={{ storeDriver: 'sqlite', wiremockPublicUrl: 'https://mocks.example.test/', recordingAllowed: true, seedPrune: false }}>
+        <GuideMarkdown markdown={'Call `http://localhost:8080/blog/posts/42`.'} />
+      </ServerConfigProvider>,
+    )
+    expect(screen.getByText('https://mocks.example.test/blog/posts/42')).toBeTruthy()
+  })
+})

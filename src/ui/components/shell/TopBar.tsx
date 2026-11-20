@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useRouterState } from '@tanstack/react-router'
-import { MenuIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { CopyIcon, MenuIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { toast } from 'sonner'
+import { useWiremockPublicUrl } from '@/ui/config'
+import { copyText } from '@/ui/lib/clipboard'
 import type { PublicUser } from '@/server/users/types'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -74,6 +77,34 @@ export function SidebarContent({
   )
 }
 
+/** WireMock's address as apps and curl reach it (WIREMOCK_PUBLIC_URL): shown in the top bar, one click copies it. */
+function WireMockAddress() {
+  const t = useT()
+  const url = useWiremockPublicUrl()
+  if (!url) return null
+  const copy = async () => {
+    try {
+      await copyText(url)
+      toast.success(t('shell.wiremockCopied'))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('error.generic'))
+    }
+  }
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="hidden max-w-64 font-mono text-xs text-muted-foreground lg:inline-flex"
+      aria-label={t('shell.wiremockAddress', { url })}
+      title={t('shell.wiremockAddress', { url })}
+      onClick={() => void copy()}
+    >
+      <CopyIcon data-icon="inline-start" />
+      <span className="truncate">{url.replace(/^https?:\/\//, '')}</span>
+    </Button>
+  )
+}
+
 export function TopBar({ nav, counts, user }: { nav: NavItem[]; counts?: NavCounts; user: PublicUser | null }) {
   const t = useT()
   const [navOpen, setNavOpen] = useState(false)
@@ -103,6 +134,7 @@ export function TopBar({ nav, counts, user }: { nav: NavItem[]; counts?: NavCoun
         <span className="text-signal-fg">$</span> cd ~{pathname}
       </p>
       <div className="ms-auto flex items-center gap-1">
+        <WireMockAddress />
         <HelpPanel />
         <ThemeMenu />
       </div>

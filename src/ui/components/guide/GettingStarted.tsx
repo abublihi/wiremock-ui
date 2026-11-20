@@ -5,7 +5,7 @@ import { ArrowRightIcon, CheckIcon, CircleIcon, XIcon } from 'lucide-react'
 import { apiFetch } from '@/ui/api/client'
 import { endpointsQueryOptions, queryKeys, useIntegrations, useSession } from '@/ui/api/queries'
 import { Button } from '@/ui/components/ui/button'
-import { useWireMockOnly } from '@/ui/config'
+import { useWireMockOnly, useWiremockPublicUrl } from '@/ui/config'
 import { useT, type MessageKey } from '@/ui/i18n'
 import { CHECKLIST_DISMISSED_KEY, CHECKLIST_DONE_KEY, REQUEST_LOG_SEEN_KEY, REQUEST_SENT_KEY } from '@/ui/lib/guide'
 import { cn } from '@/ui/lib/utils'
@@ -87,6 +87,7 @@ export function GettingStartedChecklist() {
   const user = useSession().data?.user.username
   const me = wiremockOnly ? undefined : user
   const integrations = useIntegrations()
+  const publicUrl = useWiremockPublicUrl() ?? 'WireMock'
   const all = integrations.data ?? []
   // Endpoint lists, ten integrations at a time, until one has an endpoint.
   const [rounds, setRounds] = useState(1)
@@ -234,7 +235,7 @@ export function GettingStartedChecklist() {
                 </span>
                 <span className="sr-only">{step.done ? t('checklist.stepDone') : t('checklist.stepTodo')}</span>
               </span>
-              <span className="text-xs text-muted-foreground">{t(step.hint)}</span>
+              <span className="text-xs text-muted-foreground">{t(step.hint, { url: publicUrl })}</span>
               {!step.done && (
                 <Link
                   to={step.to as '/'}
