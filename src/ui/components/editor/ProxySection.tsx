@@ -57,9 +57,11 @@ export function ProxySection({
           aria-invalid={Boolean(errors.baseUrl)}
           aria-describedby={described('baseUrl', id('base-hint'))}
           onChange={(e) => onChange({ baseUrl: e.target.value })}
+          // WireMock adds the request path (which starts with /): a trailing / would double it.
+          onBlur={() => /\/+$/.test(proxy.baseUrl) && onChange({ baseUrl: proxy.baseUrl.replace(/\/+$/, '') })}
         />
         <FieldDescription id={id('base-hint')} className="text-xs">
-          {t('editor.proxy.baseUrlHint')}
+          {t('editor.proxy.baseUrlHint')} {t('editor.dockerHint')}
         </FieldDescription>
         {error('baseUrl')}
       </Field>

@@ -277,7 +277,10 @@ function PairEditor({ title, rows, onChange, addLabel }: { title: string; rows: 
 
 const formatSize = (bytes: number) => (bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`)
 
-function Result({ result, mockId }: { result: TestRequestResult; mockId?: string }) {
+/** forwardError: a forwarding mock matched but could not reach its service (WireMock answered its own 500). */
+type RelayResult = TestRequestResult & { forwardError?: { message: string; target: string | null } }
+
+function Result({ result, mockId }: { result: RelayResult; mockId?: string }) {
   const t = useT()
   // base64 holds 3 bytes in every 4 characters (less the padding).
   const binarySize = result.bodyIsBase64 ? Math.floor((result.body.length * 3) / 4) - (result.body.match(/=+$/)?.[0].length ?? 0) : 0
@@ -286,8 +289,9 @@ function Result({ result, mockId }: { result: TestRequestResult; mockId?: string
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
         <StatusBadge status={result.status} />
         <span className="font-mono text-muted-foreground tabular-nums">{t('test.duration', { ms: result.durationMs })}</span>
-        <MatchLine matchedStubId={result.matchedStubId} mockId={mockId} />
+        {!result.forwardError && <MatchLine matchedStubId={result.matchedStubId} mockId={mockId} />}
       </div>
+      {result.forwardError && <ForwardFailed error={result.forwardError} matchedStubId={result.matchedStubId} mockId={mockId} />}
       <HeaderTable headers={result.headers} />
       {result.bodyIsBase64 ? (
         <p className="text-xs text-muted-foreground">{t('test.base64', { size: formatSize(binarySize) })}</p>
@@ -296,6 +300,24 @@ function Result({ result, mockId }: { result: TestRequestResult; mockId?: string
       )}
       {result.bodyTruncated && <p className="text-xs text-hazard-fg">{t('test.truncated')}</p>}
     </Part>
+  )
+}
+
+function ForwardFailed({ error, matchedStubId, mockId }: { error: NonNullable<RelayResult['forwardError']>; matchedStubId: string | null; mockId?: string }) {
+  const t = useT()
+  const self = matchedStubId === null || matchedStubId === mockId
+  const title = !self || !mockId ? t('test.forwardFailedOther') : error.target ? t('test.forwardFailedTo', { target: error.target }) : t('test.forwardFailed')
+  return (
+    <Alert variant="destructive">
+      <AlertTriangleIcon />
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription>
+        <p dir="ltr" className="font-mono text-xs break-all">
+          {error.message}
+        </p>
+        <p>{t('editor.dockerHint')}</p>
+      </AlertDescription>
+    </Alert>
   )
 }
 

@@ -81,9 +81,12 @@ export function WebhookSection({
                 placeholder="https://service.example/callback"
                 value={webhook.url}
                 aria-invalid={Boolean(errors.url)}
-                aria-describedby={described('url')}
+                aria-describedby={described('url', id('url-hint'))}
                 onChange={(e) => onChange({ url: e.target.value })}
               />
+              <FieldDescription id={id('url-hint')} className="text-xs">
+                {t('editor.webhook.urlHint')} {t('editor.dockerHint')}
+              </FieldDescription>
               {error('url')}
             </Field>
           </div>

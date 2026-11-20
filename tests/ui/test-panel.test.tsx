@@ -117,6 +117,19 @@ describe('test panel from the editor', () => {
     expect(link.getAttribute('href')).toBe('/mocks/m-2')
   })
 
+  it('says forwarding failed (not No match) when a forwarding mock could not reach its service, with the Docker hint', async () => {
+    editPage({
+      ...result({ status: 500, matchedStubId: 'm-1', headers: {}, body: 'Network failure trying to make a proxied request' }),
+      forwardError: { message: 'Connect to localhost:3999 failed: Connection refused', target: 'http://localhost:3999' },
+    } as TestRequestResult)
+    const { ue, panel } = await openPanel()
+    await ue.click(within(panel).getByRole('button', { name: 'Send' }))
+    expect(await within(panel).findByText('Matched this mock, but forwarding to http://localhost:3999 failed')).toBeTruthy()
+    expect(within(panel).getByText('Connect to localhost:3999 failed: Connection refused')).toBeTruthy()
+    expect(within(panel).getAllByText(/host\.docker\.internal/).length).toBeGreaterThan(0)
+    expect(within(panel).queryByText('No match')).toBeNull()
+  })
+
   it('shows the No match stamp and links to the unmatched requests', async () => {
     editPage(result({ status: 404, matchedStubId: null, headers: {}, body: '' }))
     const { ue, panel } = await openPanel()
