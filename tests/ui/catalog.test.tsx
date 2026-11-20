@@ -1,5 +1,5 @@
 import userEvent from '@testing-library/user-event'
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
@@ -14,6 +14,9 @@ import { renderApp } from './helpers'
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
+  // Unmount first: a query still running from this test must not reach the server after its handlers are gone
+  // (the setup file's own cleanup runs after this hook).
+  cleanup()
   server.resetHandlers()
   toast.dismiss()
 })
