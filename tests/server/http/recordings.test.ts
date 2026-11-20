@@ -234,3 +234,55 @@ test('RECORDING_ALLOWED=false: 403 with a clear message on every recording route
     rt.config.recordingAllowed = true
   }
 })
+
+test('two recordings of one endpoint become two scenarios when accepted; each replays its own chain', async () => {
+  const up = pair.upstream.url
+  const answers = ['one', 'two', 'three', 'four']
+  for (const [n, body] of answers.entries()) {
+    await fetch(`${up}/__admin/mappings`, {
+      method: 'POST',
+      body: JSON.stringify({
+        scenarioName: 'seq',
+        requiredScenarioState: n === 0 ? 'Started' : `s${n}`,
+        newScenarioState: `s${n + 1}`,
+        request: { method: 'GET', urlPath: '/shop/seq' },
+        response: { status: 200, body },
+      }),
+    })
+  }
+  await fetch(`${up}/__admin/scenarios/reset`, { method: 'POST' })
+  const record = async () => {
+    await start({ targetUrl: pair.upstreamInternalUrl, urlPathPattern: '/shop/seq' })
+    await fetch(`${W()}/shop/seq`)
+    await fetch(`${W()}/shop/seq`)
+    const rec = (await stop()).body.recording as Recording
+    expect(rec.items).toHaveLength(2)
+    expect((await accept(rec.id, { items: rec.items.map((i) => ({ id: i.id })) })).body.failed).toEqual([])
+    return rec
+  }
+  const first = await record()
+  const second = await record()
+  const nameOf = (rec: Recording) => rec.items[0].stub.scenarioName as string
+  expect(nameOf(first)).toMatch(/^GET-shop-seq-recorded-\d{4}-\d{2}-\d{2}-\d{4}$/)
+  expect(nameOf(second)).not.toBe(nameOf(first))
+  for (const rec of [first, second]) {
+    const name = nameOf(rec)
+    const states = rec.items.map((i) => [i.stub.scenarioName, i.stub.requiredScenarioState, i.stub.newScenarioState]).sort((a, b) => (a[1] === 'Started' ? -1 : b[1] === 'Started' ? 1 : 0))
+    expect(states).toEqual([
+      [name, 'Started', `${name}-2`],
+      [name, `${name}-2`, undefined],
+    ])
+  }
+  expect((await wmStubIds()).sort()).toEqual((await mocks()).map((m) => m.id).sort())
+  // WireMock may still list the recording's own scenario name for a moment after its stubs are removed.
+  expect((await rt.wiremock.listScenarios()).map((s) => s.name)).toEqual(expect.arrayContaining([nameOf(first), nameOf(second)]))
+
+  // The newer recording answers first (newest wins); without it the older one replays its own two answers.
+  await rt.wiremock.resetScenarios()
+  expect([await (await fetch(`${W()}/shop/seq`)).text(), await (await fetch(`${W()}/shop/seq`)).text()]).toEqual(['three', 'four'])
+  for (const m of await mocks()) {
+    if ((m as { scenarioName?: string }).scenarioName === nameOf(second)) await rt.mocks.delete(m.id, undefined, { username: 'ui-admin' } as never)
+  }
+  await rt.wiremock.resetScenarios()
+  expect([await (await fetch(`${W()}/shop/seq`)).text(), await (await fetch(`${W()}/shop/seq`)).text()]).toEqual(['one', 'two'])
+})

@@ -13,6 +13,7 @@ import type { StubMapping } from '../wiremock/types'
 import { reviewItem } from './normalise'
 import { PATH_MODES, regexProblemMessage, resolvePathFilter } from './path-pattern'
 import { isRecordingProxy } from './proxy'
+import { renameRecordedScenarios } from './scenarios'
 import { validateTarget } from './target'
 import {
   MAX_REVIEW_BODY_BYTES,
@@ -512,7 +513,8 @@ export class RecordingService {
     const recordedIds = new Set(stubs.map((s) => s.id))
     const existing = (await this.deps.mocks.list()).filter((m) => !recordedIds.has(m.id))
     const ids = new Map(existing.map((m) => [m.id, m]))
-    const all = stubs.map((stub): ReviewItem => {
+    const now = this.now()
+    const named = stubs.map((stub): ReviewItem => {
       const { matchedStubId, ...normalised } = reviewItem(stub)
       const item = normalised.bodySize > MAX_REVIEW_BODY_BYTES ? withoutBody(normalised) : normalised
       const path = item.url.split('?')[0]
@@ -531,6 +533,11 @@ export class RecordingService {
         ...(unmatched ? { unmatched: true } : {}),
       }
     })
+    // Scenario names unique across mocks and review lists, so accepting two recordings never merges their chains.
+    const taken = new Set<string>()
+    for (const m of existing) if (typeof m.scenarioName === 'string') taken.add(m.scenarioName)
+    for (const r of await this.deps.store.list()) for (const i of r.items) if (typeof i.stub.scenarioName === 'string') taken.add(i.stub.scenarioName)
+    const all = renameRecordedScenarios(named, taken, now)
     // At most MAX_REVIEW_ITEMS rows and MAX_REVIEW_LIST_BYTES of JSON; the rest is counted in `dropped`.
     const items: ReviewItem[] = []
     let bytes = 0
@@ -540,7 +547,6 @@ export class RecordingService {
       items.push(item)
       bytes += size
     }
-    const now = this.now()
     const recording: Recording = {
       id: this.newId(),
       kind,
