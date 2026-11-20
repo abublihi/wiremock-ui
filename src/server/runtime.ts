@@ -194,4 +194,22 @@ export function getRuntime(): Promise<Runtime> {
 /** Production start-up: boot once when the server loads; refuse to run if it fails. */
 export function bootEagerly(): void {
   getRuntime().catch(() => process.exit(1))
+  exitOnSignals()
+}
+
+/**
+ * On SIGTERM/SIGINT (docker stop, Ctrl+C): stop the reconciler and close the stores, then exit. Without it an open
+ * Redis connection kept the process alive until it was killed. Forced exit after `graceMs` if closing hangs.
+ */
+export function exitOnSignals(graceMs = 5_000, exit: (code: number) => void = (code) => process.exit(code)): void {
+  let stopping = false
+  const stop = (signal: NodeJS.Signals) => {
+    if (stopping) return
+    stopping = true
+    logger.info({ signal }, 'shutting down')
+    setTimeout(() => exit(0), graceMs).unref()
+    void retire(holder.__wiremockUiRuntime).finally(() => exit(0))
+  }
+  process.once('SIGTERM', stop)
+  process.once('SIGINT', stop)
 }

@@ -29,3 +29,16 @@ describe('retire', () => {
     expect(close).toHaveBeenCalledOnce()
   })
 })
+
+describe('exitOnSignals', () => {
+  it('closes the runtime and exits once on SIGTERM', async () => {
+    const { exitOnSignals } = await import('@/server/runtime')
+    const before = process.listenerCount('SIGTERM')
+    const exit = vi.fn()
+    exitOnSignals(5_000, exit)
+    expect(process.listenerCount('SIGTERM')).toBe(before + 1)
+    process.emit('SIGTERM', 'SIGTERM')
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0))
+    process.removeAllListeners('SIGINT')
+  })
+})
