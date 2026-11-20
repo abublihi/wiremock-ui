@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import { Field, FieldDescription, FieldError, FieldLabel, FieldLegend, FieldSet } from '@/ui/components/ui/field'
 import { Input } from '@/ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
@@ -9,6 +9,22 @@ import { QUICK_METHODS, QUICK_URL_TYPES, isRegex, type QuickMethod, type QuickRe
 import { HeaderRows, hasUnnamedRow } from './HeaderRows'
 
 export type QuickErrors = Partial<Record<'url' | 'query', string>>
+
+/**
+ * A full URL typed or pasted where a path goes (https://api.example.com/blog/posts?page=2): its path, and its query as
+ * rows. Null for anything that is not an http(s) URL with a host.
+ */
+export function splitFullUrl(text: string): { path: string; query: { name: string; value: string }[] } | null {
+  const trimmed = text.trim()
+  if (!/^https?:\/\/[^/\s]+/i.test(trimmed)) return null
+  try {
+    const url = new URL(trimmed)
+    const path = decodeURI(url.pathname) || '/'
+    return { path, query: [...url.searchParams].map(([name, value]) => ({ name, value })) }
+  } catch {
+    return null
+  }
+}
 
 const ON = 'data-[state=on]:border-signal/50 data-[state=on]:bg-signal/10 data-[state=on]:text-signal-fg'
 
@@ -41,6 +57,16 @@ export function QuickRequestFields({
   const id = (name: string) => `${ids}-${name}`
   const described = (name: keyof QuickErrors, hint?: string) => [hint, errors[name] && id(`${name}-error`)].filter(Boolean).join(' ') || undefined
   const error = (name: keyof QuickErrors) => (errors[name] ? <FieldError id={id(`${name}-error`)}>{errors[name]}</FieldError> : null)
+  const [pasted, setPasted] = useState<{ url: string; query: boolean } | null>(null)
+  // On leaving the field (not while typing): a full URL becomes its path, and its query moves to the rows.
+  const takePath = () => {
+    const value = quick.url
+    const full = quick.urlType === 'regex' ? null : splitFullUrl(value)
+    if (!full) return
+    setPasted({ url: value.trim(), query: full.query.length > 0 })
+    const rows = quick.query.filter((r) => r.name.trim() !== '' || r.value !== '')
+    onChange({ url: full.path, ...(full.query.length > 0 ? { query: [...rows, ...full.query] } : {}) }, ['url', 'query'])
+  }
 
   return (
     <>
@@ -73,8 +99,17 @@ export function QuickRequestFields({
             value={quick.url}
             aria-invalid={Boolean(errors.url)}
             aria-describedby={described('url', id('url-hint'))}
-            onChange={(e) => onChange({ url: e.target.value }, ['url'])}
+            onChange={(e) => {
+              setPasted(null)
+              onChange({ url: e.target.value }, ['url'])
+            }}
+            onBlur={takePath}
           />
+          {pasted && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {t(pasted.query ? 'editor.quick.pastedUrlQuery' : 'editor.quick.pastedUrl', { url: pasted.url })}
+            </p>
+          )}
           {error('url')}
         </Field>
       </div>

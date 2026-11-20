@@ -199,6 +199,22 @@ describe('endpoint page opened from the new-mock page', () => {
   })
 })
 
+describe('quick form: a full URL', () => {
+  it('keeps the path and moves the query to Query parameters when the field is left', async () => {
+    mockEmptyCatalog()
+    await renderApp(<NewHarness initial={{ mode: 'url' }} />)
+    const ue = userEvent.setup()
+    const url = await screen.findByRole('textbox', { name: 'URL' })
+    await ue.clear(url)
+    await ue.type(url, 'https://api.example.com/blog/posts?page=2')
+    await ue.tab()
+    expect((url as HTMLInputElement).value).toBe('/blog/posts')
+    expect(screen.getByText(/The query string is now under Query parameters/)).toBeTruthy()
+    expect(screen.getByDisplayValue('page')).toBeTruthy()
+    expect(screen.getByDisplayValue('2')).toBeTruthy()
+  })
+})
+
 describe('quick form: regex URLs', () => {
   it('an unparsable regex is flagged before anything is sent', async () => {
     const calls = mockEmptyCatalog()

@@ -210,6 +210,8 @@ export const en = {
   'editor.quick.urlHint.path': 'The request path must equal this. /blog/posts matches only that path, with any query string.',
   'editor.quick.urlHint.template': 'Use {name} for a segment that changes. /blog/posts/{id} matches /blog/posts/42 and /blog/posts/abc.',
   'editor.quick.urlHint.regex': 'A regular expression over the path (Java dialect). /blog/posts/[0-9]+ matches /blog/posts/42 but not /blog/posts/abc.',
+  'editor.quick.pastedUrl': 'Took the path from {url}: WireMock matches the path, not the host.',
+  'editor.quick.pastedUrlQuery': 'Took the path from {url}: WireMock matches the path, not the host. The query string is now under Query parameters.',
   'editor.quick.urlRequired': 'Enter the URL path to mock, for example /health.',
   'editor.quick.urlSlash': 'A path starts with /, for example /health.',
   'editor.quick.urlQuery': 'Leave the query string out of the path; add it under Query parameters instead.',
