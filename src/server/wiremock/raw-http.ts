@@ -18,8 +18,13 @@ export function rawFetch(
   const target = new URL(url)
   const send = target.protocol === 'https:' ? httpsRequest : httpRequest
   const method = (init.method ?? 'GET').toUpperCase()
+  const headers = { ...(init.headers ?? {}) }
+  // A body goes with its length (not chunked), unless the tester set one.
+  if (init.body !== undefined && !Object.keys(headers).some((h) => h.toLowerCase() === 'content-length')) {
+    headers['Content-Length'] = String(Buffer.byteLength(init.body))
+  }
   return new Promise<Response>((resolve, reject) => {
-    const req = send(target, { method, headers: init.headers ?? {}, signal: init.signal }, (res: IncomingMessage) => {
+    const req = send(target, { method, headers, signal: init.signal }, (res: IncomingMessage) => {
       const headers = new Headers()
       try {
         for (let i = 0; i < res.rawHeaders.length; i += 2) headers.append(res.rawHeaders[i], res.rawHeaders[i + 1])
