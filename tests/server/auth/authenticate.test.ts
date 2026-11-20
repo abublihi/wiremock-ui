@@ -120,6 +120,30 @@ describe.each(drivers)('authenticate on %s', (_driver, start) => {
     expect(await h.probe.rateLimit('unknown')).toBe('0')
   })
 
+  test('a verified Basic header is trusted for a while (one bcrypt check), until the password changes or the account is disabled or deleted', async () => {
+    const u = await mk()
+    let verified = 0
+    const verify = async (plain: string, hash: string | undefined) => {
+      verified++
+      return verifyPasswordOrDummy(plain, hash)
+    }
+    for (let i = 0; i < 5; i++) expect((await authenticate(basic('alice', 'password1'), { ...deps(), verify })).user.username).toBe('alice')
+    expect(verified).toBe(1)
+    // A wrong password is never answered from the cache.
+    await expect(authenticate(basic('alice', 'nope'), { ...deps(), verify })).rejects.toMatchObject({ status: 401 })
+
+    await users.updateUser({ ...u, passwordHash: await hashPassword('password2', 4) })
+    await expect(authenticate(basic('alice', 'password1'), { ...deps(), verify })).rejects.toMatchObject({ status: 401 })
+    expect((await authenticate(basic('alice', 'password2'), { ...deps(), verify })).via).toBe('basic')
+    const current = (await users.getUser(u.id))!
+    await users.updateUser({ ...current, disabled: true })
+    await expect(authenticate(basic('alice', 'password2'), { ...deps(), verify })).rejects.toMatchObject({ status: 401 })
+    await users.updateUser({ ...current, disabled: false })
+    expect((await authenticate(basic('alice', 'password2'), { ...deps(), verify })).via).toBe('basic')
+    await h.probe.deleteUserRecord(u.id)
+    await expect(authenticate(basic('alice', 'password2'), { ...deps(), verify })).rejects.toMatchObject({ status: 401 })
+  })
+
   test('session-cookie requests do not count toward the rate limit', async () => {
     const u = await mk()
     const s = await users.createSession(u.id, 60)
