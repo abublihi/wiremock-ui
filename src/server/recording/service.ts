@@ -231,7 +231,12 @@ export class RecordingService {
     }
     await this.deps.wiremock.startRecording({ targetBaseUrl: target, ...spec })
     const filters = (spec.filters ?? {}) as RecordingFilters
-    const active = { target, startedBy: actor, startedAt: this.now().toISOString(), filters }
+    // The proxy stub WireMock just added: the requests it serves are the ones that went through this recording.
+    const proxyStubId = await this.deps.wiremock
+      .listStubs()
+      .then((stubs) => stubs.find(isRecordingProxy)?.id)
+      .catch(() => undefined)
+    const active = { target, startedBy: actor, startedAt: this.now().toISOString(), filters, ...(proxyStubId ? { proxyStubId } : {}) }
     await this.deps.store.setActive(active)
     await safeRecord(this.deps.audit, { actor, action: 'recording.start', details: { target } })
     return { status: 'recording', target, startedBy: actor, startedAt: active.startedAt }
@@ -254,8 +259,11 @@ export class RecordingService {
       details: { target, recorded: stubs.length, ...(recording?.leftInWireMock ? { leftInWireMock: recording.leftInWireMock } : {}) },
     })
     if (recording) return { recording }
-    // Nothing recorded: did requests go through the recording proxy (filters too narrow), or did none arrive?
-    const proxied = (await this.journalSince(active?.startedAt)).filter((e) => e.stubMapping && isRecordingProxy(e.stubMapping)).length
+    // Nothing recorded: did requests go through this recording's proxy stub (filters too narrow), or did none arrive?
+    // Matched by stub id, not by time: WireMock's clock and ours may differ. Started outside the UI: any recording proxy.
+    const viaProxy = (stub: StubMapping | undefined) =>
+      stub !== undefined && (active?.proxyStubId ? stub.id === active.proxyStubId : isRecordingProxy(stub))
+    const proxied = (await this.journal()).filter((e) => viaProxy(e.stubMapping)).length
     return { recording: null, empty: this.emptyResult(proxied, active?.filters ?? {}) }
   }
 
@@ -265,10 +273,10 @@ export class RecordingService {
       : { reason: 'noTraffic', wiremockUrl: this.deps.config.wiremockPublicUrl ?? this.deps.config.wiremockUrl }
   }
 
-  /** The request log since `since` (the whole log, up to its newest 1000, without it); a failure counts as empty. */
-  private async journalSince(since: string | undefined) {
+  /** The newest 1000 entries of the request log; a failure counts as empty. */
+  private async journal() {
     try {
-      return await this.deps.wiremock.listRequests({ limit: 1000, ...(since ? { since } : {}) })
+      return await this.deps.wiremock.listRequests({ limit: 1000 })
     } catch (err) {
       logger.warn({ err }, 'could not read the request log to explain an empty recording')
       return []
@@ -290,7 +298,7 @@ export class RecordingService {
     })
     if (recording) return { recording }
     // Nothing taken: was the request log empty (or the picked requests gone), or did the filters leave everything out?
-    const journal = await this.journalSince(undefined)
+    const journal = await this.journal()
     const picked = input.ids ? new Set(input.ids) : null
     const requests = journal.filter((e) => !picked || picked.has(e.id)).length
     return { recording: null, empty: this.emptyResult(requests, (spec.filters ?? {}) as RecordingFilters) }

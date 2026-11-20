@@ -11,7 +11,7 @@ const stub = (n: number, body = 'x'): StubMapping => ({
   response: { status: 200, body },
 })
 
-function setup(opts: { stubs: StubMapping[]; failDeletes?: Set<string>; failTwice?: boolean; journal?: LoggedEvent[]; idle?: boolean }) {
+function setup(opts: { stubs: StubMapping[]; failDeletes?: Set<string>; failTwice?: boolean; journal?: LoggedEvent[]; idle?: boolean; liveStubs?: StubMapping[] }) {
   let started = !opts.idle
   const events: string[] = []
   const store = new MemoryRecordingStore()
@@ -25,7 +25,7 @@ function setup(opts: { stubs: StubMapping[]; failDeletes?: Set<string>; failTwic
   const attempts = new Map<string, number>()
   const wiremock = {
     recordingStatus: async () => (started ? ('Recording' as const) : ('Stopped' as const)),
-    listStubs: async () => [],
+    listStubs: async () => opts.liveStubs ?? [],
     stopRecording: async () => opts.stubs,
     snapshotRecording: async () => opts.stubs,
     startRecording: async (spec: Record<string, unknown>) => {
@@ -191,8 +191,6 @@ test('an empty stop says how many requests went through the recording but were f
   await h.svc.start({ targetUrl: 'https://api.testingapis.com', method: 'POST', urlPathPattern: '/api/*' }, 'ann', [])
   const result = await h.svc.stop('ann')
   expect(result).toEqual({ recording: null, empty: { reason: 'filtered', requests: 1, filters: { method: 'POST', urlPathPattern: '^/api/.*$' } } })
-  // Only the requests since the recording started are counted.
-  expect(h.events.find((e) => e.startsWith('journal:'))).not.toBe('journal:all')
 })
 
 test('an empty stop with no traffic says to point the app at WireMock', async () => {
@@ -205,4 +203,17 @@ test('an empty snapshot says whether the log had requests the filters left out',
   const h = setup({ stubs: [], journal: [logged('r1', '/a', undefined), logged('r2', '/b', stub(9))] })
   expect(await h.svc.snapshot({ method: 'DELETE' }, 'ann')).toEqual({ recording: null, empty: { reason: 'filtered', requests: 2, filters: { method: 'DELETE' } } })
   expect((await h.svc.snapshot({ ids: ['gone'] }, 'ann')).empty).toEqual({ reason: 'noTraffic', wiremockUrl: 'http://wiremock:8080' })
+})
+
+test('an empty stop counts only the requests served by this recording\'s proxy stub (by id, not by clock)', async () => {
+  const older = { ...proxyStub, id: 'p0' }
+  const h = setup({
+    stubs: [],
+    idle: true,
+    liveStubs: [proxyStub as StubMapping],
+    journal: [logged('r1', '/api/a', proxyStub), logged('r2', '/api/b', proxyStub), logged('r0', '/api/old', older)],
+  })
+  await h.svc.start({ targetUrl: 'https://api.testingapis.com', urlPathPattern: '/nope/*' }, 'ann', [])
+  expect(await h.store.getActive()).toMatchObject({ proxyStubId: 'p1' })
+  expect((await h.svc.stop('ann')).empty).toMatchObject({ reason: 'filtered', requests: 2 })
 })

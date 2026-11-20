@@ -53,8 +53,11 @@ export type RecordingSummary = Omit<Recording, 'items'> & { itemCount: number }
 export const summaryOf = ({ items, ...rest }: Recording): RecordingSummary => ({ ...rest, itemCount: items.length })
 
 /** The recording WireMock is running, as started from this app (kept in the store, so every instance knows it). */
-/** `filters`: what the recording was started with (as sent to WireMock), to explain an empty result on stop. */
-export type ActiveRecording = { target: string; startedBy: string; startedAt: string; filters?: RecordingFilters }
+/**
+ * `filters`: what the recording was started with (as sent to WireMock), and `proxyStubId`: the proxy stub WireMock added
+ * for it — both to explain an empty result on stop.
+ */
+export type ActiveRecording = { target: string; startedBy: string; startedAt: string; filters?: RecordingFilters; proxyStubId?: string }
 /** The filters a recording or snapshot used, as WireMock got them. */
 export type RecordingFilters = { method?: string; urlPathPattern?: string }
 
