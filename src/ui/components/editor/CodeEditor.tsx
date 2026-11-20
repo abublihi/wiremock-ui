@@ -88,7 +88,7 @@ export function CodeEditor({
       dir="ltr"
       className={cn(
         'overflow-hidden rounded-md border border-line focus-within:border-signal focus-within:ring-3 focus-within:ring-ring/30',
-        invalid && 'border-mismatch',
+        invalid && 'border-mismatch focus-within:border-mismatch focus-within:ring-mismatch/25',
         readOnly && 'opacity-90',
         className,
       )}

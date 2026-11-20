@@ -6,8 +6,8 @@ import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { Endpoint, Integration } from '@/server/catalog/types'
-import { NewMockPage, type NewMockSearch } from '@/routes/_app/mocks.new'
-import { EditMockPage } from '@/routes/_app/mocks.$id'
+import { NewMockPage, type NewMockSearch } from '@/ui/components/editor/NewMockPage'
+import { EditMockPage } from '@/ui/components/editor/EditMockPage'
 import { renderApp } from './helpers'
 
 const server = setupServer()
@@ -124,12 +124,12 @@ describe('new mock — Simple form', () => {
     const body = (await screen.findByRole('textbox', { name: 'Response body' })) as HTMLTextAreaElement
     expect(body.value).toBe('pong')
 
-    await ue.click(screen.getByRole('radio', { name: 'Not found' }))
+    await ue.click(screen.getByRole('radio', { name: 'Not found 404' }))
     expect(body.value).toBe('no such id')
 
     await ue.clear(body)
     await ue.type(body, 'mine')
-    await ue.click(screen.getByRole('radio', { name: 'Server error' }))
+    await ue.click(screen.getByRole('radio', { name: 'Server error 500' }))
     expect(body.value).toBe('mine')
 
     await ue.click(screen.getByRole('radio', { name: 'Custom' }))
@@ -163,14 +163,14 @@ describe('new mock — Simple form', () => {
     await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'ping' }} />)
     const ue = userEvent.setup()
     await ue.click(await screen.findByRole('switch', { name: 'Default answer (when no key matches)' }))
-    await ue.click(screen.getByRole('radio', { name: 'Timeout' }))
+    await ue.click(screen.getByRole('radio', { name: 'Timeout 504' }))
     expect((screen.getByRole('switch', { name: 'Slow response' }) as HTMLButtonElement).disabled).toBe(true)
     await ue.click(screen.getByRole('button', { name: 'Preview' }))
     await waitFor(() => expect(calls.at(-1)?.body).toEqual({ isDefault: true, status: 504, delayMs: 30_000 }))
     expect(await screen.findByRole('dialog', { name: 'Stub preview' })).toBeTruthy()
     await ue.keyboard('{Escape}')
 
-    await ue.click(screen.getByRole('radio', { name: 'Success' }))
+    await ue.click(screen.getByRole('radio', { name: 'Success 200' }))
     await ue.click(screen.getByRole('switch', { name: 'Slow response' }))
     await ue.click(screen.getByRole('combobox', { name: 'Break the connection' }))
     await ue.click(await screen.findByRole('option', { name: 'Connection reset' }))
@@ -182,10 +182,10 @@ describe('new mock — Simple form', () => {
   it('hides presets whose status the endpoint does not allow', async () => {
     mockCatalog([endpoint({ allowedStatuses: [200, 404] })])
     await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'get-citizen-info' }} />)
-    await screen.findByRole('radio', { name: 'Success' })
-    expect(screen.getByRole('radio', { name: 'Not found' })).toBeTruthy()
+    await screen.findByRole('radio', { name: 'Success 200' })
+    expect(screen.getByRole('radio', { name: 'Not found 404' })).toBeTruthy()
     for (const hidden of ['Validation error', 'Server error', 'Timeout', 'Custom']) {
-      expect(screen.queryByRole('radio', { name: hidden })).toBeNull()
+      expect(screen.queryByRole('radio', { name: new RegExp(`^${hidden}`) })).toBeNull()
     }
   })
 
@@ -256,7 +256,7 @@ describe('edit mock', () => {
     const { router } = await renderApp(<EditMockPage id="m-1" />)
     const key = (await screen.findByLabelText('Value of $.idNo in the request body')) as HTMLInputElement
     expect(key.value).toBe('42')
-    expect(screen.getByRole('radio', { name: 'Not found' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: 'Not found 404' }).getAttribute('aria-checked')).toBe('true')
     expect(bodyEditor().textContent).toContain('"error": "gone"')
     // Baseline mocks are editable like any other (no authorization in this deployment).
     expect(key.disabled).toBe(false)
@@ -271,7 +271,18 @@ describe('edit mock', () => {
       stub: { name: 'built', request: { method: 'POST' }, response: { status: 200 }, metadata: { wiremockUi: { integration: 'nic', endpoint: 'get-citizen-info' } } },
       version: 4,
     })
-    expect(router.state.location.pathname).toBe('/mocks/m-1')
+    // Saving an existing mock stays on it and the editor moves to the saved version.
+    expect(router.state.location.pathname).toBe('/')
+    expect(await screen.findByText(/version 5/)).toBeTruthy()
+  })
+
+  it('a stored custom status shows the Custom item selected even when the catalog would hide it', async () => {
+    mockCatalog([endpoint({ allowedStatuses: [200, 404] })])
+    server.use(http.get(`${BASE}/api/mocks/m-1`, () => HttpResponse.json({ ...stored, response: { ...stored.response, status: 418 } })))
+    await renderApp(<EditMockPage id="m-1" />)
+    const custom = await screen.findByRole('radio', { name: 'Custom' })
+    expect(custom.getAttribute('aria-checked')).toBe('true')
+    expect((screen.getByRole('spinbutton', { name: 'Custom status' }) as HTMLInputElement).value).toBe('418')
   })
 
   it('says so when the stub has options Simple mode cannot show', async () => {
@@ -282,6 +293,9 @@ describe('edit mock', () => {
       ),
     )
     await renderApp(<EditMockPage id="m-1" />)
+    // It opens in Advanced; the Simple tab explains why it can't help.
+    expect((await screen.findByRole('tab', { name: 'Advanced' })).getAttribute('aria-selected')).toBe('true')
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Simple' }))
     expect(await screen.findByText('This mock uses options Simple mode can’t show.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Save mock' })).toBeNull()
   })

@@ -7,6 +7,7 @@ import { Skeleton } from '@/ui/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/components/ui/tooltip'
 import { useT } from '@/ui/i18n'
+import { relativeTime } from '@/ui/lib/time'
 import { cn } from '@/ui/lib/utils'
 import { MockRowActions, mockName } from './MockActions'
 
@@ -18,23 +19,6 @@ function requestUrl(stub: StubMapping): string {
     if (typeof value === 'string') return value
   }
   return '—'
-}
-
-const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
-  ['year', 31_536_000],
-  ['month', 2_592_000],
-  ['day', 86_400],
-  ['hour', 3_600],
-  ['minute', 60],
-]
-
-function relativeTime(iso: string, now = Date.now()): string {
-  const seconds = Math.round((new Date(iso).getTime() - now) / 1000)
-  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
-  for (const [unit, size] of UNITS) {
-    if (Math.abs(seconds) >= size) return formatter.format(Math.round(seconds / size), unit)
-  }
-  return formatter.format(0, 'second')
 }
 
 function UpdatedAt({ iso }: { iso?: string }) {

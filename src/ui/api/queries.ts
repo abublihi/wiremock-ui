@@ -17,6 +17,7 @@ export const queryKeys = {
   integrations: ['integrations'] as const,
   mock: (id: string) => ['mocks', 'detail', id] as const,
   endpoints: (integration: string) => ['integrations', integration, 'endpoints'] as const,
+  mockHistory: (id: string) => ['mocks', 'history', id] as const,
 } as const
 
 export const sessionQueryOptions = (fetchSession: () => Promise<SessionData> = defaultFetchSession) =>
@@ -169,6 +170,36 @@ export function useUpdateMock() {
   return useMutation({
     mutationFn: ({ id, stub, version }: { id: string; stub: BuiltStub; version: number }) =>
       apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(id)}`, { method: 'PUT', body: { stub, version } }),
+    onSuccess: async (stub) => {
+      queryClient.setQueryData(queryKeys.mock(stub.id), stub)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' })
+    },
+  })
+}
+
+/** Previous versions of a mock, newest first (the live version is not included). */
+export function useMockHistory(id: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.mockHistory(id),
+    queryFn: () => apiFetch<StubMapping[]>(`/api/mocks/${encodeURIComponent(id)}/history`),
+    enabled: options.enabled ?? true,
+  })
+}
+
+/** Restores a previous version as the new live version (anyone signed in may). */
+export function useRestoreMock() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) => restoreMock(queryClient, id, version),
+    onSuccess: (stub) => queryClient.setQueryData(queryKeys.mock(stub.id), stub),
+  })
+}
+
+/** Creates a free-form mock from a full stub (Advanced mode). */
+export function useCreateMock() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (stub: BuiltStub) => apiFetch<StubMapping>('/api/mocks', { method: 'POST', body: stub }),
     onSuccess: async (stub) => {
       queryClient.setQueryData(queryKeys.mock(stub.id), stub)
       await queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' })

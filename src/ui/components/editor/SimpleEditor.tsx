@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { AlertCircleIcon, EyeIcon, SaveIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -35,21 +35,21 @@ import { keyLabel } from './EndpointPicker'
 type FieldName = 'keyValue' | 'status' | 'body' | 'delay' | 'fault' | 'name'
 type Errors = Partial<Record<FieldName, string>>
 
-const SERVER_FIELD: Record<string, FieldName> = {
-  keyValue: 'keyValue',
-  isDefault: 'keyValue',
-  status: 'status',
-  body: 'body',
-  delayMs: 'delay',
-  fault: 'fault',
-  name: 'name',
-}
+const SERVER_FIELD = new Map<string, FieldName>([
+  ['keyValue', 'keyValue'],
+  ['isDefault', 'keyValue'],
+  ['status', 'status'],
+  ['body', 'body'],
+  ['delayMs', 'delay'],
+  ['fault', 'fault'],
+  ['name', 'name'],
+])
 
 /** The form field a server validation message names ("keyValue is required" → keyValue), if any. */
 function fieldOf(message: string): FieldName | undefined {
   if (message === 'body must be an object') return undefined // about the request, not the response body
   const word = /^(\w+)\b/.exec(message)?.[1]
-  return word ? SERVER_FIELD[word] : undefined
+  return word ? SERVER_FIELD.get(word) : undefined
 }
 
 const NO_FAULT = 'none'
@@ -58,17 +58,25 @@ const ON = 'data-[state=on]:border-signal/50 data-[state=on]:bg-signal/10 data-[
 /**
  * The catalog-first Simple editor: answers for one endpoint, built by the server's builder (preview/create),
  * or saved over an existing mock with `PUT { stub, version }` when `mock` is given.
+ * `onChange` reports every form change; `onSaved` takes over after a save (default: open the mock);
+ * `onConflict` takes over a 409 (default: an inline message).
  */
 export function SimpleEditor({
   integration,
   endpoint,
   initial,
   mock,
+  onChange,
+  onSaved,
+  onConflict,
 }: {
   integration: Integration
   endpoint: Endpoint
   initial?: SimpleForm
   mock?: StubMapping
+  onChange?: (form: SimpleForm) => void
+  onSaved?: (stub: StubMapping) => void | Promise<void>
+  onConflict?: () => void
 }) {
   const t = useT()
   const navigate = useNavigate()
@@ -90,9 +98,15 @@ export function SimpleEditor({
   const updateMock = useUpdateMock()
   const [saving, setSaving] = useState(false)
 
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  useEffect(() => onChangeRef.current?.(form), [form])
+
   const presets = visiblePresets(endpoint.allowedStatuses)
   const covered = new Set(presets.map((p) => presetToStatus(p).status))
-  const showCustom = endpoint.allowedStatuses.length === 0 || endpoint.allowedStatuses.some((s) => !covered.has(s))
+  // Also shown whenever the form is on a custom status, so a stored one always has a selected item.
+  const showCustom =
+    form.preset === 'custom' || endpoint.allowedStatuses.length === 0 || endpoint.allowedStatuses.some((s) => !covered.has(s))
   const broken = form.fault !== ''
   const timeout = !broken && form.preset === 'timeout'
 
@@ -137,6 +151,7 @@ export function SimpleEditor({
 
   const handleError = (error: unknown, title: string) => {
     if (error instanceof ApiError && error.status === 409) {
+      if (onConflict) return onConflict()
       setFormError({ title: t('editor.saveFailed'), message: t('editor.conflict') })
       return
     }
@@ -174,7 +189,8 @@ export function SimpleEditor({
         saved = await updateMock.mutateAsync({ id: mock.id, stub, version: mock.metadata?.wiremockUi?.version ?? 0 })
       } else saved = await createMock.mutateAsync(args())
       toast.success(t('editor.saved'))
-      await navigate({ to: '/mocks/$id', params: { id: saved.id } })
+      if (onSaved) await onSaved(saved)
+      else await navigate({ to: '/mocks/$id', params: { id: saved.id } })
     } catch (error) {
       handleError(error, t('editor.saveFailed'))
     } finally {
@@ -254,7 +270,12 @@ export function SimpleEditor({
             className="flex-wrap"
           >
             {presets.map((preset) => (
-              <ToggleGroupItem key={preset} value={preset} aria-label={t(PRESET_LABEL[preset])} className={cn('gap-1.5', ON)}>
+              <ToggleGroupItem
+                key={preset}
+                value={preset}
+                aria-label={`${t(PRESET_LABEL[preset])} ${presetToStatus(preset).status}`}
+                className={cn('gap-1.5', ON)}
+              >
                 {t(PRESET_LABEL[preset])}
                 <span aria-hidden className="font-mono text-[10px] opacity-60">
                   {presetToStatus(preset).status}

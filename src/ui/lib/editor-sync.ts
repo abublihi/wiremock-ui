@@ -1,5 +1,5 @@
 import type { SimpleMockInput } from '@/server/catalog/build'
-import type { Endpoint } from '@/server/catalog/types'
+import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
 import {
   SLOW_MAX_SECONDS,
@@ -82,6 +82,15 @@ export function toSimpleInput(form: SimpleForm): SimpleMockInput {
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const onlyKeys = (obj: Record<string, unknown>, allowed: readonly string[]) => Object.keys(obj).every((k) => allowed.includes(k))
 
+// Same as the server builder's escapeRegex (not imported: that module pulls zod and server code).
+const escapeRegex = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
+
+/** The request URL the builder writes for an endpoint under its integration's prefix. */
+function urlFor(integration: Integration, endpoint: Endpoint): string {
+  const root = integration.prefix === '/' ? '' : integration.prefix
+  return endpoint.pathType === 'regex' ? escapeRegex(root) + endpoint.path : root + endpoint.path
+}
+
 const URL_FIELD: Record<Endpoint['pathType'], string> = { exact: 'urlPath', template: 'urlPathTemplate', regex: 'urlPathPattern' }
 const LOOKUP_FIELD = {
   jsonPath: 'bodyPatterns',
@@ -116,7 +125,7 @@ function readKey(request: Record<string, unknown>, lookup: NonNullable<Endpoint[
  * Turns a stored stub back into the Simple form for its endpoint, or null when the stub holds anything the
  * form cannot show (extra matchers, headers, transformers, another priority…): Simple mode never drops fields.
  */
-export function fromStub(stub: StubMapping, endpoint: Endpoint): SimpleForm | null {
+export function fromStub(stub: StubMapping, integration: Integration, endpoint: Endpoint): SimpleForm | null {
   if (!onlyKeys(stub, ['id', 'uuid', 'name', 'priority', 'persistent', 'request', 'response', 'metadata'])) return null
   const meta = stub.metadata
   if (!isRecord(meta) || !onlyKeys(meta, ['wiremockUi'])) return null
@@ -127,7 +136,7 @@ export function fromStub(stub: StubMapping, endpoint: Endpoint): SimpleForm | nu
   if (!isRecord(request) || !isRecord(response)) return null
   const urlField = URL_FIELD[endpoint.pathType]
   const url = request[urlField]
-  if (request.method !== endpoint.method || typeof url !== 'string' || !url.endsWith(endpoint.path)) return null
+  if (request.method !== endpoint.method || url !== urlFor(integration, endpoint)) return null
   const lookupField = endpoint.lookup ? LOOKUP_FIELD[endpoint.lookup.location] : undefined
   const isDefault = lookupField === undefined || !(lookupField in request)
   if (!onlyKeys(request, isDefault ? ['method', urlField] : ['method', urlField, lookupField!])) return null
@@ -174,4 +183,71 @@ function finish(stub: StubMapping, endpoint: Endpoint, form: SimpleForm): Simple
   const name = typeof stub.name === 'string' ? stub.name : ''
   form.name = name === generatedName(endpoint, form) ? '' : name
   return form
+}
+
+/** The catalog endpoint a mock belongs to (kept in `metadata.wiremockUi`). */
+export type CatalogLink = { integration: string; endpoint: string }
+
+/** A stub as Advanced mode edits it: no id, uuid or `persistent` (the server always sets it) and no `metadata.wiremockUi`. */
+export type EditableStub = Record<string, unknown>
+
+export function linkOf(stub: Pick<StubMapping, 'metadata'>): CatalogLink | undefined {
+  const ui = stub.metadata?.wiremockUi
+  return ui?.integration && ui.endpoint ? { integration: ui.integration, endpoint: ui.endpoint } : undefined
+}
+
+/** The editable part of a stub: everything except the fields the server owns. */
+export function toEditable(stub: Omit<StubMapping, 'id'> & { id?: string }): EditableStub {
+  const { id: _id, uuid: _uuid, persistent: _persistent, metadata, ...rest } = stub as Record<string, unknown>
+  if (!isRecord(metadata)) return rest
+  const { wiremockUi: _ui, ...other } = metadata
+  return Object.keys(other).length > 0 ? { ...rest, metadata: other } : rest
+}
+
+/** The stub to send for an edited JSON: the catalog link goes back into `metadata.wiremockUi`; nothing else of it. */
+export function fromEditable(editable: EditableStub, link: CatalogLink | undefined): Omit<StubMapping, 'id'> {
+  const { id: _id, uuid: _uuid, metadata, ...rest } = editable
+  const other = isRecord(metadata) ? Object.fromEntries(Object.entries(metadata).filter(([k]) => k !== 'wiremockUi')) : {}
+  const meta = link ? { ...other, wiremockUi: { integration: link.integration, endpoint: link.endpoint } } : other
+  return { ...rest, ...(Object.keys(meta).length > 0 ? { metadata: meta } : {}) } as Omit<StubMapping, 'id'>
+}
+
+export type StubJson =
+  | { ok: true; value: EditableStub }
+  | { ok: false; reason: 'syntax' | 'notObject'; message: string; line?: number; column?: number }
+
+/** Line and column (1-based) of a character offset. */
+function position(text: string, offset: number) {
+  const before = text.slice(0, Math.max(0, Math.min(offset, text.length)))
+  const lines = before.split('\n')
+  return { line: lines.length, column: lines[lines.length - 1]!.length + 1 }
+}
+
+/** Parses the Advanced editor's text; a syntax error carries its line and column. */
+export function parseStubJson(text: string): StubJson {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error)
+    // V8: "… at position 36 (line 4 column 2)"; Firefox: "… at line 4 column 2 of the JSON data"; Safari: none.
+    const lc = /line (\d+) column (\d+)/.exec(raw)
+    const pos = /position (\d+)/.exec(raw)
+    // Without a position, only "unexpected end" can be placed (at the end); other messages go without one.
+    const at = lc
+      ? { line: Number(lc[1]), column: Number(lc[2]) }
+      : pos
+        ? position(text, Number(pos[1]))
+        : /end of (JSON )?input|unexpected end/i.test(raw)
+          ? position(text, text.length)
+          : {}
+    const message = raw
+      .replace(/^JSON\.parse: /, '')
+      .replace(/\s*\(line \d+ column \d+\)/, '')
+      .replace(/\s*at line \d+ column \d+ of the JSON data/, '')
+      .replace(/\s*(in JSON )?at position \d+/, '')
+    return { ok: false, reason: 'syntax', message, ...at }
+  }
+  if (!isRecord(value)) return { ok: false, reason: 'notObject', message: '' }
+  return { ok: true, value }
 }

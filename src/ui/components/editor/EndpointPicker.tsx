@@ -1,8 +1,9 @@
-import { AlertCircleIcon, ExternalLinkIcon } from 'lucide-react'
+import { AlertCircleIcon, BracesIcon, ExternalLinkIcon } from 'lucide-react'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import { useEndpoints, useIntegrations } from '@/ui/api/queries'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
+import { Button } from '@/ui/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/ui/components/ui/command'
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { useT } from '@/ui/i18n'
@@ -22,18 +23,36 @@ function filter(value: string, search: string, keywords?: string[]): number {
 
 const prefixOf = (integration: Integration) => (integration.prefix === '/' ? '' : integration.prefix)
 
-/** A searchable list of catalog endpoints grouped by integration. */
-export function EndpointPicker({ onPick }: { onPick: (integration: string, endpoint: string) => void }) {
+/** A searchable list of catalog endpoints grouped by integration, with a way out to a blank free-form stub. */
+export function EndpointPicker({
+  onPick,
+  onBlank,
+}: {
+  onPick: (integration: string, endpoint: string) => void
+  onBlank?: () => void
+}) {
   const t = useT()
   const integrations = useIntegrations()
 
+  const blank = onBlank && (
+    <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <Button variant="link" size="sm" className="h-auto px-0" onClick={onBlank}>
+        <BracesIcon data-icon="inline-start" />
+        {t('editor.blank')}
+      </Button>
+      <span>{t('editor.blankHint')}</span>
+    </p>
+  )
   if (integrations.isError) {
     return (
-      <Alert variant="destructive">
-        <AlertCircleIcon />
-        <AlertTitle>{t('editor.pickLoadFailed')}</AlertTitle>
-        <AlertDescription>{integrations.error.message}</AlertDescription>
-      </Alert>
+      <div className="flex flex-col gap-3">
+        <Alert variant="destructive">
+          <AlertCircleIcon />
+          <AlertTitle>{t('editor.pickLoadFailed')}</AlertTitle>
+          <AlertDescription>{integrations.error.message}</AlertDescription>
+        </Alert>
+        {blank}
+      </div>
     )
   }
   return (
@@ -60,6 +79,7 @@ export function EndpointPicker({ onPick }: { onPick: (integration: string, endpo
           )}
         </CommandList>
       </Command>
+      {blank}
     </section>
   )
 }
