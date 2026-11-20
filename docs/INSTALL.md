@@ -143,6 +143,62 @@ docker compose -f compose.sqlite.yaml up -d --build      # or: docker compose up
 
 Data on the volume is kept. From source: `git pull && npm ci --ignore-scripts && npm run build`, then restart `npm start`. Take a backup first.
 
+## Performance
+
+Measured with `scripts/load-test.mjs` on an Apple M1 Pro (10 cores, 16 GB; Docker Desktop VM with 3 CPUs and 9 GB),
+Node 26, WireMock 3.13.1 with default JVM settings. Each run seeds N mocks over N/100 integrations (catalog mocks keyed
+by query, path, JSON body and header; quick URL mocks; one 3-step scenario and two ~45 KB JSON bodies per 100 mocks).
+API figures are p50 / p95 in ms over 20 calls, one user, no other load.
+
+| | SQLite 1,000 | SQLite 10,000 | SQLite 20,000 | Redis 10,000 | WireMock-only 1,000 |
+|---|---:|---:|---:|---:|---:|
+| Import the seed (`POST /api/import`) | 1.9 s | 17.6 s | 54.9 s | 43.9 s | 0.3 s ¹ |
+| Cold boot until the first sync | 0.7 s | 4.3 s | 14.0 s | 5.2 s | 0.6 s |
+| WireMock restart until every stub is back | 4.6 s | 9.5 s | 18.7 s | 8.7 s | n/a |
+| `GET /api/mocks?limit=50` (All mocks) | 8 / 8 | 81 / 105 | 149 / 163 | 108 / 117 | 50 / 59 |
+| … with `q=` | 7 / 8 | 74 / 80 | 137 / 145 | 115 / 123 | 35 / 40 |
+| … with `integration=` | 1 / 2 | 1 / 4 | 1 / 2 | 3 / 6 | 32 / 35 |
+| `GET /api/mocks` (no limit) | 10 / 11 | 109 / 119 | 195 / 214 | 143 / 212 | 35 / 39 |
+| `GET /api/scenarios` | 10 / 11 | 92 / 97 | 161 / 294 | 95 / 102 | 36 / 41 |
+| `GET /api/export?format=bundle` | 11 / 12 (1.6 MB) | 111 / 126 (16 MB) | 235 / 268 (32 MB) | 192 / 227 | 36 / 43 |
+| Save a new mock (`POST /api/mocks`) | 3 / 7 | 4 / 5 | 5 / 8 | 7 / 8 | 4 / 6 |
+| Save an edit (`PUT /api/mocks/:id`) | 3 / 3 | 2 / 3 | 2 / 3 | 5 / 10 | 4 / 6 |
+| `GET /api/requests?limit=500` | 61 / 106 | 65 / 89 | 55 / 139 | 42 / 67 | 42 / 62 |
+| WireMock: matched request | 2 / 5 | 7 / 11 | 12 / 20 | 7 / 12 | 2 / 4 |
+| WireMock: unmatched request | 7 / 12 | 49 / 79 | 94 / 141 | 48 / 67 | 7 / 10 |
+| UI process RSS (end of run / peak) | 259 / 273 MB | 291 / 626 MB | 262 / 1,009 MB | 214 / 826 MB | 293 / 293 MB |
+| WireMock container memory | 0.9 GB | 2.3 GB | 2.4 GB | 2.4 GB | 0.9 GB |
+
+¹ WireMock-only mode: the mocks were loaded straight into WireMock.
+
+In the browser at 20,000 mocks (SQLite): *My mocks* opens in ~0.3 s; *All mocks* in ~0.45 s and each page change takes
+~0.5 s; a search shows its result ~0.5 s after typing stops; the new-mock endpoint picker is ready in ~0.6 s (it asks
+for each integration's endpoints, 200 calls); Scenarios in ~0.7 s; the request log (500 rows) in ~0.7 s.
+
+What this means:
+
+- **Up to ~10,000 mocks** everything answers well under 300 ms. Filtered views (*My mocks*, one integration) stay at a
+  few milliseconds at any size.
+- **Past ~10,000**, the views that read every mock (*All mocks*, search, Scenarios, export, scripts calling
+  `GET /api/mocks` without `limit`) cost ~7–10 ms per 1,000 mocks and run one at a time on the server's single thread,
+  so concurrent users wait for each other: five people opening *All mocks* at once at 20,000 mocks wait up to ~0.9 s.
+  The Scenarios page asks again every 2 s while it is open.
+- **Imports, boots and re-syncs grow faster than linearly**: each imported mock is a separate WireMock call, and the
+  boot sync re-sends every stub. Expect about a minute to import 20,000 mocks (two with Redis) and ~15–20 s before a
+  restarted UI or WireMock is serving every mock again.
+- **WireMock itself** slows with the number of stubs: it compares a request with every stub, so a matched request
+  takes ~12 ms and an unmatched one ~95 ms at 20,000. Give its JVM 2–3 GB of memory for 10,000 mocks or more.
+
+Run it yourself (needs Docker; uses ports 3400–3402 and its own containers, removed at the end):
+
+```sh
+node scripts/load-test.mjs --sizes 1000,10000,20000 --driver sqlite,redis,none
+node scripts/load-test.mjs --sizes 20000 --serve   # seeds, then keeps running for a look in the browser
+```
+
+`--runs` (10) and `--wm-requests` (200) set the sample sizes; the table above used 20 and 500. Every option is described at the
+top of the script.
+
 ## Troubleshooting
 
 **The UI exits on start with "WireMock admin API answers without auth".** WireMock was started without `--admin-api-basic-auth`. The UI refuses to run against an open admin API. Add the flag (Compose already does) and set the same credentials in `WIREMOCK_ADMIN_USER` / `WIREMOCK_ADMIN_PASSWORD`.
