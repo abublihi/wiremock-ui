@@ -3,10 +3,13 @@ import type { PublicUser } from '@/server/users/types'
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /** A 400's request field (`lookup.expression`, `exampleResponses.200`), when the server names one. */
+  field?: string
+  constructor(status: number, message: string, field?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    if (field) this.field = field
   }
 }
 
@@ -91,7 +94,8 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
     if (response.status === 401 && options.redirectOnUnauthorized !== false && !isLoginPath(window.location.pathname)) {
       onUnauthorized(window.location.pathname + window.location.search)
     }
-    throw new ApiError(response.status, typeof message === 'string' ? message : response.statusText)
+    const field = (data as { field?: unknown } | undefined)?.field
+    throw new ApiError(response.status, typeof message === 'string' ? message : response.statusText, typeof field === 'string' ? field : undefined)
   }
   return data as T
 }

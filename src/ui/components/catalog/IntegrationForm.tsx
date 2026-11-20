@@ -135,7 +135,7 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
         setErrors({ key: t('catalog.integration.keyTaken') })
         return
       }
-      const field = error instanceof ApiError && error.status === 400 ? fieldOf(message) : undefined
+      const field = error instanceof ApiError && error.status === 400 ? fieldOf(error.field ?? message) : undefined
       if (field) setErrors({ [field]: message })
       else setFormError(message)
     }

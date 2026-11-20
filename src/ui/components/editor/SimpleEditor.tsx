@@ -307,7 +307,7 @@ export function SimpleEditor({
       return
     }
     const message = error instanceof Error && error.message ? error.message : t('error.generic')
-    const field = error instanceof ApiError && error.status === 400 ? fieldOf(message) : undefined
+    const field = error instanceof ApiError && error.status === 400 ? fieldOf(error.field ?? message) : undefined
     if (field) setServerErrors({ [field]: field === 'keyValue' && /required/.test(message) ? t('editor.keyRequired') : withoutFieldPath(message, t) })
     else setFormError({ title, message })
   }

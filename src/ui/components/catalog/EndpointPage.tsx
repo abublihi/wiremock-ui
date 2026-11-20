@@ -342,7 +342,7 @@ function EndpointEditor({
         setErrors({ key: t('catalog.endpoint.keyTaken') })
         return
       }
-      const field = error instanceof ApiError && error.status === 400 ? endpointFieldOf(message) : undefined
+      const field = error instanceof ApiError && error.status === 400 ? endpointFieldOf(error.field ?? message) : undefined
       if (field) setErrors({ [field]: endpointMessage(field, form, prefix, t) })
       else setFormError(message)
     }
