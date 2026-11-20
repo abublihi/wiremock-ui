@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RequestsPage, type RequestsSearch } from '@/routes/_app/requests'
 import { NewMockPage, type NewMockSearch } from '@/ui/components/editor/NewMockPage'
+import { buildQuickStub, type QuickMockInput } from '@/server/catalog/build'
 import { BASE, jsonText } from './editor-fixtures'
 import { renderApp } from './helpers'
 
@@ -355,24 +356,26 @@ describe('new mock from a request', () => {
     return <NewMockPage search={search} onSearchChange={setSearch} />
   }
 
-  it('opens Advanced with the method, path and JSON body prefilled, and creates with POST', async () => {
+  it('opens the quick form with the method, path and JSON body prefilled, and creates with POST', async () => {
     let created: unknown
     server.use(
       http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
       http.get(`${BASE}/api/requests/b`, () => HttpResponse.json(detail())),
+      http.post(`${BASE}/api/mocks/preview`, async ({ request }) => HttpResponse.json(buildQuickStub((await request.json()) as QuickMockInput))),
       http.post(`${BASE}/api/mocks`, async ({ request }) => {
         created = await request.json()
         return HttpResponse.json({ id: 'new-1', ...(created as object) }, { status: 201 })
       }),
     )
     const { router } = await renderApp(<NewHarness />)
-    await screen.findByRole('tab', { name: 'Advanced', selected: true })
+    await screen.findByRole('tab', { name: 'Simple', selected: true })
+    expect((await screen.findByDisplayValue('/pay/refund')).tagName).toBe('INPUT')
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('tab', { name: 'Advanced' }))
     await waitFor(() => expect(jsonText()).toContain('/pay/refund'))
-    expect(JSON.parse(jsonText())).toEqual({
-      request: { method: 'POST', urlPath: '/pay/refund', bodyPatterns: [{ equalToJson: { amount: 12 } }] },
-      response: { status: 200 },
-    })
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Save mock' }))
+    expect(JSON.parse(jsonText()).request.bodyPatterns).toEqual([{ equalToJson: '{\n  "amount": 12\n}', ignoreExtraElements: true }])
+    await ue.click(screen.getByRole('tab', { name: 'Simple' }))
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
     await waitFor(() => expect(created).toBeTruthy())
     expect(created).toMatchObject({ request: { method: 'POST', urlPath: '/pay/refund' }, response: { status: 200 } })
     await waitFor(() => expect(router.state.location.pathname).toBe('/mocks/new-1'))

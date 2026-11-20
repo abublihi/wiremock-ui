@@ -80,7 +80,7 @@ export function MockEditor({
   catalog?: Catalog
   /** A new quick mock of a URL ("Mock a URL directly"): opens in the quick Simple form. */
   quick?: boolean
-  /** A new free-form mock's starting JSON (instead of the blank stub); opens in Advanced and is created with POST. */
+  /** A new free-form mock's starting JSON (instead of the blank stub): in the quick form when it can show it, else Advanced. */
   initialStub?: EditableStub
   /** A new mock's scenario ("Add a mock to this scenario"): the Scenario section, or the JSON, starts with it. */
   scenarioSeed?: ScenarioSeed
@@ -111,7 +111,10 @@ export function MockEditor({
         ? fromQuickStub(mock)
         : quickable && quick
           ? emptyQuickForm(scenarioSeed)
-          : null
+          : quickable && initialStub
+            ? // A starting stub the quick form can show (a logged request's method, path and body) opens there.
+              fromQuickStub(seedStub(initialStub, scenarioSeed))
+            : null
     const start = initialStub ?? (JSON.parse(BLANK) as EditableStub)
     const seeded = scenarioSeed ? { ...start, scenarioName: scenarioSeed.name, requiredScenarioState: scenarioSeed.requiredState } : start
     const text = mock ? pretty(toEditable(mock)) : catalog || quick ? '' : initialStub || scenarioSeed ? pretty(seeded) : BLANK
@@ -278,7 +281,7 @@ export function MockEditor({
               integration={catalog?.integration}
               endpoint={catalog?.endpoint}
               // A fresh new mock lets the body follow the catalog example; anything else is the user's draft.
-              initial={mock || simple.n > 0 ? simple.form : undefined}
+              initial={mock || initialStub || simple.n > 0 ? simple.form : undefined}
               mock={mock}
               scenarioSeed={scenarioSeed}
               onChange={(form) => {
@@ -347,4 +350,10 @@ export function MockEditor({
       </AlertDialog>
     </div>
   )
+}
+
+/** A starting stub as a stub the quick form can read: no id yet, and the scenario it is added to. */
+function seedStub(stub: EditableStub, seed?: ScenarioSeed): StubMapping {
+  const seeded = seed ? { ...stub, scenarioName: seed.name, requiredScenarioState: seed.requiredState } : stub
+  return { id: '', ...seeded } as StubMapping
 }

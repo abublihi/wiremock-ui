@@ -1,7 +1,7 @@
 import type { LoggedEvent } from '@/server/wiremock/types'
 
 export type RequestPrefill = {
-  request: { method: string; urlPath: string; bodyPatterns?: { equalToJson: unknown }[] }
+  request: { method: string; urlPath: string; bodyPatterns?: { equalToJson: string; ignoreExtraElements: true }[] }
   response: { status: number }
 }
 
@@ -16,7 +16,10 @@ export function parseJsonBody(body: string | undefined): object | null {
   }
 }
 
-/** The starting stub for "Create mock from this request": its method and path (and JSON body), answering 200. */
+/**
+ * The starting stub for "Create mock from this request": its method and path (and JSON body, extra fields allowed),
+ * answering 200 — the shape the quick form shows.
+ */
 export function stubFromRequest(event: Pick<LoggedEvent, 'request'>): RequestPrefill {
   const { method, url, body } = event.request
   const json = parseJsonBody(body)
@@ -24,7 +27,7 @@ export function stubFromRequest(event: Pick<LoggedEvent, 'request'>): RequestPre
     request: {
       method: method || 'GET',
       urlPath: url.split('?')[0] || '/',
-      ...(json ? { bodyPatterns: [{ equalToJson: json }] } : {}),
+      ...(json ? { bodyPatterns: [{ equalToJson: JSON.stringify(json, null, 2), ignoreExtraElements: true as const }] } : {}),
     },
     response: { status: 200 },
   }

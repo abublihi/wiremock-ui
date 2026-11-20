@@ -43,7 +43,11 @@ describe('stubFromRequest', () => {
 
   it('adds an equalToJson body pattern when the body is JSON', () => {
     expect(stubFromRequest(event({ body: '{"amount": 12, "items": [1]}' }))).toEqual({
-      request: { method: 'POST', urlPath: '/pay/charge', bodyPatterns: [{ equalToJson: { amount: 12, items: [1] } }] },
+      request: {
+        method: 'POST',
+        urlPath: '/pay/charge',
+        bodyPatterns: [{ equalToJson: JSON.stringify({ amount: 12, items: [1] }, null, 2), ignoreExtraElements: true }],
+      },
       response: { status: 200 },
     })
   })
