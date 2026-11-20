@@ -50,7 +50,7 @@ test('seeding a baseline mock leaves an existing tester mock with the same match
   const warn = vi.spyOn(logger, 'warn')
   try {
     const first = await bootRuntime(env)
-    const tester = await first.users.create({ username: 'seed-tester', role: 'tester', password: 'password-1' }, 'ui-admin')
+    const tester = await first.users.create({ username: 'seed-tester', password: 'password-1' }, 'ui-admin')
     await first.mocks.create({ request: { method: 'GET', urlPath: '/seedpay/charges/1' }, response: { status: 200, body: 'mine' } }, tester)
     first.reconciler.stop()
     await first.stores.close()

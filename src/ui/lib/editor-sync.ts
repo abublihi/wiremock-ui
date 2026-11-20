@@ -1,0 +1,253 @@
+import type { SimpleMockInput } from '@/server/catalog/build'
+import type { Endpoint, Integration } from '@/server/catalog/types'
+import type { StubMapping } from '@/server/wiremock/types'
+import {
+  SLOW_MAX_SECONDS,
+  SLOW_MIN_SECONDS,
+  TIMEOUT_DELAY_MS,
+  isFault,
+  presetForStatus,
+  presetToStatus,
+  visiblePresets,
+  type Fault,
+  type Preset,
+} from './presets'
+
+export type SimpleForm = {
+  integration: string
+  endpoint: string
+  isDefault: boolean
+  keyValue: string
+  preset: Preset
+  status: number
+  body: string
+  slow: boolean
+  delaySeconds: number
+  fault: '' | Fault
+  name: string
+}
+
+export const DEFAULT_SLOW_SECONDS = 3
+
+// Keep in step with the server builder (src/server/catalog/build.ts): what it writes is what we read back.
+const MIME: Record<Endpoint['contentType'], string> = {
+  json: 'application/json',
+  xml: 'application/xml',
+  text: 'text/plain; charset=utf-8',
+  html: 'text/html; charset=utf-8',
+}
+const PRIORITY = { key: 5, default: 10 } as const
+
+/** The example response for a status, or '' when the catalog has none. */
+export const exampleFor = (endpoint: Endpoint, status: number) => endpoint.exampleResponses[String(status)] ?? ''
+
+/** A fresh form for an endpoint: the first allowed preset with its example body. */
+export function emptyForm(endpoint: Endpoint): SimpleForm {
+  const first = visiblePresets(endpoint.allowedStatuses)[0]
+  const status = first ? presetToStatus(first).status : (endpoint.allowedStatuses[0] ?? 200)
+  return {
+    integration: endpoint.integration,
+    endpoint: endpoint.key,
+    isDefault: !endpoint.lookup,
+    keyValue: '',
+    preset: first ?? 'custom',
+    status,
+    body: exampleFor(endpoint, status),
+    slow: false,
+    delaySeconds: DEFAULT_SLOW_SECONDS,
+    fault: '',
+    name: '',
+  }
+}
+
+/** The name the server gives a mock when the form's name is empty. */
+export function generatedName(endpoint: Endpoint, form: Pick<SimpleForm, 'isDefault' | 'keyValue'>): string {
+  return `${endpoint.name} — ${form.isDefault ? 'default' : form.keyValue.trim()}`
+}
+
+/** The body the preview and create endpoints accept. */
+export function toSimpleInput(form: SimpleForm): SimpleMockInput {
+  const input: SimpleMockInput = form.isDefault ? { isDefault: true } : { keyValue: form.keyValue }
+  if (form.fault) input.fault = form.fault
+  else {
+    input.status = form.status
+    if (form.body !== '') input.body = form.body
+  }
+  if (!form.fault && form.preset === 'timeout') input.delayMs = TIMEOUT_DELAY_MS
+  else if (form.slow) input.delayMs = Math.round(form.delaySeconds * 1000)
+  if (form.name.trim() !== '') input.name = form.name
+  return input
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const onlyKeys = (obj: Record<string, unknown>, allowed: readonly string[]) => Object.keys(obj).every((k) => allowed.includes(k))
+
+// Same as the server builder's escapeRegex (not imported: that module pulls zod and server code).
+const escapeRegex = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
+
+/** The request URL the builder writes for an endpoint under its integration's prefix. */
+function urlFor(integration: Integration, endpoint: Endpoint): string {
+  const root = integration.prefix === '/' ? '' : integration.prefix
+  return endpoint.pathType === 'regex' ? escapeRegex(root) + endpoint.path : root + endpoint.path
+}
+
+const URL_FIELD: Record<Endpoint['pathType'], string> = { exact: 'urlPath', template: 'urlPathTemplate', regex: 'urlPathPattern' }
+const LOOKUP_FIELD = {
+  jsonPath: 'bodyPatterns',
+  xPath: 'bodyPatterns',
+  query: 'queryParameters',
+  path: 'pathParameters',
+  header: 'headers',
+  form: 'formParameters',
+} as const
+
+/** Reads the key value out of the lookup matcher the builder writes; undefined when the shape differs. */
+function readKey(request: Record<string, unknown>, lookup: NonNullable<Endpoint['lookup']>): string | undefined {
+  const value = request[LOOKUP_FIELD[lookup.location]]
+  let match: unknown
+  if (lookup.location === 'jsonPath' || lookup.location === 'xPath') {
+    if (!Array.isArray(value) || value.length !== 1 || !isRecord(value[0])) return undefined
+    const op = lookup.location === 'jsonPath' ? 'matchesJsonPath' : 'matchesXPath'
+    const pattern = value[0][op]
+    if (!onlyKeys(value[0], [op]) || !isRecord(pattern) || !onlyKeys(pattern, ['expression', 'equalTo'])) return undefined
+    if (pattern.expression !== lookup.expression) return undefined
+    match = pattern.equalTo
+  } else {
+    if (!isRecord(value) || !onlyKeys(value, [lookup.expression]) || !isRecord(value[lookup.expression])) return undefined
+    const matcher = value[lookup.expression] as Record<string, unknown>
+    if (!onlyKeys(matcher, ['equalTo'])) return undefined
+    match = matcher.equalTo
+  }
+  return typeof match === 'string' ? match : undefined
+}
+
+/**
+ * Turns a stored stub back into the Simple form for its endpoint, or null when the stub holds anything the
+ * form cannot show (extra matchers, headers, transformers, another priority…): Simple mode never drops fields.
+ */
+export function fromStub(stub: StubMapping, integration: Integration, endpoint: Endpoint): SimpleForm | null {
+  if (!onlyKeys(stub, ['id', 'uuid', 'name', 'priority', 'persistent', 'request', 'response', 'metadata'])) return null
+  const meta = stub.metadata
+  if (!isRecord(meta) || !onlyKeys(meta, ['wiremockUi'])) return null
+  if (meta.wiremockUi?.integration !== endpoint.integration || meta.wiremockUi?.endpoint !== endpoint.key) return null
+
+  // Request: method, the endpoint's URL field, and (for a key mock) exactly the lookup matcher.
+  const { request, response } = stub
+  if (!isRecord(request) || !isRecord(response)) return null
+  const urlField = URL_FIELD[endpoint.pathType]
+  const url = request[urlField]
+  if (request.method !== endpoint.method || url !== urlFor(integration, endpoint)) return null
+  const lookupField = endpoint.lookup ? LOOKUP_FIELD[endpoint.lookup.location] : undefined
+  const isDefault = lookupField === undefined || !(lookupField in request)
+  if (!onlyKeys(request, isDefault ? ['method', urlField] : ['method', urlField, lookupField!])) return null
+  const keyValue = isDefault ? '' : readKey(request, endpoint.lookup!)
+  if (keyValue === undefined) return null
+  if (stub.priority !== (isDefault ? PRIORITY.default : PRIORITY.key)) return null
+
+  const form = emptyForm(endpoint)
+  form.isDefault = isDefault
+  form.keyValue = keyValue
+
+  // Response: a fault, or a status with the endpoint's content type and an optional body; either may be delayed.
+  const delay = response.fixedDelayMilliseconds
+  if (delay !== undefined && typeof delay !== 'number') return null
+  if (response.fault !== undefined) {
+    if (!isFault(response.fault) || !onlyKeys(response, ['fault', 'fixedDelayMilliseconds'])) return null
+    form.fault = response.fault
+    form.body = ''
+  } else {
+    const bodyField = endpoint.contentType === 'json' ? 'jsonBody' : 'body'
+    if (!onlyKeys(response, ['status', 'headers', bodyField, 'fixedDelayMilliseconds'])) return null
+    const { status, headers } = response
+    if (typeof status !== 'number' || !isRecord(headers) || !onlyKeys(headers, ['Content-Type'])) return null
+    if (headers['Content-Type'] !== MIME[endpoint.contentType]) return null
+    form.status = status
+    form.preset = presetForStatus(status, delay)
+    if (!(bodyField in response)) form.body = ''
+    else if (bodyField === 'jsonBody') form.body = JSON.stringify(response.jsonBody, null, 2)
+    else if (typeof response.body === 'string') form.body = response.body
+    else return null
+    if (form.preset === 'timeout') return finish(stub, endpoint, form)
+  }
+
+  if (delay !== undefined) {
+    const seconds = delay / 1000
+    if (!Number.isInteger(seconds) || seconds < SLOW_MIN_SECONDS || seconds > SLOW_MAX_SECONDS) return null
+    form.slow = true
+    form.delaySeconds = seconds
+  }
+  return finish(stub, endpoint, form)
+}
+
+function finish(stub: StubMapping, endpoint: Endpoint, form: SimpleForm): SimpleForm {
+  const name = typeof stub.name === 'string' ? stub.name : ''
+  form.name = name === generatedName(endpoint, form) ? '' : name
+  return form
+}
+
+/** The catalog endpoint a mock belongs to (kept in `metadata.wiremockUi`). */
+export type CatalogLink = { integration: string; endpoint: string }
+
+/** A stub as Advanced mode edits it: no id, uuid or `persistent` (the server always sets it) and no `metadata.wiremockUi`. */
+export type EditableStub = Record<string, unknown>
+
+export function linkOf(stub: Pick<StubMapping, 'metadata'>): CatalogLink | undefined {
+  const ui = stub.metadata?.wiremockUi
+  return ui?.integration && ui.endpoint ? { integration: ui.integration, endpoint: ui.endpoint } : undefined
+}
+
+/** The editable part of a stub: everything except the fields the server owns. */
+export function toEditable(stub: Omit<StubMapping, 'id'> & { id?: string }): EditableStub {
+  const { id: _id, uuid: _uuid, persistent: _persistent, metadata, ...rest } = stub as Record<string, unknown>
+  if (!isRecord(metadata)) return rest
+  const { wiremockUi: _ui, ...other } = metadata
+  return Object.keys(other).length > 0 ? { ...rest, metadata: other } : rest
+}
+
+/** The stub to send for an edited JSON: the catalog link goes back into `metadata.wiremockUi`; nothing else of it. */
+export function fromEditable(editable: EditableStub, link: CatalogLink | undefined): Omit<StubMapping, 'id'> {
+  const { id: _id, uuid: _uuid, metadata, ...rest } = editable
+  const other = isRecord(metadata) ? Object.fromEntries(Object.entries(metadata).filter(([k]) => k !== 'wiremockUi')) : {}
+  const meta = link ? { ...other, wiremockUi: { integration: link.integration, endpoint: link.endpoint } } : other
+  return { ...rest, ...(Object.keys(meta).length > 0 ? { metadata: meta } : {}) } as Omit<StubMapping, 'id'>
+}
+
+export type StubJson =
+  | { ok: true; value: EditableStub }
+  | { ok: false; reason: 'syntax' | 'notObject'; message: string; line?: number; column?: number }
+
+/** Line and column (1-based) of a character offset. */
+function position(text: string, offset: number) {
+  const before = text.slice(0, Math.max(0, Math.min(offset, text.length)))
+  const lines = before.split('\n')
+  return { line: lines.length, column: lines[lines.length - 1]!.length + 1 }
+}
+
+/** Parses the Advanced editor's text; a syntax error carries its line and column. */
+export function parseStubJson(text: string): StubJson {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error)
+    // V8: "… at position 36 (line 4 column 2)"; Firefox: "… at line 4 column 2 of the JSON data"; Safari: none.
+    const lc = /line (\d+) column (\d+)/.exec(raw)
+    const pos = /position (\d+)/.exec(raw)
+    // Without a position, only "unexpected end" can be placed (at the end); other messages go without one.
+    const at = lc
+      ? { line: Number(lc[1]), column: Number(lc[2]) }
+      : pos
+        ? position(text, Number(pos[1]))
+        : /end of (JSON )?input|unexpected end/i.test(raw)
+          ? position(text, text.length)
+          : {}
+    const message = raw
+      .replace(/^JSON\.parse: /, '')
+      .replace(/\s*\(line \d+ column \d+\)/, '')
+      .replace(/\s*at line \d+ column \d+ of the JSON data/, '')
+      .replace(/\s*(in JSON )?at position \d+/, '')
+    return { ok: false, reason: 'syntax', message, ...at }
+  }
+  if (!isRecord(value)) return { ok: false, reason: 'notObject', message: '' }
+  return { ok: true, value }
+}

@@ -1,26 +1,25 @@
 import { z } from 'zod'
 import { ValidationError } from '../../errors'
 import { idOf, json, parse, readJson, requireJson, withAuth } from '../wrap'
-import type { Role } from '../../users/types'
 
-const createBody = z.object(
+const unknownField = (iss: { code: string; keys?: string[] }) => (iss.code === 'unrecognized_keys' ? `unknown field: ${iss.keys?.join(', ')}` : 'body must be an object')
+
+const createBody = z.strictObject(
   {
     username: z.string({ error: 'username is required' }),
     displayName: z.string({ error: 'displayName must be a string' }).optional(),
-    role: z.string({ error: 'role is required' }),
     password: z.string({ error: 'password is required' }),
   },
-  { error: 'body must be an object' },
+  { error: (iss) => unknownField(iss) },
 )
 
 const updateBody = z.strictObject(
   {
     displayName: z.string({ error: 'displayName must be a string' }).optional(),
-    role: z.string({ error: 'role must be a string' }).optional(),
     password: z.string({ error: 'password must be a string' }).optional(),
     disabled: z.boolean({ error: 'disabled must be a boolean' }).optional(),
   },
-  { error: (iss) => (iss.code === 'unrecognized_keys' ? `unknown field: ${iss.keys.join(', ')}` : 'body must be an object') },
+  { error: (iss) => unknownField(iss) },
 )
 
 export const listUsers = withAuth('users.manage', async ({ rt }) => json(await rt.users.list()))
@@ -28,7 +27,7 @@ export const listUsers = withAuth('users.manage', async ({ rt }) => json(await r
 export const createUser = withAuth('users.manage', async ({ rt, request, principal }) => {
   requireJson(request)
   const body = parse(createBody, await readJson(request))
-  return json(await rt.users.create({ ...body, role: body.role as Role }, principal.user.username), 201)
+  return json(await rt.users.create(body, principal.user.username), 201)
 })
 
 export const updateUser = withAuth('users.manage', async ({ rt, request, params, principal }) => {
@@ -37,7 +36,7 @@ export const updateUser = withAuth('users.manage', async ({ rt, request, params,
   if (Object.values(body).every((v) => v === undefined)) throw new ValidationError('patch must change at least one field')
   const id = idOf(params)
   const keepSessionId = id === principal.user.id ? principal.session?.id : undefined
-  return json(await rt.users.update(id, { ...body, role: body.role as Role | undefined }, principal.user.username, { keepSessionId }))
+  return json(await rt.users.update(id, body, principal.user.username, { keepSessionId }))
 })
 
 export const deleteUser = withAuth('users.manage', async ({ rt, params, principal }) => {

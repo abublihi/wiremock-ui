@@ -1,5 +1,4 @@
 import { safeRecord, type AuditLog } from '../audit/log'
-import { canEditMock } from '../auth/permissions'
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../errors'
 import { logger } from '../logger'
 import type { MockStore } from '../store/types'
@@ -86,7 +85,6 @@ export class MockService {
   }
 
   async create(input: MockInput, actor: PublicUser): Promise<StubMapping> {
-    this.assertCanEdit(actor, actor.username)
     const stub = await this.save(this.newId(), input, 0, actor.username, null)
     await this.record({ actor: actor.username, action: 'mock.create', target: stub.id })
     return stub
@@ -100,7 +98,6 @@ export class MockService {
   ): Promise<StubMapping> {
     this.validate(input)
     const previous = await this.get(id)
-    this.assertCanEdit(actor, ownerOf(previous))
     if (previous.metadata?.wiremockUi?.version !== expectedVersion) throw new ConflictError()
     const stub = await this.save(id, input, expectedVersion, actor.username, previous)
     await this.record({ actor: actor.username, action: 'mock.update', target: id })
@@ -109,7 +106,6 @@ export class MockService {
 
   async delete(id: string, expectedVersion: number | undefined, actor: PublicUser): Promise<void> {
     const current = await this.get(id)
-    this.assertCanEdit(actor, ownerOf(current))
     await this.remove(current, expectedVersion)
     await this.record({ actor: actor.username, action: 'mock.delete', target: id })
   }
@@ -151,7 +147,6 @@ export class MockService {
   }
 
   async duplicate(id: string, actor: PublicUser): Promise<StubMapping> {
-    this.assertCanEdit(actor, actor.username)
     const source = await this.get(id)
     const { id: _id, ...rest } = source
     const input = { ...rest, name: source.name ? `${source.name} (copy)` : '(copy)' } as MockInput
@@ -217,9 +212,7 @@ export class MockService {
     const target = versions.find((v) => v.metadata?.wiremockUi?.version === fromVersion)
     if (!target) throw new NotFoundError('Version not found')
     const owner = ownerOf(target)
-    this.assertCanEdit(actor, owner)
     const current = await this.store.get(id)
-    if (current) this.assertCanEdit(actor, ownerOf(current))
     let stub: StubMapping
     if (current) {
       stub = await this.save(id, target as MockInput, current.metadata?.wiremockUi?.version ?? 0, actor.username, current)
@@ -233,10 +226,6 @@ export class MockService {
 
   private record(entry: { actor: string; action: string; target: string; details?: Record<string, unknown> }): Promise<void> {
     return safeRecord(this.audit, entry)
-  }
-
-  private assertCanEdit(actor: PublicUser, owner: string): void {
-    if (!canEditMock(actor, owner)) throw new AppError('Forbidden', 403)
   }
 
   private validate(input: MockInput): void {

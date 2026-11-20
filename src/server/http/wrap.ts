@@ -29,7 +29,7 @@ export function withAuth(permission: Permission | null, handler: (ctx: AuthConte
   return withErrors(async (rt, request, params) => {
     const principal = await authenticate(request, { users: rt.stores.users, config: rt.config })
     assertCsrf(request, principal)
-    if (permission && !can(principal.user.role, permission)) throw new AppError('Forbidden', 403)
+    if (permission && !can(permission)) throw new AppError('Forbidden', 403)
     return handler({ rt, request, params: params ?? {}, principal })
   })
 }

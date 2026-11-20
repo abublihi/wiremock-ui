@@ -1,0 +1,27 @@
+# WireMock + UI only, no Redis: the UI keeps everything in one SQLite file on the ui-data volume.
+#   docker compose -f compose.sqlite.yaml up -d --build
+services:
+  wiremock:
+    extends:
+      file: compose.yaml
+      service: wiremock
+
+  ui:
+    build: .
+    env_file: .env
+    environment:
+      PORT: "3000"
+      WIREMOCK_URL: http://wiremock:8080
+      STORE_DRIVER: sqlite
+      SQLITE_PATH: /data/wiremock-ui.db
+    volumes:
+      - ui-data:/data
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    depends_on:
+      wiremock:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  ui-data:

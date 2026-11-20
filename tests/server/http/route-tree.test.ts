@@ -1,8 +1,9 @@
+import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter } from '@tanstack/react-router'
 import { expect, test } from 'vitest'
 import { routeTree } from '../../../src/routeTree.gen'
 
-const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ['/'] }) })
+const router = createRouter({ routeTree, context: { queryClient: new QueryClient() }, history: createMemoryHistory({ initialEntries: ['/'] }) })
 const leaf = (path: string) => router.matchRoutes(path).at(-1)?.routeId
 
 test('/api/mocks/reset-mine is not captured by /api/mocks/$id', () => {

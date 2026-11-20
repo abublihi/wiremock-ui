@@ -23,10 +23,15 @@ export interface AuditLog {
 
 const KEY = 'audit:log'
 const SEQ_KEY = 'audit:seq'
-const RETENTION_MS = 2_592_000_000 // 30 days
+export const AUDIT_RETENTION_MS = 2_592_000_000 // 30 days
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 500
 const SEQ_DIGITS = 16
+
+export const clampAuditLimit = (limit: number | undefined) => Math.min(Math.max(limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
+
+/** Zero-padded so same-score members sort in write order. */
+export const formatAuditSeq = (seq: number | bigint) => String(seq).padStart(SEQ_DIGITS, '0')
 
 // KEYS: audit:log. ARGV: count, cursor score ('' = from the newest), cursor sequence.
 // Returns flat [member, score, ...]: members at the cursor score with a smaller sequence, then older scores.
@@ -49,10 +54,11 @@ local rest = redis.call("zrevrangebyscore", KEYS[1], max, "-inf", "WITHSCORES", 
 for _, v in ipairs(rest) do table.insert(out, v) end
 return out`
 
-const encodeCursor = (score: string, member: string) =>
-  Buffer.from(`${score}:${member.slice(0, SEQ_DIGITS)}`).toString('base64url')
+/** The opaque cursor every driver hands out: base64url of `{epoch ms}:{16-digit sequence}`. */
+export const encodeAuditCursor = (score: string | number, seq: string) =>
+  Buffer.from(`${score}:${seq}`).toString('base64url')
 
-function decodeCursor(cursor: string): { score: string; seq: string } {
+export function decodeAuditCursor(cursor: string): { score: string; seq: string } {
   const m = /^(\d{1,16}):(\d{16})$/.exec(Buffer.from(cursor, 'base64url').toString('utf8'))
   if (!m) throw new ValidationError('cursor is invalid')
   return { score: m[1], seq: m[2] }
@@ -67,16 +73,16 @@ export class RedisAuditLog implements AuditLog {
     // A zero-padded sequence keeps identical entries distinct and, as same-score members sort
     // lexicographically, makes entries from the same millisecond come back in write order.
     const seq = await this.redis.incr(SEQ_KEY)
-    const member = `${String(seq).padStart(SEQ_DIGITS, '0')}${JSON.stringify(full)}`
+    const member = `${formatAuditSeq(seq)}${JSON.stringify(full)}`
     const m = this.redis.multi()
     m.zadd(KEY, now, member)
-    m.zremrangebyscore(KEY, '-inf', `(${now - RETENTION_MS}`)
+    m.zremrangebyscore(KEY, '-inf', `(${now - AUDIT_RETENTION_MS}`)
     await m.exec()
   }
 
   async list(opts: { limit?: number; cursor?: string } = {}): Promise<AuditPage> {
-    const limit = Math.min(Math.max(opts.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
-    const from = opts.cursor ? decodeCursor(opts.cursor) : { score: '', seq: '' }
+    const limit = clampAuditLimit(opts.limit)
+    const from = opts.cursor ? decodeAuditCursor(opts.cursor) : { score: '', seq: '' }
     const flat = (await this.redis.eval(PAGE_LUA, 1, KEY, limit + 1, from.score, from.seq)) as string[]
     const rows: { member: string; score: string }[] = []
     for (let i = 0; i < flat.length; i += 2) rows.push({ member: flat[i], score: flat[i + 1] })
@@ -84,7 +90,7 @@ export class RedisAuditLog implements AuditLog {
     const last = page.at(-1)
     return {
       entries: page.map((r) => JSON.parse(r.member.slice(r.member.indexOf('{'))) as AuditEntry),
-      nextCursor: rows.length > limit && last ? encodeCursor(last.score, last.member) : null,
+      nextCursor: rows.length > limit && last ? encodeAuditCursor(last.score, last.member.slice(0, SEQ_DIGITS)) : null,
     }
   }
 }

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { bootRuntime, type Runtime } from '../../src/server/runtime'
 import { login as loginHandler } from '../../src/server/http/handlers/session'
 import { startRedis, startWireMock } from './containers'
@@ -13,14 +16,27 @@ export const req = (path: string, method = 'GET', body?: unknown, headers: Recor
     body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
   })
 
+/** The `server-sqlite` vitest project sets TEST_STORE_DRIVER=sqlite to run the HTTP tests without Redis. */
+async function startStore(): Promise<{ env: Record<string, string>; stop(): Promise<void> }> {
+  if (process.env.TEST_STORE_DRIVER === 'sqlite') {
+    const dir = mkdtempSync(join(tmpdir(), 'wmui-http-'))
+    return {
+      env: { STORE_DRIVER: 'sqlite', SQLITE_PATH: join(dir, 'wiremock-ui.db') },
+      stop: async () => rmSync(dir, { recursive: true, force: true }),
+    }
+  }
+  const redis = await startRedis()
+  return { env: { REDIS_URL: redis.url }, stop: () => redis.stop() }
+}
+
 export async function startTestRuntime(adminUser = 'ui-admin', adminPassword = 'ui-admin-pass') {
   const wm = await startWireMock()
-  const redis = await startRedis()
+  const store = await startStore()
   const rt = await bootRuntime({
     WIREMOCK_URL: wm.url,
     WIREMOCK_ADMIN_USER: wm.user,
     WIREMOCK_ADMIN_PASSWORD: wm.password,
-    REDIS_URL: redis.url,
+    ...store.env,
     ADMIN_USER: adminUser,
     ADMIN_PASSWORD: adminPassword,
     SESSION_SECRET: 'x',
@@ -29,11 +45,10 @@ export async function startTestRuntime(adminUser = 'ui-admin', adminPassword = '
   return {
     rt,
     wm,
-    redis,
     async stop() {
       rt.reconciler.stop()
       await rt.stores.close()
-      await redis.stop()
+      await store.stop()
       await wm.stop().catch(() => {})
     },
   }

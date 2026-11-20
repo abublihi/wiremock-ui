@@ -31,10 +31,14 @@ export interface CatalogStore {
   getIntegration(key: string): Promise<Integration | null>
   listIntegrations(): Promise<Integration[]>
   putIntegration(i: Integration): Promise<void>
+  /** Create-only: false (and nothing written) when the key already exists. */
+  insertIntegration(i: Integration): Promise<boolean>
   /** Also deletes the integration's endpoints. */
   deleteIntegration(key: string): Promise<void>
   getEndpoint(integration: string, key: string): Promise<Endpoint | null>
   listEndpoints(integration: string): Promise<Endpoint[]>
   putEndpoint(e: Endpoint): Promise<void>
+  /** Create-only: false (and nothing written) when the key already exists. */
+  insertEndpoint(e: Endpoint): Promise<boolean>
   deleteEndpoint(integration: string, key: string): Promise<void>
 }

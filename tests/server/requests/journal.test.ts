@@ -55,12 +55,13 @@ test('filters narrow the list', async () => {
 })
 
 test('since excludes older requests', async () => {
+  // The cut comes from WireMock's own clock (the logged time of /old), never from this process: the
+  // container's clock can drift from the host's by more than any sleep. WireMock's since is exclusive.
   await hit('/old')
-  await new Promise((r) => setTimeout(r, 50))
-  const cut = new Date().toISOString()
-  await new Promise((r) => setTimeout(r, 50))
+  const [old] = await rt.requests.list({})
+  await new Promise((r) => setTimeout(r, 20))
   await hit('/new')
-  expect((await rt.requests.list({ since: cut })).map((r) => r.url)).toEqual(['/new'])
+  expect((await rt.requests.list({ since: old!.loggedAt })).map((r) => r.url)).toEqual(['/new'])
   expect(await rt.requests.list({})).toHaveLength(2)
 })
 

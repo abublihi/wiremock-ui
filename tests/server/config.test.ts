@@ -10,10 +10,18 @@ test('lists every missing required var', () => {
 })
 test('requires REDIS_URL for redis driver', () => {
   const { REDIS_URL, ...rest } = base
-  expect(() => loadConfig(rest)).toThrow(/REDIS_URL/)
+  expect(() => loadConfig({ ...rest, STORE_DRIVER: 'redis' })).toThrow('REDIS_URL is required when STORE_DRIVER=redis')
 })
-test('rejects sqlite until milestone 5', () => {
-  expect(() => loadConfig({ ...base, STORE_DRIVER: 'sqlite' })).toThrow(/sqlite.*not available yet/i)
+test('config picks sqlite when REDIS_URL is unset', () => {
+  const { REDIS_URL, ...rest } = base
+  expect(loadConfig(rest)).toMatchObject({ storeDriver: 'sqlite', sqlitePath: './data/wiremock-ui.db', redisUrl: undefined })
+})
+test('config picks redis when REDIS_URL is set, unless STORE_DRIVER says otherwise', () => {
+  expect(loadConfig(base)).toMatchObject({ storeDriver: 'redis', redisUrl: 'redis://r:6379' })
+  expect(loadConfig({ ...base, STORE_DRIVER: 'sqlite', SQLITE_PATH: '/data/x.db' })).toMatchObject({ storeDriver: 'sqlite', sqlitePath: '/data/x.db' })
+})
+test('rejects an unknown STORE_DRIVER', () => {
+  expect(() => loadConfig({ ...base, STORE_DRIVER: 'mongo' })).toThrow('STORE_DRIVER must be "redis" or "sqlite", got "mongo"')
 })
 test('rejects non-positive SYNC_INTERVAL_SECONDS', () => {
   expect(() => loadConfig({ ...base, SYNC_INTERVAL_SECONDS: '0' })).toThrow(/SYNC_INTERVAL_SECONDS/)

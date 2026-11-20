@@ -17,7 +17,7 @@ const endpoint = (extra: Partial<Endpoint>): Endpoint => ({
   integration: 'nic', key: 'e', name: 'E', method: 'POST', path: '/x', pathType: 'exact', contentType: 'json',
   exampleResponses: {}, allowedStatuses: [], updatedAt: '', updatedBy: '', ...extra,
 })
-const actor = { id: 'a', username: 'ui-admin', displayName: 'a', role: 'admin', disabled: false, createdAt: '', updatedAt: '' } as const
+const actor = { id: 'a', username: 'ui-admin', displayName: 'a', disabled: false, createdAt: '', updatedAt: '' } as const
 
 async function install(e: Endpoint, key: SimpleMockInput, fallback: SimpleMockInput) {
   await env.rt.mocks.create(buildStub(integration, e, key), actor)

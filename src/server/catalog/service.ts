@@ -143,10 +143,13 @@ export class CatalogService {
     return (await this.catalog.getIntegration(key)) ?? Promise.reject(new NotFoundError('Integration not found'))
   }
 
-  async upsertIntegration(input: unknown, actor: string): Promise<Integration> {
+  /** With `createOnly`, an existing key is a 409 and is left untouched. */
+  async upsertIntegration(input: unknown, actor: string, opts: { createOnly?: boolean } = {}): Promise<Integration> {
     const parsed = validateIntegration(input)
     const stored: Integration = { ...parsed, updatedAt: this.now().toISOString(), updatedBy: actor }
-    await this.catalog.putIntegration(stored)
+    if (opts.createOnly) {
+      if (!(await this.catalog.insertIntegration(stored))) throw new ConflictError('An integration with this key already exists')
+    } else await this.catalog.putIntegration(stored)
     await safeRecord(this.audit, { actor, action: 'catalog.integration.upsert', target: stored.key })
     return stored
   }
@@ -173,11 +176,14 @@ export class CatalogService {
     return (await this.catalog.getEndpoint(integration, key)) ?? Promise.reject(new NotFoundError('Endpoint not found'))
   }
 
-  async upsertEndpoint(input: unknown, actor: string): Promise<Endpoint> {
+  /** With `createOnly`, an existing key is a 409 and is left untouched. */
+  async upsertEndpoint(input: unknown, actor: string, opts: { createOnly?: boolean } = {}): Promise<Endpoint> {
     const parsed = validateEndpoint(input)
     await this.getIntegration(parsed.integration)
     const stored: Endpoint = { ...parsed, updatedAt: this.now().toISOString(), updatedBy: actor }
-    await this.catalog.putEndpoint(stored)
+    if (opts.createOnly) {
+      if (!(await this.catalog.insertEndpoint(stored))) throw new ConflictError('An endpoint with this key already exists')
+    } else await this.catalog.putEndpoint(stored)
     await safeRecord(this.audit, { actor, action: 'catalog.endpoint.upsert', target: `${stored.integration}/${stored.key}` })
     return stored
   }

@@ -43,7 +43,7 @@ Principles:
 3. **Explain, don't fail silently.** Every unmatched request links to its closest stubs and the exact field that differed.
 4. **Safe by default.** Validate before save, confirm before delete, keep a version history per mock, and allow undo.
 5. **Fast to scan.** Lists filter by integration, owner, status code and text; the request log updates live.
-6. **Bilingual-ready.** English and Arabic UI strings with RTL support from day one.
+6. ~~**Bilingual-ready.** English and Arabic UI strings with RTL support from day one.~~ Dropped: English only (Amendment A7).
 
 ## Architecture
 
@@ -336,5 +336,11 @@ Ship in five steps, each usable on its own; QA can start using it after step 2.
 **A5 — OIDC sign-in to the UI itself moves after Milestone 2.** Milestone 2 ships local accounts only; `AUTH_OIDC_*` sign-in is scheduled with Milestone 3 (OIDC template).
 
 **A6 — Exports and nightly backups move to Milestone 4.** Milestone 2 ships imports and `SEED_PATH` seeding only.
+
+**A7 — English only (Milestone 2B).** Arabic UI strings and RTL support are not required. UI strings stay centralised in one English message file so a translation can be added later.
+
+**A8 — Sign-in without authorization (Milestone 2B).** Users still sign in (local accounts, sessions, CSRF, rate-limited login, Basic auth for scripts), but every signed-in user can do everything: no roles in the UI or the API, no ownership restrictions, baseline mocks editable by anyone. Mocks still record `owner`, and imports still never touch person-owned mocks. Roles may return later.
+
+**A9 — Works without Redis (pulled forward from Milestone 5).** The SQLite store driver ships in Milestone 2 using Node's built-in `node:sqlite` (no native build). `STORE_DRIVER` defaults to `redis` when `REDIS_URL` is set and to `sqlite` otherwise; `SQLITE_PATH` defaults to `./data/wiremock-ui.db` (`/data/wiremock-ui.db` in the image).
 
 **A3 — Milestone 1 API protection.** Users, roles and sessions arrive in Milestone 2. Until then `/api/*` is protected by HTTP basic auth checked against `ADMIN_USER` / `ADMIN_PASSWORD`, and every write is recorded as made by `ADMIN_USER`.

@@ -38,12 +38,9 @@ test('limit must be an integer 1–500; a bad cursor is 400', async () => {
   expect((await listAudit(rt, req('/api/audit?limit=500'))).status).toBe(200)
 })
 
-test('non-admins get 403; no credentials 401', async () => {
-  for (const role of ['viewer', 'tester', 'developer'] as const) {
-    await rt.users.create({ username: `audit-${role}`, role, password: 'password-1' }, 'ui-admin')
-    const s = await login(rt, `audit-${role}`, 'password-1')
-    const res = await listAudit(rt, req('/api/audit', { Cookie: s.cookie }))
-    expect(res.status, role).toBe(403)
-  }
+test('an ordinary user can read the audit log; no credentials 401', async () => {
+  await rt.users.create({ username: 'audit-plain', password: 'password-1' }, 'ui-admin')
+  const s = await login(rt, 'audit-plain', 'password-1')
+  expect((await listAudit(rt, req('/api/audit', { Cookie: s.cookie }))).status).toBe(200)
   expect((await listAudit(rt, req('/api/audit', {}))).status).toBe(401)
 })

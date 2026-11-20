@@ -13,7 +13,7 @@ const as = (s: Session) => ({ Cookie: s.cookie, 'X-CSRF-Token': s.csrf })
 beforeAll(async () => {
   env = await startTestRuntime()
   rt = env.rt
-  await rt.users.create({ username: 'tess', role: 'tester', password: 'password-1' }, 'ui-admin')
+  await rt.users.create({ username: 'tess', password: 'password-1' }, 'ui-admin')
   admin = await login(rt, 'ui-admin', 'ui-admin-pass')
   tester = await login(rt, 'tess', 'password-1')
 }, 120_000)
@@ -23,9 +23,8 @@ afterAll(async () => {
 
 const bundle = { mocks: [{ request: { method: 'GET', urlPath: '/http-imp' }, response: { status: 200 } }] }
 
-test('tester POST /api/import is 403; admin gets the report', async () => {
-  expect((await runImport(rt, req('/api/import', 'POST', bundle, as(tester)))).status).toBe(403)
-  const res = await runImport(rt, req('/api/import', 'POST', bundle, as(admin)))
+test('an ordinary user runs imports and gets the report', async () => {
+  const res = await runImport(rt, req('/api/import', 'POST', bundle, as(tester)))
   expect(res.status).toBe(200)
   expect(await res.json()).toMatchObject({ created: 1, skipped: [], pruned: 0 })
 })

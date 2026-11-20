@@ -13,7 +13,7 @@ const hit = (path: string, init?: RequestInit) => fetch(`${env.wm.url}${path}`, 
 beforeAll(async () => {
   env = await startTestRuntime()
   rt = env.rt
-  await rt.users.create({ username: 'tess', role: 'tester', password: 'password-1' }, 'ui-admin')
+  await rt.users.create({ username: 'tess', password: 'password-1' }, 'ui-admin')
   tester = await login(rt, 'tess', 'password-1')
 }, 120_000)
 afterAll(async () => {
@@ -49,15 +49,12 @@ test('count body validation: pattern object, JSON content type', async () => {
   expect(text.status).toBe(415)
 })
 
-test('clear: tester 403 and log intact; admin clears', async () => {
+test('clear: an ordinary user clears the log', async () => {
   await hit('/h/b')
   const as = { Cookie: tester.cookie, 'X-CSRF-Token': tester.csrf }
-  const denied = await clearRequests(rt, req('/api/requests', 'DELETE', undefined, as))
-  expect(denied.status).toBe(403)
   expect((await rt.requests.list({})).length).toBeGreaterThan(0)
-  // testers may still read
   expect((await listRequests(rt, req('/api/requests', 'GET', undefined, as))).status).toBe(200)
-  const cleared = await clearRequests(rt, req('/api/requests', 'DELETE'))
+  const cleared = await clearRequests(rt, req('/api/requests', 'DELETE', undefined, as))
   expect(cleared.status).toBe(204)
   expect(await cleared.text()).toBe('')
   expect(await rt.requests.list({})).toEqual([])

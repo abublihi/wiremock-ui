@@ -23,8 +23,9 @@ test('login sets an HttpOnly cookie; GET /api/session returns user and csrfToken
   expect(setCookie).toMatch(/^wmui_session=/)
   expect(setCookie).toContain('HttpOnly')
   const body = await res.json()
-  expect(body.user).toMatchObject({ username: 'ui-admin', role: 'admin' })
+  expect(body.user).toMatchObject({ username: 'ui-admin' })
   expect(body.user.passwordHash).toBeUndefined()
+  expect(body.user.role).toBeUndefined()
   expect(typeof body.csrfToken).toBe('string')
 
   const me = await getSession(rt, req('/api/session', 'GET', undefined, { Cookie: setCookie.split(';')[0] }))
@@ -67,7 +68,7 @@ test('basic auth with the bootstrap admin still works for scripts (no CSRF neede
 })
 
 test('password change keeps the current session and drops the others', async () => {
-  await rt.users.create({ username: 'pw-user', role: 'viewer', password: 'password-1' }, 'ui-admin')
+  await rt.users.create({ username: 'pw-user', password: 'password-1' }, 'ui-admin')
   const a = await login(rt, 'pw-user', 'password-1')
   const b = await login(rt, 'pw-user', 'password-1')
   const bad = await changePassword(rt, req('/api/session/password', 'POST', { current: 'wrong-pass', next: 'password-2' }, { Cookie: a.cookie, 'X-CSRF-Token': a.csrf }))

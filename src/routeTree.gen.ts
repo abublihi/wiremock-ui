@@ -9,8 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
 import { Route as HealthzRouteImport } from './routes/healthz'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppAuditRouteImport } from './routes/_app/audit'
+import { Route as AppImportRouteImport } from './routes/_app/import'
+import { Route as AppRequestsRouteImport } from './routes/_app/requests'
+import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as ApiAuditRouteImport } from './routes/api/audit'
 import { Route as ApiImportRouteImport } from './routes/api/import'
 import { Route as ApiIntegrationsRouteImport } from './routes/api/integrations'
@@ -18,6 +24,11 @@ import { Route as ApiMocksRouteImport } from './routes/api/mocks'
 import { Route as ApiRequestsRouteImport } from './routes/api/requests'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
 import { Route as ApiUsersRouteImport } from './routes/api/users'
+import { Route as AppCatalogIndexRouteImport } from './routes/_app/catalog.index'
+import { Route as AppCatalogKeyRouteImport } from './routes/_app/catalog.$key'
+import { Route as AppMocksIndexRouteImport } from './routes/_app/mocks.index'
+import { Route as AppMocksIdRouteImport } from './routes/_app/mocks.$id'
+import { Route as AppMocksNewRouteImport } from './routes/_app/mocks.new'
 import { Route as ApiIntegrationsKeyRouteImport } from './routes/api/integrations.$key'
 import { Route as ApiMocksIdRouteImport } from './routes/api/mocks.$id'
 import { Route as ApiMocksResetMineRouteImport } from './routes/api/mocks.reset-mine'
@@ -34,15 +45,44 @@ import { Route as ApiIntegrationsKeyEndpointsEndpointRouteImport } from './route
 import { Route as ApiIntegrationsKeyEndpointsEndpointMocksRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint.mocks'
 import { Route as ApiIntegrationsKeyEndpointsEndpointPreviewRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint.preview'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HealthzRoute = HealthzRouteImport.update({
   id: '/healthz',
   path: '/healthz',
   getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuditRoute = AppAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImportRoute = AppImportRouteImport.update({
+  id: '/import',
+  path: '/import',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRequestsRoute = AppRequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppUsersRoute = AppUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AppRoute,
 } as any)
 const ApiAuditRoute = ApiAuditRouteImport.update({
   id: '/api/audit',
@@ -78,6 +118,31 @@ const ApiUsersRoute = ApiUsersRouteImport.update({
   id: '/api/users',
   path: '/api/users',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppCatalogIndexRoute = AppCatalogIndexRouteImport.update({
+  id: '/catalog/',
+  path: '/catalog/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCatalogKeyRoute = AppCatalogKeyRouteImport.update({
+  id: '/catalog/$key',
+  path: '/catalog/$key',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMocksIndexRoute = AppMocksIndexRouteImport.update({
+  id: '/mocks/',
+  path: '/mocks/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMocksIdRoute = AppMocksIdRouteImport.update({
+  id: '/mocks/$id',
+  path: '/mocks/$id',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMocksNewRoute = AppMocksNewRouteImport.update({
+  id: '/mocks/new',
+  path: '/mocks/new',
+  getParentRoute: () => AppRoute,
 } as any)
 const ApiIntegrationsKeyRoute = ApiIntegrationsKeyRouteImport.update({
   id: '/$key',
@@ -160,8 +225,13 @@ const ApiIntegrationsKeyEndpointsEndpointPreviewRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
   '/healthz': typeof HealthzRoute
+  '/login': typeof LoginRoute
+  '/audit': typeof AppAuditRoute
+  '/import': typeof AppImportRoute
+  '/requests': typeof AppRequestsRoute
+  '/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
@@ -169,6 +239,9 @@ export interface FileRoutesByFullPath {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
+  '/catalog/$key': typeof AppCatalogKeyRoute
+  '/mocks/$id': typeof AppMocksIdRoute
+  '/mocks/new': typeof AppMocksNewRoute
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
@@ -176,6 +249,8 @@ export interface FileRoutesByFullPath {
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
+  '/catalog/': typeof AppCatalogIndexRoute
+  '/mocks/': typeof AppMocksIndexRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
@@ -186,8 +261,12 @@ export interface FileRoutesByFullPath {
   '/api/integrations/$key/endpoints/$endpoint/preview': typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
   '/healthz': typeof HealthzRoute
+  '/login': typeof LoginRoute
+  '/audit': typeof AppAuditRoute
+  '/import': typeof AppImportRoute
+  '/requests': typeof AppRequestsRoute
+  '/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
@@ -195,6 +274,10 @@ export interface FileRoutesByTo {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
+  '/': typeof AppIndexRoute
+  '/catalog/$key': typeof AppCatalogKeyRoute
+  '/mocks/$id': typeof AppMocksIdRoute
+  '/mocks/new': typeof AppMocksNewRoute
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
@@ -202,6 +285,8 @@ export interface FileRoutesByTo {
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
+  '/catalog': typeof AppCatalogIndexRoute
+  '/mocks': typeof AppMocksIndexRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
@@ -213,8 +298,13 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
   '/healthz': typeof HealthzRoute
+  '/login': typeof LoginRoute
+  '/_app/audit': typeof AppAuditRoute
+  '/_app/import': typeof AppImportRoute
+  '/_app/requests': typeof AppRequestsRoute
+  '/_app/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
@@ -222,6 +312,10 @@ export interface FileRoutesById {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
+  '/_app/': typeof AppIndexRoute
+  '/_app/catalog/$key': typeof AppCatalogKeyRoute
+  '/_app/mocks/$id': typeof AppMocksIdRoute
+  '/_app/mocks/new': typeof AppMocksNewRoute
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
@@ -229,6 +323,8 @@ export interface FileRoutesById {
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
+  '/_app/catalog/': typeof AppCatalogIndexRoute
+  '/_app/mocks/': typeof AppMocksIndexRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
@@ -243,6 +339,11 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/healthz'
+    | '/login'
+    | '/audit'
+    | '/import'
+    | '/requests'
+    | '/users'
     | '/api/audit'
     | '/api/import'
     | '/api/integrations'
@@ -250,6 +351,9 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/session'
     | '/api/users'
+    | '/catalog/$key'
+    | '/mocks/$id'
+    | '/mocks/new'
     | '/api/integrations/$key'
     | '/api/mocks/$id'
     | '/api/mocks/reset-mine'
@@ -257,6 +361,8 @@ export interface FileRouteTypes {
     | '/api/requests/count'
     | '/api/session/password'
     | '/api/users/$id'
+    | '/catalog/'
+    | '/mocks/'
     | '/api/integrations/$key/endpoints'
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
@@ -267,8 +373,12 @@ export interface FileRouteTypes {
     | '/api/integrations/$key/endpoints/$endpoint/preview'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/healthz'
+    | '/login'
+    | '/audit'
+    | '/import'
+    | '/requests'
+    | '/users'
     | '/api/audit'
     | '/api/import'
     | '/api/integrations'
@@ -276,6 +386,10 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/session'
     | '/api/users'
+    | '/'
+    | '/catalog/$key'
+    | '/mocks/$id'
+    | '/mocks/new'
     | '/api/integrations/$key'
     | '/api/mocks/$id'
     | '/api/mocks/reset-mine'
@@ -283,6 +397,8 @@ export interface FileRouteTypes {
     | '/api/requests/count'
     | '/api/session/password'
     | '/api/users/$id'
+    | '/catalog'
+    | '/mocks'
     | '/api/integrations/$key/endpoints'
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
@@ -293,8 +409,13 @@ export interface FileRouteTypes {
     | '/api/integrations/$key/endpoints/$endpoint/preview'
   id:
     | '__root__'
-    | '/'
+    | '/_app'
     | '/healthz'
+    | '/login'
+    | '/_app/audit'
+    | '/_app/import'
+    | '/_app/requests'
+    | '/_app/users'
     | '/api/audit'
     | '/api/import'
     | '/api/integrations'
@@ -302,6 +423,10 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/session'
     | '/api/users'
+    | '/_app/'
+    | '/_app/catalog/$key'
+    | '/_app/mocks/$id'
+    | '/_app/mocks/new'
     | '/api/integrations/$key'
     | '/api/mocks/$id'
     | '/api/mocks/reset-mine'
@@ -309,6 +434,8 @@ export interface FileRouteTypes {
     | '/api/requests/count'
     | '/api/session/password'
     | '/api/users/$id'
+    | '/_app/catalog/'
+    | '/_app/mocks/'
     | '/api/integrations/$key/endpoints'
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
@@ -320,8 +447,9 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
   HealthzRoute: typeof HealthzRoute
+  LoginRoute: typeof LoginRoute
   ApiAuditRoute: typeof ApiAuditRoute
   ApiImportRoute: typeof ApiImportRoute
   ApiIntegrationsRoute: typeof ApiIntegrationsRouteWithChildren
@@ -333,11 +461,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/healthz': {
@@ -346,6 +474,48 @@ declare module '@tanstack/react-router' {
       fullPath: '/healthz'
       preLoaderRoute: typeof HealthzRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/audit': {
+      id: '/_app/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AppAuditRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/import': {
+      id: '/_app/import'
+      path: '/import'
+      fullPath: '/import'
+      preLoaderRoute: typeof AppImportRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/requests': {
+      id: '/_app/requests'
+      path: '/requests'
+      fullPath: '/requests'
+      preLoaderRoute: typeof AppRequestsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/users': {
+      id: '/_app/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof AppUsersRouteImport
+      parentRoute: typeof AppRoute
     }
     '/api/audit': {
       id: '/api/audit'
@@ -395,6 +565,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/users'
       preLoaderRoute: typeof ApiUsersRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/catalog/': {
+      id: '/_app/catalog/'
+      path: '/catalog'
+      fullPath: '/catalog/'
+      preLoaderRoute: typeof AppCatalogIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/catalog/$key': {
+      id: '/_app/catalog/$key'
+      path: '/catalog/$key'
+      fullPath: '/catalog/$key'
+      preLoaderRoute: typeof AppCatalogKeyRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/mocks/': {
+      id: '/_app/mocks/'
+      path: '/mocks'
+      fullPath: '/mocks/'
+      preLoaderRoute: typeof AppMocksIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/mocks/$id': {
+      id: '/_app/mocks/$id'
+      path: '/mocks/$id'
+      fullPath: '/mocks/$id'
+      preLoaderRoute: typeof AppMocksIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/mocks/new': {
+      id: '/_app/mocks/new'
+      path: '/mocks/new'
+      fullPath: '/mocks/new'
+      preLoaderRoute: typeof AppMocksNewRouteImport
+      parentRoute: typeof AppRoute
     }
     '/api/integrations/$key': {
       id: '/api/integrations/$key'
@@ -503,6 +708,34 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AppRouteChildren {
+  AppAuditRoute: typeof AppAuditRoute
+  AppImportRoute: typeof AppImportRoute
+  AppRequestsRoute: typeof AppRequestsRoute
+  AppUsersRoute: typeof AppUsersRoute
+  AppIndexRoute: typeof AppIndexRoute
+  AppCatalogKeyRoute: typeof AppCatalogKeyRoute
+  AppMocksIdRoute: typeof AppMocksIdRoute
+  AppMocksNewRoute: typeof AppMocksNewRoute
+  AppCatalogIndexRoute: typeof AppCatalogIndexRoute
+  AppMocksIndexRoute: typeof AppMocksIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppAuditRoute: AppAuditRoute,
+  AppImportRoute: AppImportRoute,
+  AppRequestsRoute: AppRequestsRoute,
+  AppUsersRoute: AppUsersRoute,
+  AppIndexRoute: AppIndexRoute,
+  AppCatalogKeyRoute: AppCatalogKeyRoute,
+  AppMocksIdRoute: AppMocksIdRoute,
+  AppMocksNewRoute: AppMocksNewRoute,
+  AppCatalogIndexRoute: AppCatalogIndexRoute,
+  AppMocksIndexRoute: AppMocksIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface ApiIntegrationsKeyEndpointsEndpointRouteChildren {
   ApiIntegrationsKeyEndpointsEndpointMocksRoute: typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
@@ -642,8 +875,9 @@ const ApiUsersRouteWithChildren = ApiUsersRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
   HealthzRoute: HealthzRoute,
+  LoginRoute: LoginRoute,
   ApiAuditRoute: ApiAuditRoute,
   ApiImportRoute: ApiImportRoute,
   ApiIntegrationsRoute: ApiIntegrationsRouteWithChildren,

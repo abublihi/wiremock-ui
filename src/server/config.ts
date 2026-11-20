@@ -5,8 +5,10 @@ export type Config = {
   wiremockUrl: string
   wiremockAdminUser?: string
   wiremockAdminPassword?: string
-  storeDriver: 'redis'
-  redisUrl: string
+  storeDriver: 'redis' | 'sqlite'
+  /** Set when storeDriver is redis. */
+  redisUrl?: string
+  sqlitePath: string
   adminUser: string
   adminPassword: string
   sessionSecret: string
@@ -33,8 +35,9 @@ const schema = z.object({
   WIREMOCK_URL: z.string().min(1).default('http://localhost:8080'),
   WIREMOCK_ADMIN_USER: z.string().min(1).optional(),
   WIREMOCK_ADMIN_PASSWORD: z.string().min(1).optional(),
-  STORE_DRIVER: z.string().default('redis'),
+  STORE_DRIVER: z.string().optional(),
   REDIS_URL: z.string().min(1).optional(),
+  SQLITE_PATH: z.string().min(1).default('./data/wiremock-ui.db'),
   ADMIN_USER: required('ADMIN_USER'),
   ADMIN_PASSWORD: required('ADMIN_PASSWORD'),
   SESSION_SECRET: required('SESSION_SECRET'),
@@ -66,11 +69,11 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   }
   const data = parsed.success ? parsed.data : undefined
 
-  if (cleaned.STORE_DRIVER === 'sqlite') {
-    problems.push('STORE_DRIVER=sqlite is not available yet (planned for milestone 5)')
-  } else if (cleaned.STORE_DRIVER !== undefined && cleaned.STORE_DRIVER !== 'redis') {
-    problems.push(`STORE_DRIVER must be "redis", got "${cleaned.STORE_DRIVER}"`)
-  } else if (!cleaned.REDIS_URL) {
+  // Spec A9: Redis when REDIS_URL is set, otherwise SQLite.
+  const driver = cleaned.STORE_DRIVER ?? (cleaned.REDIS_URL ? 'redis' : 'sqlite')
+  if (driver !== 'redis' && driver !== 'sqlite') {
+    problems.push(`STORE_DRIVER must be "redis" or "sqlite", got "${driver}"`)
+  } else if (driver === 'redis' && !cleaned.REDIS_URL) {
     problems.push('REDIS_URL is required when STORE_DRIVER=redis')
   }
 
@@ -82,8 +85,9 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     wiremockUrl: data.WIREMOCK_URL,
     wiremockAdminUser: data.WIREMOCK_ADMIN_USER,
     wiremockAdminPassword: data.WIREMOCK_ADMIN_PASSWORD,
-    storeDriver: 'redis',
-    redisUrl: data.REDIS_URL as string,
+    storeDriver: driver as Config['storeDriver'],
+    redisUrl: data.REDIS_URL,
+    sqlitePath: data.SQLITE_PATH,
     adminUser: data.ADMIN_USER,
     adminPassword: data.ADMIN_PASSWORD,
     sessionSecret: data.SESSION_SECRET,

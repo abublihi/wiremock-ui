@@ -8,3 +8,14 @@ dist/
 .env.*
 !.env.example
 *.tsbuildinfo
+
+# Planning and agent working files
+docs/superpowers/
+.claude/
+
+# Default SQLite store (SQLITE_PATH)
+data/
+
+# Playwright output
+test-results/
+playwright-report/

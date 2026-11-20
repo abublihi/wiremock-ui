@@ -20,7 +20,6 @@ const actor = (username: string): PublicUser => ({
   id: username,
   username,
   displayName: username,
-  role: 'admin',
   disabled: false,
   createdAt: '',
   updatedAt: '',

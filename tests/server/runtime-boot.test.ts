@@ -1,4 +1,7 @@
 import { expect, test } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { ConfigError } from '../../src/server/errors'
 import { bootRuntime } from '../../src/server/runtime'
 import type { Stores } from '../../src/server/store'
@@ -87,3 +90,35 @@ test('boot retries a hung store ping until reachable', async () => {
   rt.reconciler.stop()
   expect(attempts).toBe(2)
 }, 10_000)
+
+test('boots on SQLite with no Redis at all: first admin created, store reachable', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wmui-boot-'))
+  const { REDIS_URL: _unused, ...noRedis } = env
+  try {
+    const rt = await bootRuntime({ ...noRedis, ADMIN_USER: 'root', ADMIN_PASSWORD: 'rootpass1', SQLITE_PATH: join(dir, 'sub', 'ui.db') }, { fetch: wiremockFetch(0).fn })
+    rt.reconciler.stop()
+    expect(rt.config.storeDriver).toBe('sqlite')
+    expect(await rt.stores.ping()).toBe(true)
+    expect((await rt.stores.users.listUsers()).map((u) => u.username)).toEqual(['root'])
+    await rt.stores.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an SQLITE_PATH that cannot be opened fails boot at once with a ConfigError', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wmui-boot-'))
+  writeFileSync(join(dir, 'file'), 'not a folder')
+  let slept = 0
+  try {
+    await expect(
+      bootRuntime(
+        { ...env, STORE_DRIVER: 'sqlite', SQLITE_PATH: join(dir, 'file', 'ui.db') },
+        { fetch: wiremockFetch(0).fn, sleep: async () => void slept++ },
+      ),
+    ).rejects.toThrow(/Cannot open SQLITE_PATH/)
+    expect(slept).toBe(0)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

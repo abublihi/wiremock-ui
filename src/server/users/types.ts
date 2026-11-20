@@ -11,7 +11,8 @@ export type User = {
   updatedAt: string
 }
 
-export type PublicUser = Omit<User, 'passwordHash'>
+// Spec A8: role is stored but not part of the API.
+export type PublicUser = Omit<User, 'passwordHash' | 'role'>
 
 export type Session = {
   id: string
@@ -47,6 +48,6 @@ export interface UserStore {
 }
 
 export function toPublicUser(user: User): PublicUser {
-  const { passwordHash: _passwordHash, ...rest } = user
+  const { passwordHash: _passwordHash, role: _role, ...rest } = user
   return rest
 }
