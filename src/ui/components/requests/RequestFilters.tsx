@@ -85,7 +85,7 @@ export function RequestFilters({
       </div>
 
       <Select value={search.integration ?? ANY} onValueChange={(value) => onChange({ integration: value === ANY ? undefined : value })}>
-        <SelectTrigger aria-label={t('requests.integration')} className="w-44">
+        <SelectTrigger aria-label={t('requests.integration')} className="w-52">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -99,7 +99,7 @@ export function RequestFilters({
       </Select>
 
       <Select value={search.status ?? ANY} onValueChange={(value) => onChange({ status: value === ANY ? undefined : value })}>
-        <SelectTrigger aria-label={t('requests.status')} className="w-32">
+        <SelectTrigger aria-label={t('requests.status')} className="w-40">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

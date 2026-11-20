@@ -8,6 +8,7 @@ import { Toaster } from '@/ui/components/ui/sonner'
 import { TooltipProvider } from '@/ui/components/ui/tooltip'
 import { PrefsProvider, usePrefsState, type Prefs } from '@/ui/i18n'
 import { getThemeFromRequest, themeFromCookies } from '@/ui/theme'
+import { FAVICON_HREF } from '@/ui/favicon'
 import appCss from '@/ui/styles.css?url'
 
 export function prefsFromRequest(request: Request): Prefs {
@@ -28,7 +29,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'wiremock-ui' },
     ],
-    links: [{ rel: 'stylesheet', href: appCss }],
+    links: [
+      { rel: 'stylesheet', href: appCss },
+      { rel: 'icon', type: 'image/svg+xml', href: FAVICON_HREF },
+    ],
   }),
   component: RootComponent,
 })
@@ -51,7 +55,8 @@ function RootComponent() {
       <PrefsProvider prefs={prefs} onThemeChange={setTheme}>
         <TooltipProvider>
           <Outlet />
-          <Toaster />
+          {/* Above the editors' sticky Save bar. */}
+          <Toaster offset={{ bottom: 80 }} mobileOffset={{ bottom: 80 }} />
         </TooltipProvider>
       </PrefsProvider>
       <Scripts />

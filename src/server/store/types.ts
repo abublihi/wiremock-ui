@@ -16,6 +16,9 @@ export interface MockStore {
   acquireLock(name: string, ttlMs: number): Promise<string | null>
   /** Releases only when the token matches. */
   releaseLock(name: string, token: string): Promise<void>
+  /** Durable on/off marker (an adoption in progress, say). Off until set. */
+  getFlag(name: string): Promise<boolean>
+  setFlag(name: string, on: boolean): Promise<void>
   ping(): Promise<boolean>
   close(): Promise<void>
 }

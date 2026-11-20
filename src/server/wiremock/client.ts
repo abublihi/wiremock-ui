@@ -1,14 +1,71 @@
-import { ConfigError, UpstreamError, ValidationError } from '../errors'
-import type { LoggedEvent, NearMiss, StubMapping } from './types'
+import { AppError, ConfigError, NotFoundError, UpstreamError, ValidationError } from '../errors'
+import { decodeRelayBody, readLimited, relayHeaders, relayTarget, RELAY_TIMEOUT_MS, type TestRequestInput, type TestRequestResult } from './relay'
+import { rawFetch } from './raw-http'
+import type { LoggedEvent, LoggedRequest, NearMiss, ScenarioState, StubMapping } from './types'
 
 const PAGE = 1000
+
+const PROXY_FAILURE = 'Network failure trying to make a proxied request'
+
+/**
+ * WireMock's answer when a proxy mock could not reach its service: a 500 whose body starts "Network failure trying
+ * to make a proxied request from WireMock to <url>", then the cause. null for any other response.
+ */
+export function proxyFailure(body: string): { message: string; target: string | null } | null {
+  if (!body.startsWith(PROXY_FAILURE)) return null
+  const [first, ...rest] = body.split('\n')
+  const to = first.lastIndexOf(' to ')
+  let target: string | null = null
+  if (to !== -1) {
+    try {
+      target = new URL(first.slice(to + 4).trim()).origin
+    } catch {
+      target = null
+    }
+  }
+  const cause = rest.join(' ').replace(/\{\}$/, '').trim()
+  return { message: cause || first, target }
+}
+
+// WireMock 3.13.1 matches the scenario name in /__admin/scenarios/{name}/state without percent-decoding it, so
+// only names made of characters a path segment carries unencoded can be addressed (pinned in power-features.test.ts).
+// ';' is left out: servlet containers treat it as the start of path parameters.
+const SETTABLE_SCENARIO_NAME = /^[A-Za-z0-9\-._~!$&'()*+,=:@]+$/
+
+/** Whether WireMock's admin API can change this scenario's state (see SETTABLE_SCENARIO_NAME). */
+export function isScenarioNameSettable(name: string): boolean {
+  return SETTABLE_SCENARIO_NAME.test(name) && !name.startsWith('.')
+}
+
+export type RecordingStatus = 'NeverStarted' | 'Recording' | 'Stopped'
+
+/** `{ errors: [{ title, detail }] }` → "title: first line of detail"; undefined when the text is not that shape. */
+export function recordingErrorMessage(text: string): string | undefined {
+  try {
+    const first = (JSON.parse(text) as { errors?: { title?: string; detail?: string }[] }).errors?.[0]
+    if (!first) return undefined
+    const detail = first.detail?.split('\n')[0]?.trim()
+    return [first.title, detail].filter(Boolean).join(': ') || undefined
+  } catch {
+    return text.trim() || undefined
+  }
+}
+
+class GatewayTimeoutError extends AppError {
+  constructor(message: string) {
+    super(message, 504)
+  }
+}
 
 export class WireMockClient {
   private readonly baseUrl: string
   private readonly authHeader?: string
   private readonly fetchFn: typeof fetch
+  /** The relay's own: node:http, so no fetch default headers reach the mock (tests inject `fetch` for both). */
+  private readonly relayFetchFn: typeof fetch
   private readonly timeoutMs: number
   private readonly importTimeoutMs: number
+  private readonly relayTimeoutMs: number
   private readonly labels = new WeakMap<Response, string>()
 
   constructor(opts: {
@@ -18,11 +75,14 @@ export class WireMockClient {
     fetch?: typeof fetch
     timeoutMs?: number
     importTimeoutMs?: number
+    relayTimeoutMs?: number
   }) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '')
     this.fetchFn = opts.fetch ?? fetch
+    this.relayFetchFn = opts.fetch ?? (rawFetch as unknown as typeof fetch)
     this.timeoutMs = opts.timeoutMs ?? 5000
     this.importTimeoutMs = opts.importTimeoutMs ?? 30000
+    this.relayTimeoutMs = opts.relayTimeoutMs ?? RELAY_TIMEOUT_MS
     if (opts.user) {
       this.authHeader = `Basic ${Buffer.from(`${opts.user}:${opts.password ?? ''}`).toString('base64')}`
     }
@@ -98,13 +158,18 @@ export class WireMockClient {
   }
 
   async listStubIds(): Promise<string[]> {
-    const ids: string[] = []
+    return (await this.listStubs()).map((m) => m.id)
+  }
+
+  /** Every stub WireMock holds, whole, fetched in pages of 1000. */
+  async listStubs(): Promise<StubMapping[]> {
+    const all: StubMapping[] = []
     for (let offset = 0; ; offset += PAGE) {
       const res = await this.request(`/__admin/mappings?limit=${PAGE}&offset=${offset}`)
       if (!res.ok) await this.fail(res, 'list stubs')
-      const { mappings } = await this.json<{ mappings: { id: string }[] }>(res)
-      ids.push(...mappings.map((m) => m.id))
-      if (mappings.length < PAGE) return ids
+      const { mappings } = await this.json<{ mappings: StubMapping[] }>(res)
+      all.push(...mappings)
+      if (mappings.length < PAGE) return all
     }
   }
 
@@ -114,6 +179,13 @@ export class WireMockClient {
     const res = await this.request(`/__admin/requests?${q}`)
     if (!res.ok) await this.fail(res, 'list requests')
     return (await this.json<{ requests: LoggedEvent[] }>(res)).requests
+  }
+
+  /** Every journal request that matched no stub (WireMock filters the whole journal, newest first). */
+  async listUnmatchedRequests(): Promise<LoggedRequest[]> {
+    const res = await this.request('/__admin/requests/unmatched')
+    if (!res.ok) await this.fail(res, 'list unmatched requests')
+    return (await this.json<{ requests: LoggedRequest[] }>(res)).requests
   }
 
   async getRequest(id: string): Promise<LoggedEvent | null> {
@@ -146,6 +218,153 @@ export class WireMockClient {
     })
     if (!res.ok) await this.fail(res, 'near misses')
     return (await this.json<{ nearMisses: NearMiss[] }>(res)).nearMisses
+  }
+
+  /** Every scenario WireMock knows (one per scenarioName on its stubs), with its live state. */
+  async listScenarios(): Promise<ScenarioState[]> {
+    const res = await this.request('/__admin/scenarios')
+    if (!res.ok) await this.fail(res, 'list scenarios')
+    const { scenarios } = await this.json<{ scenarios: ScenarioState[] }>(res)
+    return scenarios.map(({ name, state, possibleStates }) => ({ name, state, possibleStates }))
+  }
+
+  /** NotFoundError when WireMock has no such scenario, ValidationError when the state is not one of its states. */
+  async setScenarioState(name: string, state: string): Promise<void> {
+    if (!isScenarioNameSettable(name)) {
+      throw new ValidationError(
+        `WireMock can't set the state of a scenario whose name has spaces or other characters that need URL encoding (${JSON.stringify(name)}). Rename the scenario to letters, digits and - _ . to control it here; Reset all still works.`,
+      )
+    }
+    const res = await this.request(`/__admin/scenarios/${name}/state`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state }),
+    })
+    if (res.status === 404) throw new NotFoundError(`Scenario ${JSON.stringify(name)} is not in WireMock`)
+    if (!res.ok) await this.fail(res, 'set scenario state')
+  }
+
+  /** Every scenario back to Started. */
+  async resetScenarios(): Promise<void> {
+    const res = await this.request('/__admin/scenarios/reset', { method: 'POST' })
+    if (!res.ok) await this.fail(res, 'reset scenarios')
+  }
+
+  /**
+   * The test-request relay: sends one request to WireMock's stub port at the base URL, without the admin
+   * credentials, never following redirects. Refuses anything relay.ts does not allow before sending.
+   */
+  async sendTestRequest(input: TestRequestInput): Promise<TestRequestResult> {
+    const target = relayTarget(this.baseUrl, input.path, input.query)
+    const headers = relayHeaders(input.headers)
+    // Without this, fetch asks for gzip and decompresses, so the reported headers would not describe the body.
+    if (!Object.keys(headers).some((h) => h.toLowerCase() === 'accept-encoding')) headers['Accept-Encoding'] = 'identity'
+    const started = performance.now()
+    let res: Response
+    const signal = AbortSignal.timeout(this.relayTimeoutMs)
+    const seconds = Math.round(this.relayTimeoutMs / 1000)
+    try {
+      res = await this.relayFetchFn(target, { method: input.method, headers, body: input.body, redirect: 'manual', signal })
+    } catch (err) {
+      const name = (err as Error).name
+      if (name === 'TimeoutError' || name === 'AbortError') throw new GatewayTimeoutError(`WireMock did not answer within ${seconds} s`)
+      throw new UpstreamError(`WireMock unreachable: ${(err as Error).message}`)
+    }
+    let read: Awaited<ReturnType<typeof readLimited>>
+    try {
+      read = await readLimited(res)
+    } catch (err) {
+      const name = (err as Error).name
+      if (name === 'TimeoutError' || name === 'AbortError') throw new GatewayTimeoutError(`WireMock did not finish the response within ${seconds} s`)
+      throw new UpstreamError(`WireMock response failed: ${(err as Error).message}`)
+    }
+    const durationMs = Math.round(performance.now() - started)
+    const responseHeaders: Record<string, string> = {}
+    res.headers.forEach((value, name) => {
+      responseHeaders[name] = value
+    })
+    const decoded = decodeRelayBody(read.bytes, res.headers.get('content-type'), read.truncated)
+    const forwardError = res.status === 500 && !decoded.bodyIsBase64 ? proxyFailure(decoded.body) : null
+    return {
+      status: res.status,
+      headers: responseHeaders,
+      ...decoded,
+      bodyTruncated: read.truncated,
+      durationMs,
+      matchedStubId: await this.matchedInJournal(input.method, target, res.headers.get('matched-stub-id')),
+      ...(forwardError ? { forwardError } : {}),
+    }
+  }
+
+  /**
+   * Which mock answered the relayed request, from WireMock's request log (the newest entry for this method and URL).
+   * The Matched-Stub-Id response header is not enough: a proxy mock passes on the header of the service it forwards
+   * to (another WireMock names its own mock), and a failed forward has none. Falls back to the header when the log
+   * cannot be read or has no entry.
+   */
+  private async matchedInJournal(method: string, target: URL, header: string | null): Promise<string | null> {
+    try {
+      const url = target.pathname + target.search
+      const entry = (await this.listRequests({ limit: 20 })).find((e) => e.request.method === method && e.request.url === url)
+      if (!entry) return header
+      return entry.wasMatched ? (entry.stubMapping?.id ?? header) : null
+    } catch {
+      return header
+    }
+  }
+
+  /** WireMock's recorder: `NeverStarted`, `Recording` or `Stopped`. */
+  async recordingStatus(): Promise<RecordingStatus> {
+    const res = await this.request('/__admin/recordings/status')
+    if (!res.ok) await this.fail(res, 'recording status')
+    return (await this.json<{ status: RecordingStatus }>(res)).status
+  }
+
+  /**
+   * Starts recording: WireMock adds one proxy stub (`{ request: { method: ANY }, response: { proxyBaseUrl } }`) and
+   * removes it on stop. WireMock does not check the target URL: callers validate it first.
+   */
+  async startRecording(spec: Record<string, unknown>): Promise<void> {
+    const res = await this.request('/__admin/recordings/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(spec),
+    })
+    if (!res.ok) await this.failRecording(res, 'start recording')
+  }
+
+  /**
+   * Stops recording and returns the stubs it made, or null when WireMock was not recording. Even with
+   * `persist: false` WireMock has already added these stubs to its own mappings (pinned in recording.test.ts).
+   */
+  async stopRecording(): Promise<StubMapping[] | null> {
+    const res = await this.request('/__admin/recordings/stop', { method: 'POST' }, this.importTimeoutMs)
+    if (res.status === 400) {
+      const text = await res.text().catch(() => '')
+      if (/Not currently recording/i.test(text)) return null
+      throw new ValidationError(recordingErrorMessage(text) ?? 'WireMock refused to stop recording')
+    }
+    if (!res.ok) await this.failRecording(res, 'stop recording')
+    return (await this.json<{ mappings: StubMapping[] }>(res)).mappings
+  }
+
+  /** Turns journal entries into stubs. Like stop, WireMock also adds them to its mappings. */
+  async snapshotRecording(spec: Record<string, unknown>): Promise<StubMapping[]> {
+    const res = await this.request(
+      '/__admin/recordings/snapshot',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(spec) },
+      this.importTimeoutMs,
+    )
+    if (!res.ok) await this.failRecording(res, 'snapshot')
+    return (await this.json<{ mappings: StubMapping[] }>(res)).mappings
+  }
+
+  /** WireMock answers a bad recording spec with 422 and a JSON error list: report its detail, not the raw JSON. */
+  private async failRecording(res: Response, what: string): Promise<never> {
+    if (res.status === 401 || res.status === 403) throw new ConfigError('WireMock admin credentials rejected')
+    const text = await res.text().catch(() => '')
+    if (res.status >= 400 && res.status < 500) throw new ValidationError(recordingErrorMessage(text) ?? `${what} rejected (${res.status})`)
+    throw new UpstreamError(`WireMock ${what} failed: ${res.status} ${text}`.trim())
   }
 
   async version(): Promise<string> {

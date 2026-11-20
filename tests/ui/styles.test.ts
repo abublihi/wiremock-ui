@@ -25,14 +25,14 @@ function reducedMotionBlocks(source: string): string {
 describe('styles.css', () => {
   it('defines the visual-direction tokens (dark default on :root)', () => {
     expect(css).toMatch(/--canvas:\s*#070b14/i)
-    expect(css).toMatch(/--signal:\s*#00cc92/i)
+    expect(css).toMatch(/--signal:\s*#0fb2ef/i)
     expect(css).toMatch(/--canvas:\s*#f4f7fa/i)
     expect(css).toMatch(/--radius:\s*6px/)
   })
 
   it('switches off every new animation under prefers-reduced-motion', () => {
     const block = reducedMotionBlocks(css)
-    for (const cls of ['.cursor-blink', '.fade-up', '.sidebar-enter', '.stagger-children', '.status-pulse', '.live-flash']) {
+    for (const cls of ['.cursor-blink', '.fade-up', '.sidebar-enter', '.stagger-children', '.status-pulse', '.recording-pulse', '.live-flash']) {
       expect(block, cls).toContain(cls)
     }
     expect(block).toMatch(/animation:\s*none/)

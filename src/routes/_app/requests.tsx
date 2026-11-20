@@ -1,8 +1,12 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
-import { AlertCircleIcon, PauseIcon, PlayIcon, RadioTowerIcon, Trash2Icon } from 'lucide-react'
+import { AlertCircleIcon, FileStackIcon, PauseIcon, PlayIcon, RadioTowerIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
-import { MAX_REQUEST_ROWS, type RequestFilter, useClearRequests, useDocumentVisible, useIntegrations, useRequests } from '@/ui/api/queries'
+import { type RequestFilter, useClearRequests, useDocumentVisible, useIntegrations, useOlderRequests, useRequests, useSnapshot } from '@/ui/api/queries'
+import { useRecordingAllowed } from '@/ui/config'
+import { emptyMessage } from '@/ui/components/recording/RecordForms'
+import { WithTerm } from '@/ui/components/guide/Term'
+import { markRequestLogSeen, useChecklistUser } from '@/ui/components/guide/GettingStarted'
 import { LiveDot } from '@/ui/components/common/LiveDot'
 import { CountTool } from '@/ui/components/requests/CountTool'
 import { RequestDrawer } from '@/ui/components/requests/RequestDrawer'
@@ -21,6 +25,7 @@ import {
   AlertDialogTrigger,
 } from '@/ui/components/ui/alert-dialog'
 import { Button } from '@/ui/components/ui/button'
+import { Spinner } from '@/ui/components/ui/spinner'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
 import { useT } from '@/ui/i18n'
 
@@ -77,9 +82,18 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
   const integrations = useIntegrations()
   const filtered = Boolean(search.matched || search.integration || search.status || search.q || search.range)
 
-  const rows = requests.data ?? []
-  const fresh = useFreshIds(rows, requests.isSuccess && !requests.isPlaceholderData, JSON.stringify(filter))
+  const live1 = requests.data ?? []
+  // "Load older" pages sit below the live first page; live updates keep arriving on top.
+  const older = useOlderRequests(filter, live1)
+  const rows = older.rows
+  const fresh = useFreshIds(live1, requests.isSuccess && !requests.isPlaceholderData, JSON.stringify(filter))
   const unmatched = rows.filter((r) => !r.matched).length
+  // The Getting started checklist's last step: the request log showed a request.
+  const shown = rows.length > 0
+  const checklistUser = useChecklistUser()
+  useEffect(() => {
+    if (shown) markRequestLogSeen(checklistUser)
+  }, [shown, checklistUser])
   const clearFilters = () =>
     onSearchChange({ matched: undefined, integration: undefined, status: undefined, q: undefined, range: undefined })
   const open = useCallback((id: string) => onSearchChange({ open: id }), [onSearchChange])
@@ -97,7 +111,7 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
           </div>
           <p className="text-xs text-muted-foreground">
             {requests.data
-              ? t(rows.length === 1 ? 'requests.captionOne' : 'requests.caption', { count: rows.length, unmatched })
+              ? <WithTerm text={t(rows.length === 1 ? 'requests.captionOne' : 'requests.caption', { count: rows.length, unmatched })} word="without a match" name="no match" />
               : '//'}
           </p>
         </div>
@@ -107,7 +121,8 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
             {live ? t('requests.pause') : t('requests.resume')}
           </Button>
           <CountTool />
-          <ClearLogButton />
+          <CreateMocksButton ids={rows.map((r) => r.id)} />
+          <ClearLogButton onCleared={older.reset} />
         </div>
       </header>
 
@@ -156,8 +171,21 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
       ) : (
         <>
           <RequestTable rows={rows} fresh={fresh} selectedId={search.open} onOpen={open} />
-          {rows.length >= MAX_REQUEST_ROWS && (
-            <p className="text-center text-[11px] text-muted-foreground">{t('requests.capped', { max: MAX_REQUEST_ROWS })}</p>
+          {older.more && (
+            <div className="flex flex-col items-center gap-1.5">
+              <Button variant="outline" size="sm" disabled={older.pending} onClick={() => void older.load()}>
+                {older.pending && <Spinner data-icon="inline-start" />}
+                {t('requests.loadOlder')}
+              </Button>
+              <p className="text-center text-xs text-muted-foreground">{t(older.loaded ? 'requests.olderHint' : 'requests.capped', { count: rows.length })}</p>
+            </div>
+          )}
+          {older.loaded && !older.more && <p className="text-center text-xs text-muted-foreground">{t(older.limited ? 'requests.olderLimit' : 'requests.olderEnd')}</p>}
+          {older.limited && older.more && <p className="text-center text-xs text-muted-foreground">{t('requests.olderLimit')}</p>}
+          {older.error && (
+            <p role="alert" className="text-center text-xs text-mismatch">
+              {t('requests.olderFailed', { message: older.error.message })}
+            </p>
           )}
         </>
       )}
@@ -167,13 +195,43 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
   )
 }
 
-function ClearLogButton() {
+/** Turns the requests the log shows (its current filter) into a review list on the Recording page (spec A12). */
+function CreateMocksButton({ ids }: { ids: string[] }) {
+  const t = useT()
+  const allowed = useRecordingAllowed()
+  const snapshot = useSnapshot()
+  const navigate = useNavigate()
+  if (!allowed || ids.length === 0) return null
+  const onClick = async () => {
+    try {
+      const result = await snapshot.mutateAsync({ ids })
+      const { recording } = result
+      if (!recording) {
+        toast.info(t('recording.snapshotEmptyTitle'), { description: emptyMessage(result.empty, 'snapshot'), duration: 15_000 })
+        return
+      }
+      toast.success(t(recording.items.length === 1 ? 'recording.snapshotDoneOne' : 'recording.snapshotDone', { count: recording.items.length }))
+      void navigate({ to: '/recording', search: { review: recording.id } })
+    } catch (error) {
+      toast.error(t('recording.snapshotFailed'), { description: error instanceof Error ? error.message : undefined })
+    }
+  }
+  return (
+    <Button variant="outline" size="sm" disabled={snapshot.isPending} title={t('requests.toMocksTitle', { count: ids.length })} onClick={() => void onClick()}>
+      <FileStackIcon data-icon="inline-start" />
+      {t('requests.toMocks')}
+    </Button>
+  )
+}
+
+function ClearLogButton({ onCleared }: { onCleared: () => void }) {
   const t = useT()
   const clear = useClearRequests()
   const [open, setOpen] = useState(false)
   const confirm = async () => {
     try {
       await clear.mutateAsync()
+      onCleared()
       toast.success(t('requests.cleared'))
     } catch (error) {
       toast.error(t('requests.clearFailed'), { description: error instanceof Error ? error.message : undefined })

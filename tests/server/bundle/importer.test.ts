@@ -153,3 +153,11 @@ test('re-importing the same catalog writes nothing and reports only changed entr
   expect(await run({ integrations: [integration], catalog: [{ ...endpoint, name: 'Get v2' }] })).toMatchObject({ integrations: 0, endpoints: 1 })
   expect((await env.rt.catalog.getEndpoint('idem', 'get')).name).toBe('Get v2')
 })
+
+test('a bad webhook in a later mock aborts the import before any mock is written', async () => {
+  const good = (n: number) => stub(`/imp/hook-${n}`, { id: `00000000-0000-4000-8000-0000000001${String(n).padStart(2, '0')}` })
+  const bad = stub('/imp/hook-bad', { serveEventListeners: [{ name: 'webhook', parameters: { method: 'POST', url: 'ftp://x.test/cb' } }] })
+  await expect(run({ mocks: [good(1), good(2), good(3), good(4), bad] })).rejects.toThrow(/mocks\[4\].*serveEventListeners\[0\]\.parameters\.url must be an http/)
+  expect(await env.rt.store.listAll()).toEqual([])
+  expect(await serve('/imp/hook-1')).toBe(404)
+})

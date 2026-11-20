@@ -1,6 +1,9 @@
+import { useCallback } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { AlertCircleIcon, ScrollTextIcon } from 'lucide-react'
+import type { AuditFilter } from '@/server/audit/view'
 import { useAudit } from '@/ui/api/queries'
+import { AuditFilters } from '@/ui/components/admin/AuditFilters'
 import { AuditTable, AuditTableSkeleton } from '@/ui/components/admin/AuditTable'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
@@ -8,11 +11,36 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/
 import { Spinner } from '@/ui/components/ui/spinner'
 import { useT } from '@/ui/i18n'
 
-export const Route = createFileRoute('/_app/audit')({ component: AuditPage })
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+const text = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined)
+const day = (v: unknown) => (typeof v === 'string' && DAY.test(v) ? v : undefined)
 
-export function AuditPage() {
+export const Route = createFileRoute('/_app/audit')({
+  validateSearch: (raw: Record<string, unknown>): AuditFilter => ({
+    actor: text(raw.actor),
+    action: text(raw.action),
+    from: day(raw.from),
+    to: day(raw.to),
+  }),
+  component: AuditRoute,
+})
+
+function AuditRoute() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
+  const onSearchChange = useCallback((next: AuditFilter) => void navigate({ search: next, replace: true }), [navigate])
+  return <AuditPage search={search} onSearchChange={onSearchChange} />
+}
+
+/** Drops unset filters, so the query key and the URL stay stable. */
+const defined = (f: AuditFilter): AuditFilter => Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined))
+
+export function AuditPage({ search = {}, onSearchChange }: { search?: AuditFilter; onSearchChange?: (next: AuditFilter) => void }) {
   const t = useT()
-  const audit = useAudit()
+  const filter = defined(search)
+  const filtered = Object.keys(filter).length > 0
+  const audit = useAudit(filter)
+  const scanLimited = audit.data?.pages.some((p) => p.scanLimitReached) ?? false
   const entries = audit.data?.pages.flatMap((p) => p.entries) ?? []
   return (
     <div className="fade-up flex flex-col gap-5">
@@ -24,6 +52,8 @@ export function AuditPage() {
             : '//'}
         </p>
       </header>
+
+      {onSearchChange && <AuditFilters filter={filter} onChange={(next) => onSearchChange(defined(next))} />}
 
       {audit.isPending ? (
         <AuditTableSkeleton />
@@ -44,13 +74,14 @@ export function AuditPage() {
             <EmptyMedia variant="icon">
               <ScrollTextIcon />
             </EmptyMedia>
-            <EmptyTitle>{t('audit.emptyTitle')}</EmptyTitle>
-            <EmptyDescription>{t('audit.emptyBody')}</EmptyDescription>
+            <EmptyTitle>{t(filtered ? 'audit.emptyFilteredTitle' : 'audit.emptyTitle')}</EmptyTitle>
+            <EmptyDescription>{t(filtered ? 'audit.emptyFiltered' : 'audit.emptyBody')}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
         <>
           <AuditTable entries={entries} />
+          {scanLimited && <p className="text-xs text-muted-foreground">{t('audit.scanLimit')}</p>}
           {audit.isFetchNextPageError && (
             <p role="alert" className="flex items-center gap-2 text-xs text-mismatch">
               <AlertCircleIcon className="size-3.5" />

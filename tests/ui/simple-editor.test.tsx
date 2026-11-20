@@ -98,6 +98,13 @@ describe('new mock — endpoint picker', () => {
     expect(screen.getByRole('option', { name: /Ping/ })).toBeTruthy()
   })
 
+  it('starts with the key from the URL ("Make a mock for 999" from a near miss)', async () => {
+    mockCatalog([endpoint()])
+    await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'get-citizen-info', key: '999' }} />)
+    const key = (await screen.findByLabelText('Value of $.idNo in the request body')) as HTMLInputElement
+    expect(key.value).toBe('999')
+  })
+
   it('shows the endpoint description and only http(s) links, opening in a new tab', async () => {
     mockCatalog([endpoint()])
     await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'get-citizen-info' }} />)
@@ -189,7 +196,7 @@ describe('new mock — Simple form', () => {
     }
   })
 
-  it('puts a server 400 about keyValue next to the key field', async () => {
+  it('asks for the key value next to the key field before saving, in plain words', async () => {
     mockCatalog([endpoint()])
     server.use(http.post(`${CATALOG}/get-citizen-info/mocks`, () => HttpResponse.json({ error: 'keyValue is required' }, { status: 400 })))
     await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'get-citizen-info' }} />)
@@ -197,7 +204,7 @@ describe('new mock — Simple form', () => {
     await ue.click(await screen.findByRole('button', { name: 'Save mock' }))
     const key = screen.getByLabelText('Value of $.idNo in the request body')
     await waitFor(() => expect(key.getAttribute('aria-invalid')).toBe('true'))
-    const errorId = key.getAttribute('aria-describedby')!.split(' ').find((id) => document.getElementById(id)?.textContent === 'keyValue is required')
+    const errorId = key.getAttribute('aria-describedby')!.split(' ').find((id) => document.getElementById(id)?.textContent === 'Enter the value this mock answers (for example 42), or turn on Default answer.')
     expect(errorId).toBeTruthy()
     expect(screen.queryByText('Could not save the mock')).toBeNull()
   })
@@ -231,6 +238,80 @@ describe('new mock — Simple form', () => {
     expect(calls.filter((c) => c.path === 'create')).toHaveLength(1)
     expect(calls.find((c) => c.path === 'create')?.body).toEqual({ keyValue: '1234567890', status: 200, body: '{\n  "name": "Sara"\n}' })
     await waitFor(() => expect(router.state.location.pathname).toBe('/mocks/m-9'))
+  })
+})
+
+describe('body from a file', () => {
+  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 255])
+  function mockCreate(calls: Call[]) {
+    server.use(
+      http.post(`${CATALOG}/:endpoint/mocks`, async ({ request }) => {
+        calls.push({ method: 'POST', path: 'create', body: await request.json() })
+        return HttpResponse.json({ id: 'm-3', request: {}, response: {} }, { status: 201 })
+      }),
+    )
+  }
+
+  it('a binary file replaces the body with a "Binary body" card and saves base64Body with its type', async () => {
+    const calls = mockCatalog([textEndpoint()])
+    mockCreate(calls)
+    await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'ping' }} />)
+    const ue = userEvent.setup({ applyAccept: false })
+    await screen.findByRole('textbox', { name: 'Response body' })
+    await ue.upload(screen.getByLabelText('Upload body from file'), new File([PNG], 'logo.png', { type: 'image/png' }))
+    const card = await screen.findByRole('group', { name: 'Binary body' })
+    expect(within(card).getByText('logo.png · 8 B · image/png')).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: 'Response body' })).toBeNull()
+    await ue.type(screen.getByLabelText('Value of query parameter id'), 'abc')
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    await waitFor(() =>
+      expect(calls.find((c) => c.path === 'create')?.body).toEqual({ keyValue: 'abc', status: 200, base64Body: 'iVBORwABAv8=', headers: { 'Content-Type': 'image/png' } }),
+    )
+  })
+
+  it('Remove brings the text body back; a text file fills the body', async () => {
+    mockCatalog([textEndpoint()])
+    await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'ping' }} />)
+    const ue = userEvent.setup({ applyAccept: false })
+    await screen.findByRole('textbox', { name: 'Response body' })
+    await ue.upload(screen.getByLabelText('Upload body from file'), new File([PNG], 'logo.png', { type: 'image/png' }))
+    await ue.click(within(await screen.findByRole('group', { name: 'Binary body' })).getByRole('button', { name: 'Remove' }))
+    const body = (await screen.findByRole('textbox', { name: 'Response body' })) as HTMLTextAreaElement
+    expect(body.value).toBe('')
+    await ue.upload(screen.getByLabelText('Upload body from file'), new File(['a,b\n1,2'], 'rows.csv', { type: 'text/csv' }))
+    await waitFor(() => expect(body.value).toBe('a,b\n1,2'))
+  })
+
+  it('refuses a file over 5 MB with a clear message', async () => {
+    mockCatalog([textEndpoint()])
+    await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'ping' }} />)
+    const ue = userEvent.setup({ applyAccept: false })
+    await screen.findByRole('textbox', { name: 'Response body' })
+    const big = new File(['x'], 'video.mp4')
+    Object.defineProperty(big, 'size', { value: 5 * 1024 * 1024 + 1 })
+    await ue.upload(screen.getByLabelText('Upload body from file'), big)
+    expect(await screen.findByText(/video\.mp4 is 5\.0 MB\. A body file can be at most 5 MB/)).toBeTruthy()
+    expect(screen.queryByRole('group', { name: 'Binary body' })).toBeNull()
+  })
+
+  it('a saved binary mock opens in Simple mode with its size and type', async () => {
+    mockCatalog([endpoint()])
+    server.use(
+      http.get(`${BASE}/api/mocks/m-1`, () =>
+        HttpResponse.json({
+          id: 'm-1',
+          name: 'Fetch citizen — 42',
+          priority: 5,
+          request: { method: 'POST', urlPath: '/nic/nic-service/get-citizen-info', bodyPatterns: [{ matchesJsonPath: { expression: '$.idNo', equalTo: '42' } }] },
+          response: { status: 200, headers: { 'Content-Type': 'image/png' }, base64Body: 'iVBORwABAv8=' },
+          metadata: { wiremockUi: { integration: 'nic', endpoint: 'get-citizen-info', owner: 'sara', version: 1, updatedAt: '', updatedBy: 'sara', source: 'ui' } },
+        }),
+      ),
+    )
+    await renderApp(<EditMockPage id="m-1" />)
+    const card = await screen.findByRole('group', { name: 'Binary body' })
+    expect(within(card).getByText('8 B · image/png')).toBeTruthy()
+    expect((screen.getByRole('tab', { name: 'Simple' })).getAttribute('aria-selected')).toBe('true')
   })
 })
 
@@ -309,5 +390,107 @@ describe('edit mock', () => {
     await renderApp(<EditMockPage id="m-1" />)
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Save mock' }))
     expect((await screen.findByRole('alert')).textContent).toContain('Someone changed this mock since you opened it.')
+  })
+})
+
+describe('new mock — proxy and webhook', () => {
+  const open = async () => {
+    const calls = mockCatalog([textEndpoint()])
+    await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'ping' }} />)
+    await screen.findByRole('textbox', { name: 'Response body' })
+    return { calls, ue: userEvent.setup() }
+  }
+
+  it('forwarding hides the status and body, suggests the prefix and sends only proxy fields', async () => {
+    const { calls, ue } = await open()
+    await ue.click(screen.getByRole('switch', { name: 'Default answer (when no key matches)' }))
+    await ue.click(screen.getByRole('radio', { name: 'Forward to a real service' }))
+    expect(screen.queryByRole('textbox', { name: 'Response body' })).toBeNull()
+    expect(screen.queryByRole('radio', { name: 'Success 200' })).toBeNull()
+    expect((screen.getByRole('combobox', { name: 'Break the connection' }) as HTMLButtonElement).disabled).toBe(true)
+
+    await ue.type(screen.getByRole('textbox', { name: 'Service base URL' }), 'https://real.example/api')
+    const strip = screen.getByRole('textbox', { name: 'Remove path prefix' }) as HTMLInputElement
+    expect(strip.value).toBe('') // a suggestion, not a default
+    await ue.click(screen.getByRole('button', { name: 'Use /nic' }))
+    expect(strip.value).toBe('/nic')
+    expect(screen.getByText('// /nic/ping → https://real.example/api/ping')).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Add header' }))
+    await ue.type(screen.getByRole('textbox', { name: 'Headers to add: Name' }), 'X-Env')
+    await ue.type(screen.getByRole('textbox', { name: 'Headers to add: X-Env' }), 'qa')
+    await ue.type(screen.getByRole('textbox', { name: 'Headers to remove' }), 'Authorization, Cookie')
+
+    await ue.click(screen.getByRole('button', { name: 'Preview' }))
+    await waitFor(() =>
+      expect(calls.at(-1)?.body).toEqual({
+        isDefault: true,
+        proxy: { baseUrl: 'https://real.example/api', stripPrefix: '/nic', addHeaders: { 'X-Env': 'qa' }, removeHeaders: ['Authorization', 'Cookie'] },
+      }),
+    )
+  })
+
+  it('a missing or bad base URL is flagged on preview and nothing is sent', async () => {
+    const { calls, ue } = await open()
+    await ue.click(screen.getByRole('radio', { name: 'Forward to a real service' }))
+    expect(screen.queryByText('Enter a URL that starts with http:// or https://.')).toBeNull()
+    await ue.click(screen.getByRole('button', { name: 'Preview' }))
+    const url = screen.getByRole('textbox', { name: 'Service base URL' })
+    expect(url.getAttribute('aria-invalid')).toBe('true')
+    expect(screen.getByText('Enter a URL that starts with http:// or https://.')).toBeTruthy()
+    await ue.type(url, 'ftp://x')
+    expect(url.getAttribute('aria-invalid')).toBe('true')
+    await ue.type(screen.getByRole('textbox', { name: 'Remove path prefix' }), 'nic')
+    expect(screen.getByText('Start the prefix with /.')).toBeTruthy()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('the call-back switch opens the webhook fields; its delay and body go along with the mock response', async () => {
+    const { calls, ue } = await open()
+    await ue.type(screen.getByLabelText('Value of query parameter id'), 'abc')
+    expect(screen.queryByRole('textbox', { name: 'Callback URL' })).toBeNull()
+    await ue.click(screen.getByRole('switch', { name: 'Call back after responding' }))
+    await ue.type(screen.getByRole('textbox', { name: 'Callback URL' }), 'http://hooks.example/cb')
+    await ue.click(screen.getByRole('combobox', { name: 'Method' }))
+    await ue.click(await screen.findByRole('option', { name: 'PUT' }))
+    expect(screen.getByText(/jsonPath originalRequest\.body/)).toBeTruthy()
+    await ue.click(screen.getByRole('radio', { name: 'Random' }))
+    const lower = screen.getByRole('spinbutton', { name: 'At least (ms)' })
+    const upper = screen.getByRole('spinbutton', { name: 'At most (ms)' })
+    await ue.clear(upper)
+    await ue.type(upper, '100')
+    expect(screen.getByText('Make the first number no larger than the second.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Preview' }) as HTMLButtonElement).disabled).toBe(true)
+    await ue.clear(lower)
+    await ue.type(lower, '50')
+
+    await ue.click(screen.getByRole('button', { name: 'Preview' }))
+    await waitFor(() =>
+      expect(calls.at(-1)?.body).toEqual({
+        keyValue: 'abc',
+        status: 200,
+        body: 'pong',
+        webhook: { method: 'PUT', url: 'http://hooks.example/cb', delay: { type: 'uniform', lower: 50, upper: 100 } },
+      }),
+    )
+  })
+
+  it('a server 400 about the webhook URL lands on that field', async () => {
+    const { ue } = await open()
+    server.use(http.post(`${CATALOG}/ping/preview`, () => HttpResponse.json({ error: 'webhook.url must be an http:// or https:// URL' }, { status: 400 })))
+    await ue.click(screen.getByRole('switch', { name: 'Default answer (when no key matches)' }))
+    await ue.click(screen.getByRole('switch', { name: 'Call back after responding' }))
+    await ue.type(screen.getByRole('textbox', { name: 'Callback URL' }), 'http://{{bad}}')
+    await ue.click(screen.getByRole('button', { name: 'Preview' }))
+    const url = screen.getByRole('textbox', { name: 'Callback URL' })
+    await waitFor(() => expect(url.getAttribute('aria-invalid')).toBe('true'))
+    expect(screen.getByText('webhook.url must be an http:// or https:// URL')).toBeTruthy()
+  })
+})
+
+describe('header rows', () => {
+  it('warns when a header name is listed twice (names ignore case)', async () => {
+    const { HeaderRows } = await import('@/ui/components/editor/HeaderRows')
+    await renderApp(<HeaderRows label="Headers" rows={[{ name: 'X-Id', value: '1' }, { name: 'x-id', value: '2' }]} onChange={() => {}} />)
+    expect(screen.getByText('X-Id is listed more than once: only one value is kept.')).toBeTruthy()
   })
 })

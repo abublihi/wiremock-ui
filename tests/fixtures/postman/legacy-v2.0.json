@@ -1,0 +1,45 @@
+{
+  "info": {
+    "name": "Legacy Billing",
+    "schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Invoice",
+      "request": {
+        "url": "https://billing.example.com/billing/invoices/{{invoiceId}}?expand=lines",
+        "method": "GET",
+        "header": "Accept: application/xml\n"
+      },
+      "response": [
+        {
+          "name": "Invoice XML",
+          "originalRequest": { "url": "https://billing.example.com/billing/invoices/{{invoiceId}}?expand=lines", "method": "GET" },
+          "code": 200,
+          "header": "Content-Type: application/xml\n",
+          "body": "<invoice id=\"7\"/>"
+        },
+        {
+          "name": "Invoice without lines",
+          "originalRequest": { "url": "https://billing.example.com/billing/invoices/{{invoiceId}}?expand=none", "method": "GET" },
+          "code": 200,
+          "header": "Content-Type: application/xml\n",
+          "body": "<invoice id=\"7\" lines=\"0\"/>"
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "request": "https://billing.example.com/billing/health",
+      "response": [
+        { "name": "Up", "code": 200, "header": "Content-Type: text/plain", "body": "OK" },
+        { "name": "Down", "code": 503, "header": "Content-Type: text/plain", "body": "DOWN" }
+      ]
+    },
+    {
+      "name": "Odd method",
+      "request": { "url": "https://billing.example.com/billing/x", "method": "PURGE" },
+      "response": []
+    }
+  ]
+}

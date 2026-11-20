@@ -57,14 +57,14 @@ export function LoginPage({ next }: { next?: string }) {
           <Brand caption size="lg" />
           <form onSubmit={submit} className="glass-panel flex flex-col gap-6 rounded-xl p-6">
             <div className="flex flex-col gap-1.5">
-              <p className="mb-1 text-[10px] tracking-[0.2em] text-signal-fg uppercase">
+              <p className="mb-1 text-[11px] tracking-[0.2em] text-signal-fg uppercase">
                 <span aria-hidden>── </span>
                 {t('login.eyebrow')}
               </p>
               <h1 className="font-display text-2xl leading-none font-bold tracking-wide uppercase">{t('login.title')}</h1>
               <p className="text-xs text-muted-foreground">{t('login.subtitle')}</p>
             </div>
-            <p aria-hidden className="-mt-1 border-b border-line/60 pb-4 text-[11px] text-muted-foreground">
+            <p aria-hidden className="-mt-1 border-b border-line/60 pb-4 text-xs text-muted-foreground">
               <span className="text-signal-fg">$</span> wiremock-ui login --interactive
             </p>
             <FieldGroup className="gap-4">

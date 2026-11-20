@@ -4,9 +4,13 @@ import type { MockStore } from '../store/types'
 import type { WireMockClient } from '../wiremock/client'
 import type { StubMapping } from '../wiremock/types'
 import { MARKER_ID, markerStub } from './marker'
+import { recordingProxyMatcher } from '../recording/proxy'
 
-const LOCK = 'sync:lock'
-const LOCK_TTL_MS = 60_000
+/** Held by a full sync and by adoption, so the two never run at once (on any instance). */
+export const SYNC_LOCK = 'sync:lock'
+export const SYNC_LOCK_TTL_MS = 60_000
+/** Store flag: WireMock's existing stubs are still being adopted, so a full sync must not delete them. */
+export const ADOPTION_PENDING = 'adoption-pending'
 
 type Deps = {
   wiremock: WireMockClient
@@ -15,6 +19,11 @@ type Deps = {
   safetyNetMs?: number
   batchSize?: number
   audit?: AuditLog
+  /**
+   * Adopts WireMock's stubs while the adoption flag is set (adoptMissing). A boot whose adoption failed, or that
+   * left it to an instance that then died, retries it on every full sync instead of waiting for a restart.
+   */
+  adopt?: () => Promise<number>
 }
 
 const versionOf = (s: StubMapping) => s.metadata?.wiremockUi?.version
@@ -41,6 +50,7 @@ export class Reconciler {
   private readonly safetyNetMs: number
   private readonly batchSize: number
   private readonly audit?: AuditLog
+  private readonly adopt?: () => Promise<number>
   private timers: NodeJS.Timeout[] = []
   private busy = false
 
@@ -51,6 +61,7 @@ export class Reconciler {
     this.safetyNetMs = deps.safetyNetMs ?? 600_000
     this.batchSize = deps.batchSize ?? 500
     this.audit = deps.audit
+    this.adopt = deps.adopt
   }
 
   get lastSyncAt(): Date | null {
@@ -69,7 +80,11 @@ export class Reconciler {
 
   /** `audit` records a `sync` entry on success; only startup and marker-triggered syncs ask for it. */
   async fullSync(opts: { audit?: boolean } = {}): Promise<'synced' | 'skipped'> {
-    const token = await this.store.acquireLock(LOCK, LOCK_TTL_MS)
+    // Before taking the sync lock: adoption takes it itself.
+    if (this.adopt && (await this.store.getFlag(ADOPTION_PENDING))) {
+      await this.adopt().catch((err) => logger.warn({ err }, 'adopting WireMock stubs failed; retried on the next full sync'))
+    }
+    const token = await this.store.acquireLock(SYNC_LOCK, SYNC_LOCK_TTL_MS)
     if (token === null) return 'skipped'
     try {
       const snapshot = precedenceOrder(await this.store.listAll())
@@ -82,8 +97,14 @@ export class Reconciler {
       }
 
       const known = new Set(snapshot.map((s) => s.id))
-      for (const id of await this.wiremock.listStubIds()) {
-        if (known.has(id)) continue
+      // Stubs not adopted yet are not in the store: keep every live stub until adoption completes.
+      const adopting = await this.store.getFlag(ADOPTION_PENDING)
+      if (adopting) logger.warn('adoption pending: full sync keeps WireMock stubs that are not in the store')
+      const isRecordingProxy = await recordingProxyMatcher(this.wiremock)
+      for (const live of adopting ? [] : await this.wiremock.listStubs()) {
+        const id = live.id
+        // A recording in progress: the proxy stub is WireMock's own and goes when the recording stops.
+        if (known.has(id) || isRecordingProxy(live)) continue
         // A mock saved after the snapshot is in the store: leave it alone.
         if (id !== MARKER_ID && (await this.store.get(id)) !== null) continue
         await this.wiremock.deleteStub(id)
@@ -121,7 +142,7 @@ export class Reconciler {
       logger.error({ err }, 'full sync failed')
       throw err
     } finally {
-      await this.store.releaseLock(LOCK, token).catch((err) => logger.warn({ err }, 'sync lock release failed'))
+      await this.store.releaseLock(SYNC_LOCK, token).catch((err) => logger.warn({ err }, 'sync lock release failed'))
     }
   }
 
@@ -144,7 +165,9 @@ export class Reconciler {
 
   /**
    * Re-adds every person-owned mock so it sits above baseline mocks added after it (import, seed).
-   * Each mock is briefly absent from WireMock while it is moved.
+   * Each mock is briefly absent from WireMock while it is moved. During a recording the moved mocks also end up
+   * newer than the recording's catch-all proxy stub, so they keep answering their requests instead of the proxy
+   * (as mocks saved during a recording do); not skipped, since the order would then stay wrong after it.
    */
   async repositionPersonMocks(): Promise<void> {
     await this.readd(precedenceOrder((await this.store.listAll()).filter((s) => !isBaseline(s))))

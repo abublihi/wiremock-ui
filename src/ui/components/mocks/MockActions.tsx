@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { MoreHorizontalIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { MoreHorizontalIcon, PlusIcon, TerminalIcon, Trash2Icon } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { StubMapping } from '@/server/wiremock/types'
-import { useDeleteMock, useDuplicateMock, useMocks, useResetMine, restoreMock } from '@/ui/api/queries'
+import { endpointsQueryOptions, useDeleteMock, useDuplicateMock, useMocks, useResetMine, restoreMock } from '@/ui/api/queries'
+import { copyCurl } from '@/ui/components/editor/TestPanel'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +24,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/ui/components/ui/dropdown-menu'
+import { useWireMockOnly, useWiremockPublicUrl } from '@/ui/config'
 import { useT } from '@/ui/i18n'
+import { curlFromStub } from '@/ui/lib/curl'
 
 export const mockName = (stub: StubMapping) => stub.name || stub.id
 export const mockVersion = (stub: StubMapping) => stub.metadata?.wiremockUi?.version ?? 0
@@ -51,7 +54,24 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
   const duplicate = useDuplicateMock()
   const remove = useDeleteMock()
   const queryClient = useQueryClient()
+  // No history in WireMock-only mode, so nothing to undo a delete from.
+  const wiremockOnly = useWireMockOnly()
   const name = mockName(stub)
+  const publicUrl = useWiremockPublicUrl()
+
+  // The catalog example request fills the body; without it (no link, catalog unreachable) the curl still works.
+  // The clipboard write starts during the click (Safari needs that), with the command still being worked out.
+  const onCopyCurl = () => {
+    if (publicUrl === undefined) return void copyCurl(undefined, t)
+    const link = stub.metadata?.wiremockUi
+    const command = (async () => {
+      const endpoints = link?.integration && link.endpoint
+        ? await queryClient.fetchQuery(endpointsQueryOptions(link.integration)).catch(() => undefined)
+        : undefined
+      return curlFromStub(stub, endpoints?.find((e) => e.key === link?.endpoint), publicUrl)
+    })()
+    void copyCurl(command, t)
+  }
 
   const onDelete = () => {
     const version = mockVersion(stub)
@@ -59,7 +79,7 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
       { id: stub.id, version },
       {
         onSuccess: () =>
-          toast(t('mocks.deleted'), {
+          toast(t('mocks.deleted'), wiremockOnly ? undefined : {
             action: {
               label: t('mocks.undo'),
               onClick: () =>
@@ -98,6 +118,10 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
           >
             {t('mocks.duplicate')}
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onCopyCurl}>
+            <TerminalIcon />
+            {t('curl.copy')}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={() => setConfirming(true)}>
             <Trash2Icon />
@@ -125,7 +149,7 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
 }
 
 /** "Reset my mocks": confirms with the live count of the user's own mocks, then deletes them all. */
-export function ResetMineButton() {
+export function ResetMineButton({ disabled = false }: { disabled?: boolean } = {}) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const mine = useMocks({ owner: 'me' }, { enabled: open })
@@ -134,7 +158,7 @@ export function ResetMineButton() {
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
+      <Button variant="outline" disabled={disabled} onClick={() => setOpen(true)}>
         <Trash2Icon data-icon="inline-start" />
         {t('mocks.resetMine')}
       </Button>

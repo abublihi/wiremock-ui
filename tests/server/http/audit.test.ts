@@ -44,3 +44,32 @@ test('an ordinary user can read the audit log; no credentials 401', async () => 
   expect((await listAudit(rt, req('/api/audit', { Cookie: s.cookie }))).status).toBe(200)
   expect((await listAudit(rt, req('/api/audit', {}))).status).toBe(401)
 })
+
+test('filters by actor, action group and day, and still pages', async () => {
+  for (let i = 0; i < 4; i++) await rt.audit.record({ actor: 'filter-a', action: 'scenario.set-state', target: `s${i}`, details: { state: 'x' } })
+  await rt.audit.record({ actor: 'filter-b', action: 'scenario.reset-all', target: '*' })
+  await rt.audit.record({ actor: 'filter-a', action: 'requests.clear' })
+  const page = async (q: string) => (await listAudit(rt, req(`/api/audit?${q}`))).json()
+  const byActor = await page('actor=filter-a&action=scenario&limit=3')
+  expect(byActor.entries.map((e: { target: string }) => e.target)).toEqual(['s3', 's2', 's1'])
+  const rest = await page(`actor=filter-a&action=scenario&limit=3&cursor=${encodeURIComponent(byActor.nextCursor)}`)
+  expect(rest.entries.map((e: { target: string }) => e.target)).toEqual(['s0'])
+  expect((await page('actor=filter-b')).entries.map((e: { action: string }) => e.action)).toEqual(['scenario.reset-all'])
+  const today = new Date().toISOString().slice(0, 10)
+  expect((await page(`actor=filter-a&from=${today}&to=${today}`)).entries).toHaveLength(5)
+  expect((await page(`actor=filter-a&to=2000-01-01`)).entries).toEqual([])
+  for (const q of ['from=yesterday', 'to=2026-13-01', 'action=', 'actor=']) expect((await listAudit(rt, req(`/api/audit?${q}`))).status, q).toBe(400)
+})
+
+test('names what each entry is about: a mock or an integration by name, or that it is gone', async () => {
+  await rt.catalog.upsertIntegration({ key: 'aud', name: 'Audit API', prefix: '/aud' }, 'ui-admin')
+  const admin = (await rt.users.list()).find((u) => u.username === 'ui-admin')!
+  const mock = await rt.mocks.create({ name: 'Audit ping', request: { method: 'GET', urlPath: '/aud/ping' }, response: { status: 200 } }, admin)
+  const gone = await rt.mocks.create({ name: 'Short-lived', request: { method: 'GET', urlPath: '/aud/gone' }, response: { status: 200 } }, admin)
+  await rt.mocks.delete(gone.id, undefined, admin)
+  const { entries } = await (await listAudit(rt, req('/api/audit?limit=10'))).json()
+  const about = (action: string, target: string) => entries.find((e: { action: string; target?: string }) => e.action === action && e.target === target)?.subject
+  expect(about('mock.create', mock.id)).toEqual({ kind: 'mock', name: 'Audit ping' })
+  expect(about('mock.delete', gone.id)).toEqual({ kind: 'mock', name: null })
+  expect(about('catalog.integration.upsert', 'aud')).toEqual({ kind: 'integration', name: 'Audit API' })
+})

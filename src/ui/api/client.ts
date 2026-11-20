@@ -3,10 +3,13 @@ import type { PublicUser } from '@/server/users/types'
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /** A 400's request field (`lookup.expression`, `exampleResponses.200`), when the server names one. */
+  field?: string
+  constructor(status: number, message: string, field?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    if (field) this.field = field
   }
 }
 
@@ -21,6 +24,9 @@ let queryClient: QueryClient | null = null
 export function registerQueryClient(client: QueryClient): void {
   queryClient = client
 }
+
+/** The sign-in page itself: never a page to come back to after signing in. */
+export const isLoginPath = (pathname: string) => /^\/login\/?$/.test(pathname)
 
 function defaultOnUnauthorized(next: string): void {
   window.location.assign(`/login?next=${encodeURIComponent(next)}`)
@@ -84,10 +90,12 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
 
   if (!response.ok) {
     const message = (data as { error?: unknown } | undefined)?.error
-    if (response.status === 401 && options.redirectOnUnauthorized !== false) {
+    // Already on the sign-in page (just signed out, say): nothing to come back to, and no /login?next=/login…
+    if (response.status === 401 && options.redirectOnUnauthorized !== false && !isLoginPath(window.location.pathname)) {
       onUnauthorized(window.location.pathname + window.location.search)
     }
-    throw new ApiError(response.status, typeof message === 'string' ? message : response.statusText)
+    const field = (data as { field?: unknown } | undefined)?.field
+    throw new ApiError(response.status, typeof message === 'string' ? message : response.statusText, typeof field === 'string' ? field : undefined)
   }
   return data as T
 }

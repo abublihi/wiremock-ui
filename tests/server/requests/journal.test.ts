@@ -89,3 +89,21 @@ test('count and clear (clear is audited)', async () => {
   expect(await rt.requests.list({})).toEqual([])
   expect((await rt.audit.list()).entries.some((a) => a.action === 'requests.clear' && a.actor === 'ui-admin')).toBe(true)
 })
+
+test("a request the recording's proxy answered says where it was forwarded", async () => {
+  const id = '9c0f1a52-6c4e-4c0e-9d7a-6a7d1f0e0b11'
+  await rt.wiremock.importStubs(
+    [{ id, priority: 9, request: { method: 'ANY' }, response: { proxyBaseUrl: 'http://127.0.0.1:9' } }],
+    { deleteAllNotInImport: false },
+  )
+  try {
+    await hit('/elsewhere/thing')
+    const [row] = await rt.requests.list({ limit: 1 })
+    expect(row).toMatchObject({ url: '/elsewhere/thing', matched: true, stubId: id, recordingProxy: true, forwardedTo: 'http://127.0.0.1:9' })
+    await hit('/pay/charge', { method: 'POST' })
+    const [plain] = await rt.requests.list({ limit: 1 })
+    expect(plain).toMatchObject({ recordingProxy: false, forwardedTo: null })
+  } finally {
+    await rt.wiremock.deleteStub(id).catch(() => undefined)
+  }
+})

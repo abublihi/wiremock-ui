@@ -4,7 +4,10 @@ dist
 .tanstack
 .git
 .superpowers
+# The in-app Guide is built from docs/guide/*.md (src/ui/lib/guide.ts); the rest of docs/ stays out of the image.
 docs
+!docs/guide
+!docs/guide/**
 tests
 .env
 .env.*

@@ -13,3 +13,11 @@ export const wiremockUrl = () => {
   if (!url) throw new Error('E2E_WIREMOCK_URL is not set; run the specs through playwright test')
   return url
 }
+
+/** The second WireMock a recording proxies to: its host-mapped URL (to add stubs) and how WireMock reaches it. */
+export const upstream = () => {
+  const url = process.env.E2E_UPSTREAM_URL
+  const internal = process.env.E2E_UPSTREAM_INTERNAL_URL
+  if (!url || !internal) throw new Error('E2E_UPSTREAM_URL is not set; run the specs through playwright test')
+  return { url, internal }
+}

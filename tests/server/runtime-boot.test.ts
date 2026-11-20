@@ -26,6 +26,8 @@ const fakeStore = (pings: boolean[] = []): Stores =>
       get: async () => null,
       acquireLock: async () => 'tok',
       releaseLock: async () => {},
+      getFlag: async () => false,
+      setFlag: async () => {},
     },
     users: { countUsers: async () => 1 },
     audit: { record: async () => {} },
@@ -56,7 +58,7 @@ test('boot retries until WireMock and the store become reachable', async () => {
       sleeps.push(ms)
     },
   })
-  rt.reconciler.stop()
+  rt.reconciler?.stop()
   expect(sleeps).toEqual([500, 1000, 2000, 500])
 })
 
@@ -87,7 +89,7 @@ test('boot retries a hung store ping until reachable', async () => {
     return s
   }
   const rt = await bootRuntime(env, { fetch: wm.fn, createStores: hung, sleep: async () => {} })
-  rt.reconciler.stop()
+  rt.reconciler?.stop()
   expect(attempts).toBe(2)
 }, 10_000)
 
@@ -96,7 +98,7 @@ test('boots on SQLite with no Redis at all: first admin created, store reachable
   const { REDIS_URL: _unused, ...noRedis } = env
   try {
     const rt = await bootRuntime({ ...noRedis, ADMIN_USER: 'root', ADMIN_PASSWORD: 'rootpass1', SQLITE_PATH: join(dir, 'sub', 'ui.db') }, { fetch: wiremockFetch(0).fn })
-    rt.reconciler.stop()
+    rt.reconciler?.stop()
     expect(rt.config.storeDriver).toBe('sqlite')
     expect(await rt.stores.ping()).toBe(true)
     expect((await rt.stores.users.listUsers()).map((u) => u.username)).toEqual(['root'])

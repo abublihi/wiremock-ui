@@ -1,0 +1,157 @@
+import { ValidationError } from '../errors'
+import { isHttpUrl, trimTrailingSlashes } from '../url'
+
+/**
+ * Field rules for proxying (response.proxyBaseUrl …), webhooks (serveEventListeners) and scenarios, in WireMock
+ * 3.13.1's own shapes. Webhook targets are not filtered: WireMock calls them from inside the user's test
+ * environment, so pointing one at WireMock itself or at this UI is allowed.
+ */
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** The form offers these; any RFC 9110 method token is accepted (and stored upper-cased), as WireMock does. */
+export const WEBHOOK_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
+const METHOD_TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+export const MAX_WEBHOOK_DELAY_MS = 600_000
+
+export function assertHttpUrl(value: unknown, field: string, opts: { templated?: boolean } = {}): void {
+  const message = `${field} must be an http:// or https:// URL`
+  if (typeof value !== 'string' || !/^https?:\/\/\S/i.test(value)) throw new ValidationError(message)
+  // A webhook URL may be a template ("http://{{request.headers.X-Host}}/cb"): only its scheme can be checked.
+  if (opts.templated && value.includes('{{')) return
+  if (!isHttpUrl(value)) throw new ValidationError(message)
+}
+
+function stringMap(value: unknown, field: string): void {
+  if (value === undefined) return
+  if (!isObject(value)) throw new ValidationError(`${field} must be an object of header names to values`)
+  for (const [name, v] of Object.entries(value)) {
+    if (typeof v !== 'string') throw new ValidationError(`${field}.${name} must be a string`)
+  }
+}
+
+function delayMs(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > MAX_WEBHOOK_DELAY_MS) {
+    throw new ValidationError(`${field} must be an integer between 0 and ${MAX_WEBHOOK_DELAY_MS}`)
+  }
+  return value
+}
+
+function webhookDelay(value: unknown, field: string): void {
+  if (value === undefined) return
+  const shape = `${field} must be { type: "fixed", milliseconds }, { type: "uniform", lower, upper } or { type: "lognormal", median, sigma }`
+  if (!isObject(value)) throw new ValidationError(shape)
+  if (value.type === 'fixed') {
+    delayMs(value.milliseconds, `${field}.milliseconds`)
+  } else if (value.type === 'uniform') {
+    const lower = delayMs(value.lower, `${field}.lower`)
+    const upper = delayMs(value.upper, `${field}.upper`)
+    if (lower > upper) throw new ValidationError(`${field}.lower must not be greater than upper`)
+  } else if (value.type === 'lognormal') {
+    // WireMock reads the median as a double (milliseconds), so 12.5 is fine.
+    if (typeof value.median !== 'number' || !Number.isFinite(value.median) || value.median < 0 || value.median > MAX_WEBHOOK_DELAY_MS) {
+      throw new ValidationError(`${field}.median must be a number between 0 and ${MAX_WEBHOOK_DELAY_MS}`)
+    }
+    if (typeof value.sigma !== 'number' || !Number.isFinite(value.sigma) || value.sigma < 0) {
+      throw new ValidationError(`${field}.sigma must be a number of 0 or more`)
+    }
+    if (value.maxValue !== undefined) delayMs(value.maxValue, `${field}.maxValue`)
+  } else {
+    throw new ValidationError(shape)
+  }
+}
+
+/** Checks a webhook listener's parameters; messages start with `field` ("webhook.url must be …"). */
+export function assertWebhook(parameters: unknown, field: string): void {
+  if (!isObject(parameters)) throw new ValidationError(`${field} must be an object`)
+  if (typeof parameters.method !== 'string' || !METHOD_TOKEN.test(parameters.method)) {
+    throw new ValidationError(`${field}.method must be an HTTP method such as ${WEBHOOK_METHODS.join(', ')}`)
+  }
+  assertHttpUrl(parameters.url, `${field}.url`, { templated: true })
+  stringMap(parameters.headers, `${field}.headers`)
+  if (parameters.body !== undefined && typeof parameters.body !== 'string') throw new ValidationError(`${field}.body must be a string`)
+  webhookDelay(parameters.delay, `${field}.delay`)
+}
+
+function proxy(response: Record<string, unknown>): void {
+  if (response.proxyBaseUrl !== undefined) assertHttpUrl(response.proxyBaseUrl, 'response.proxyBaseUrl')
+  stringMap(response.additionalProxyRequestHeaders, 'response.additionalProxyRequestHeaders')
+  const remove = response.removeProxyRequestHeaders
+  if (remove !== undefined && (!Array.isArray(remove) || !remove.every((h) => typeof h === 'string'))) {
+    throw new ValidationError('response.removeProxyRequestHeaders must be a list of header names')
+  }
+  const prefix = response.proxyUrlPrefixToRemove
+  if (prefix !== undefined && (typeof prefix !== 'string' || !prefix.startsWith('/'))) {
+    throw new ValidationError('response.proxyUrlPrefixToRemove must start with /')
+  }
+}
+
+function scenario(stub: Record<string, unknown>): void {
+  for (const field of ['scenarioName', 'requiredScenarioState', 'newScenarioState'] as const) {
+    const v = stub[field]
+    if (v !== undefined && (typeof v !== 'string' || v.trim() === '')) throw new ValidationError(`${field} must be a non-empty string`)
+  }
+  if (stub.scenarioName === undefined) {
+    if (stub.requiredScenarioState !== undefined) throw new ValidationError('requiredScenarioState needs scenarioName')
+    if (stub.newScenarioState !== undefined) throw new ValidationError('newScenarioState needs scenarioName')
+  }
+}
+
+// One character class, no per-group repetition: a grouped pattern overflows V8's regex stack on bodies of a few MB.
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
+
+/** Standard base64 with padding, as WireMock decodes base64Body (an uploaded binary body). `=` only at the end. */
+export const isBase64 = (value: unknown): value is string =>
+  typeof value === 'string' && value.length % 4 === 0 && BASE64.test(value)
+
+export function assertBase64Body(value: unknown, field: string): void {
+  if (value !== undefined && !isBase64(value)) throw new ValidationError(`${field} must be valid base64`)
+}
+
+/** Throws a ValidationError naming the field when a proxy, webhook or scenario field (or a binary body) is malformed. */
+export function assertPowerFields(stub: { response: Record<string, unknown> } & Record<string, unknown>): void {
+  proxy(stub.response)
+  assertBase64Body(stub.response.base64Body, 'response.base64Body')
+  const listeners = stub.serveEventListeners
+  if (listeners !== undefined) {
+    if (!Array.isArray(listeners)) throw new ValidationError('serveEventListeners must be a list')
+    listeners.forEach((listener: unknown, i) => {
+      const field = `serveEventListeners[${i}]`
+      if (!isObject(listener) || typeof listener.name !== 'string' || listener.name === '') {
+        throw new ValidationError(`${field}.name must be a non-empty string`)
+      }
+      if (listener.name === 'webhook') assertWebhook(listener.parameters, `${field}.parameters`)
+    })
+  }
+  scenario(stub)
+}
+
+/**
+ * Stored forms WireMock 3.13.1 needs: it only removes proxy request headers listed in lower case
+ * (power-features.test.ts), and header names are case-insensitive, so that list is lower-cased; webhook methods
+ * are upper-cased; a proxy base URL loses its trailing slashes. Call after assertPowerFields.
+ */
+export function normalisePowerFields<T extends { response: Record<string, unknown> } & Record<string, unknown>>(stub: T): T {
+  let out = stub
+  // `https://api.example.com/` would forward to `https://api.example.com//path`: trailing slashes are dropped.
+  const base = stub.response.proxyBaseUrl
+  if (typeof base === 'string' && base !== trimTrailingSlashes(base.trim())) {
+    out = { ...out, response: { ...out.response, proxyBaseUrl: trimTrailingSlashes(base.trim()) } }
+  }
+  const remove = stub.response.removeProxyRequestHeaders
+  if (Array.isArray(remove)) {
+    out = { ...out, response: { ...out.response, removeProxyRequestHeaders: remove.map((h) => (typeof h === 'string' ? h.toLowerCase() : h)) } }
+  }
+  const listeners = stub.serveEventListeners
+  if (Array.isArray(listeners)) {
+    out = {
+      ...out,
+      serveEventListeners: listeners.map((l: unknown) =>
+        isObject(l) && l.name === 'webhook' && isObject(l.parameters) && typeof l.parameters.method === 'string'
+          ? { ...l, parameters: { ...l.parameters, method: l.parameters.method.toUpperCase() } }
+          : l,
+      ),
+    }
+  }
+  return out
+}

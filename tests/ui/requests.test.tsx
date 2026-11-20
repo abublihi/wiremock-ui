@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RequestsPage, type RequestsSearch } from '@/routes/_app/requests'
 import { NewMockPage, type NewMockSearch } from '@/ui/components/editor/NewMockPage'
+import { buildQuickStub, type QuickMockInput } from '@/server/catalog/build'
 import { BASE, jsonText } from './editor-fixtures'
 import { renderApp } from './helpers'
 
@@ -31,6 +32,8 @@ type Row = {
   stubName: string | null
   integration: string | null
   durationMs: number | null
+  forwardedTo?: string | null
+  recordingProxy?: boolean
 }
 const row = (id: string, over: Partial<Row> = {}): Row => ({
   id,
@@ -89,7 +92,7 @@ describe('request table', () => {
     expect(stamp.className).toContain('hatch')
     expect(screen.getByText('/pay/refund')).toBeTruthy()
     expect(screen.getAllByText('12 ms')).toHaveLength(2)
-    expect(screen.getByText('// 2 requests · 1 without a match')).toBeTruthy()
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 2 requests · 1 without a match')).toBeTruthy()
   })
 
   it('passes the filters to the API', async () => {
@@ -183,6 +186,46 @@ describe('live polling', () => {
   })
 })
 
+describe('load older', () => {
+  const at = (n: number) => new Date(Date.parse('2026-11-20T10:00:00.000Z') - n * 1000).toISOString()
+  const page = (from: number, count: number) => Array.from({ length: count }, (_, n) => row(`r${from + n}`, { loggedAt: at(from + n) }))
+
+  it('is offered when the live page is full; pages back with the cursor, keeps the filters, and says when it reached the end', async () => {
+    const calls: URLSearchParams[] = []
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/requests`, ({ request }) => {
+        const q = new URL(request.url).searchParams
+        calls.push(q)
+        if (!q.get('before')) return HttpResponse.json(q.get('since') ? [] : page(0, 500))
+        if (q.get('before') === `${at(499)}|r499`) return HttpResponse.json({ requests: page(500, 3), nextCursor: 'c-2' })
+        return HttpResponse.json({ requests: page(503, 1), nextCursor: null })
+      }),
+    )
+    await renderApp(<Harness initial={{ matched: 'false' }} />)
+    expect(await screen.findByText('// showing the newest 500; live updates arrive on top')).toBeTruthy()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Load older' }))
+    await screen.findByText('// 503 shown; new requests still arrive on top')
+    const first = calls.find((q) => q.get('before'))!
+    expect(first.get('matched')).toBe('false')
+    expect(first.get('limit')).toBe('500')
+    expect(screen.getAllByRole('row')).toHaveLength(504)
+    await user.click(screen.getByRole('button', { name: 'Load older' }))
+    await screen.findByText(/that is everything in WireMock/)
+    expect(calls.filter((q) => q.get('before')).map((q) => q.get('before'))[1]).toBe('c-2')
+    expect(screen.queryByRole('button', { name: 'Load older' })).toBeNull()
+    expect(screen.getAllByRole('row')).toHaveLength(505)
+  })
+
+  it('is not offered while the live page has room', async () => {
+    mockList([[row('a')]])
+    await renderApp(<Harness />)
+    await screen.findByRole('link', { name: 'Mock a' })
+    expect(screen.queryByRole('button', { name: 'Load older' })).toBeNull()
+  })
+})
+
 describe('clear log', () => {
   it('is offered to every signed-in user and empties the table after confirming', async () => {
     let cleared = false
@@ -224,7 +267,8 @@ const detail = (over: Record<string, unknown> = {}) => ({
 
 const misses = [
   {
-    stub: { id: 'stub-refund', name: 'Refund ok', owner: 'omar', integration: 'pay' },
+    stub: { id: 'stub-refund', name: 'Refund ok', owner: 'omar', integration: 'pay', endpoint: null },
+    keyValue: null,
     distance: 0.12,
     diffs: [
       { field: 'method', expected: 'equalTo POST', actual: 'POST', matched: true },
@@ -232,7 +276,17 @@ const misses = [
       { field: 'body', expected: 'matchesXPath //a', actual: null, matched: null },
     ],
   },
-  { stub: { id: 'stub-2', name: null, owner: null, integration: null }, distance: 0.4, diffs: [] },
+  { stub: { id: 'stub-2', name: null, owner: null, integration: null, endpoint: null }, keyValue: null, distance: 0.4, diffs: [] },
+]
+/** The closest near miss is a mock of the Payments "refund" endpoint, which keys on the paymentId path variable. */
+const endpointMisses = [
+  {
+    stub: { id: 'stub-p1', name: 'Refund — p-1', owner: 'omar', integration: 'pay', endpoint: 'refund' },
+    keyValue: 'p-2',
+    distance: 0.05,
+    diffs: [{ field: 'pathParam.paymentId', expected: 'equalTo p-1', actual: 'p-2', matched: false }],
+  },
+  ...misses,
 ]
 
 function mockDetail(nearMisses: unknown[] = misses) {
@@ -243,6 +297,16 @@ function mockDetail(nearMisses: unknown[] = misses) {
   )
   return calls
 }
+
+describe('recording proxy rows', () => {
+  it('label a request the recording forwarded with its target', async () => {
+    mockList([[row('r', { stubName: null, recordingProxy: true, forwardedTo: 'https://pay.example.com' })]])
+    await renderApp(<Harness />)
+    const cell = await screen.findByText('Recording → forwarded to', { exact: false })
+    expect(cell.textContent).toBe('Recording → forwarded to https://pay.example.com')
+    expect(screen.queryByText('Unnamed mock')).toBeNull()
+  })
+})
 
 describe('request drawer', () => {
   it('opens from the No match stamp and shows the request and the response', async () => {
@@ -268,6 +332,26 @@ describe('request drawer', () => {
     expect(create.getAttribute('href')).toBe('/mocks/new?from=b')
   })
 
+  it('"Create mock from this request" opens Simple on the closest endpoint with its key filled in', async () => {
+    mockDetail(endpointMisses)
+    await renderApp(<Harness initial={{ open: 'b' }} />)
+    const drawer = await screen.findByRole('dialog')
+    await within(drawer).findByRole('article', { name: 'Refund — p-1' })
+    const create = within(drawer).getByRole('link', { name: 'Create mock from this request' })
+    await waitFor(() => expect(create.getAttribute('href')).toBe('/mocks/new?integration=pay&endpoint=refund&key=p-2'))
+  })
+
+  it('each endpoint near miss offers "Make a mock for <value>"', async () => {
+    mockDetail(endpointMisses)
+    await renderApp(<Harness initial={{ open: 'b' }} />)
+    const card = await screen.findByRole('article', { name: 'Refund — p-1' })
+    const make = within(card).getByRole('link', { name: 'Make a mock for p-2' })
+    expect(make.getAttribute('href')).toBe('/mocks/new?integration=pay&endpoint=refund&key=p-2')
+    // A free-form mock has no endpoint key to fill in.
+    const other = screen.getByRole('article', { name: 'Refund ok' })
+    expect(within(other).queryByRole('link', { name: /Make a mock for/ })).toBeNull()
+  })
+
   it('explains the near misses: mismatches first, highlighted; unchecked rows say why', async () => {
     mockDetail()
     await renderApp(<Harness initial={{ open: 'b' }} />)
@@ -276,6 +360,8 @@ describe('request drawer', () => {
     expect(within(card).getByRole('link', { name: 'Refund ok' }).getAttribute('href')).toBe('/mocks/stub-refund')
     expect(within(card).getByText('omar')).toBeTruthy()
     expect(within(card).getByText('1 of 3 fields differ')).toBeTruthy()
+    expect(within(card).getByText('Expects urlPath equalTo /pay/refunds; this request had /pay/refund.')).toBeTruthy()
+    expect(within(card).getByText('Close')).toBeTruthy()
 
     const rows = within(card).getAllByRole('row').slice(1)
     expect(rows.map((r) => r.getAttribute('data-state'))).toEqual(['mismatch', 'match', 'unchecked'])
@@ -293,6 +379,31 @@ describe('request drawer', () => {
     mockDetail([])
     await renderApp(<Harness initial={{ open: 'b' }} />)
     expect(await screen.findByText('No mock comes close. Create one from this request.')).toBeTruthy()
+  })
+
+  it('a forwarding mock says where the request went; a call-back mock says what it calls', async () => {
+    mockList([[row('a')]])
+    const stubMapping = {
+      id: 'stub-a',
+      name: 'Pay passthrough',
+      request: {},
+      response: { proxyBaseUrl: 'http://pay.internal:8080', proxyUrlPrefixToRemove: '/pay' },
+      serveEventListeners: [{ name: 'webhook', parameters: { method: 'POST', url: 'http://my-app.test/hooks/paid' } }],
+    }
+    server.use(
+      http.get(`${BASE}/api/requests/a`, () =>
+        HttpResponse.json(
+          detail({ id: 'a', wasMatched: true, stubMapping, request: { ...detail().request, url: '/pay/a?x=1' }, response: { status: 502, headers: {}, body: '' } }),
+        ),
+      ),
+    )
+    await renderApp(<Harness initial={{ open: 'a' }} />)
+    const drawer = await screen.findByRole('dialog')
+    const where = await within(drawer).findByRole('region', { name: 'What the mock did' })
+    expect(within(where).getByText('http://pay.internal:8080/a?x=1')).toBeTruthy()
+    expect(where.textContent).toContain('Forwarded to http://pay.internal:8080/a?x=1 (502)')
+    expect(where.textContent).toContain('Calls back: POST http://my-app.test/hooks/paid — WireMock does not report the result')
+    expect(within(where).getByRole('link', { name: 'If a callback never arrives' }).getAttribute('href')).toBe('/guide#troubleshooting--a-webhook-never-arrives')
   })
 
   it('a matched request shows the mock it matched instead of near misses', async () => {
@@ -315,24 +426,26 @@ describe('new mock from a request', () => {
     return <NewMockPage search={search} onSearchChange={setSearch} />
   }
 
-  it('opens Advanced with the method, path and JSON body prefilled, and creates with POST', async () => {
+  it('opens the quick form with the method, path and JSON body prefilled, and creates with POST', async () => {
     let created: unknown
     server.use(
       http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
       http.get(`${BASE}/api/requests/b`, () => HttpResponse.json(detail())),
+      http.post(`${BASE}/api/mocks/preview`, async ({ request }) => HttpResponse.json(buildQuickStub((await request.json()) as QuickMockInput))),
       http.post(`${BASE}/api/mocks`, async ({ request }) => {
         created = await request.json()
         return HttpResponse.json({ id: 'new-1', ...(created as object) }, { status: 201 })
       }),
     )
     const { router } = await renderApp(<NewHarness />)
-    await screen.findByRole('tab', { name: 'Advanced', selected: true })
+    await screen.findByRole('tab', { name: 'Simple', selected: true })
+    expect((await screen.findByDisplayValue('/pay/refund')).tagName).toBe('INPUT')
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('tab', { name: 'Advanced' }))
     await waitFor(() => expect(jsonText()).toContain('/pay/refund'))
-    expect(JSON.parse(jsonText())).toEqual({
-      request: { method: 'POST', urlPath: '/pay/refund', bodyPatterns: [{ equalToJson: { amount: 12 } }] },
-      response: { status: 200 },
-    })
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Save mock' }))
+    expect(JSON.parse(jsonText()).request.bodyPatterns).toEqual([{ equalToJson: '{\n  "amount": 12\n}', ignoreExtraElements: true }])
+    await ue.click(screen.getByRole('tab', { name: 'Simple' }))
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
     await waitFor(() => expect(created).toBeTruthy())
     expect(created).toMatchObject({ request: { method: 'POST', urlPath: '/pay/refund' }, response: { status: 200 } })
     await waitFor(() => expect(router.state.location.pathname).toBe('/mocks/new-1'))
@@ -357,5 +470,22 @@ describe('count tool', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Count' }))
     expect(await within(dialog).findByText('Called 3 times')).toBeTruthy()
     expect(body).toEqual({ pattern: { method: 'GET', urlPath: '/pay/charge' } })
+  })
+})
+
+describe('load older: scan limit', () => {
+  it('says when the server stopped searching at the newest 10,000', async () => {
+    const at = (n: number) => new Date(Date.parse('2026-11-20T10:00:00.000Z') - n * 1000).toISOString()
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/requests`, ({ request }) => {
+        const q = new URL(request.url).searchParams
+        if (!q.get('before')) return HttpResponse.json(q.get('since') ? [] : Array.from({ length: 500 }, (_, n) => row(`r${n}`, { loggedAt: at(n) })))
+        return HttpResponse.json({ requests: [], nextCursor: null, scanLimitReached: true })
+      }),
+    )
+    await renderApp(<Harness />)
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Load older' }))
+    expect(await screen.findByText('// older requests beyond the newest 10,000 aren’t searched')).toBeTruthy()
   })
 })

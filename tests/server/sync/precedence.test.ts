@@ -36,12 +36,12 @@ test('tester mock beats a baseline key mock imported after it, after a restart, 
   expect(await answer()).toBe('tester')
 
   await env.wm.restart()
-  expect(await rt.reconciler.check()).toBe('synced')
+  expect(await rt.reconciler!.check()).toBe('synced')
   expect(await answer()).toBe('tester')
 
   expect(await importBundle('baseline')).toMatchObject({ unchanged: 1 })
   expect(await answer()).toBe('tester')
   expect(await importBundle('baseline v2')).toMatchObject({ updated: 1 })
   expect(await answer()).toBe('tester')
-  expect(await rt.reconciler.check()).toBe('ok')
+  expect(await rt.reconciler!.check()).toBe('ok')
 })

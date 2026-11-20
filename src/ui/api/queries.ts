@@ -1,14 +1,21 @@
-import { useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { keepPreviousData, queryOptions, type QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useT } from '@/ui/i18n'
-import type { SimpleMockInput } from '@/server/catalog/build'
-import type { AuditPage } from '@/server/audit/log'
+import type { QuickMockInput, SimpleMockInput } from '@/server/catalog/build'
+import type { AuditFilter, AuditViewPage } from '@/server/audit/view'
 import type { ImportReport } from '@/server/bundle/importer'
+import type { PublicConfig } from '@/server/http/handlers/config'
 import type { Endpoint, Integration } from '@/server/catalog/types'
+import type { MockPage } from '@/server/mocks/paging'
 import type { PublicUser } from '@/server/users/types'
 import type { NearMissView, RequestSummary } from '@/server/requests/journal'
+import type { TestRequestInput, TestRequestResult } from '@/server/wiremock/relay'
+import type { Scenario } from '@/server/scenarios/service'
+import type { AcceptResult, RecordingState, SnapshotInput, StartInput, RecordResult } from '@/server/recording/service'
+import type { Recording, RecordingSummary } from '@/server/recording/types'
+import type { AcceptItem } from '@/ui/lib/recording'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
 import { SESSION_KEY, apiFetch, type SessionData } from './client'
 
@@ -20,13 +27,19 @@ export type RequestFilter = {
   /** Only requests from the last N minutes. */
   windowMinutes?: number
 }
-export type MockFilter = { owner?: string; integration?: string; status?: string; q?: string }
+/** `scenario`: one scenario's mocks, or `*` for every mock that belongs to a scenario. */
+export type MockFilter = { owner?: string; integration?: string; status?: string; q?: string; scenario?: string }
+
+/** One page of the mocks list: `limit` rows (a scenario is one row) from row `offset`. */
+export type MockPageArgs = { limit: number; offset: number }
 
 /** Single source for every query key. Later tasks add their resources here. */
 export const queryKeys = {
   session: SESSION_KEY,
+  config: ['config'] as const,
   mocks: ['mocks'] as const,
   mockList: (filter: MockFilter) => ['mocks', 'list', filter] as const,
+  mockPage: (filter: MockFilter, page: MockPageArgs) => ['mocks', 'page', filter, page] as const,
   integrations: ['integrations'] as const,
   mock: (id: string) => ['mocks', 'detail', id] as const,
   endpoints: (integration: string) => ['integrations', integration, 'endpoints'] as const,
@@ -35,8 +48,13 @@ export const queryKeys = {
   requestList: (filter: RequestFilter) => ['requests', 'list', filter] as const,
   request: (id: string) => ['requests', 'detail', id] as const,
   nearMisses: (id: string) => ['requests', 'near-misses', id] as const,
+  recentUnmatched: ['requests', 'recent-unmatched'] as const,
   users: ['users'] as const,
   audit: ['audit'] as const,
+  scenarios: ['scenarios'] as const,
+  recordingState: ['recordings', 'state'] as const,
+  recordings: ['recordings', 'lists'] as const,
+  recording: (id: string) => ['recordings', 'lists', id] as const,
 } as const
 
 export const sessionQueryOptions = (fetchSession: () => Promise<SessionData> = defaultFetchSession) =>
@@ -50,6 +68,17 @@ export const sessionQueryOptions = (fetchSession: () => Promise<SessionData> = d
 function defaultFetchSession() {
   return apiFetch<SessionData>('/api/session', { redirectOnUnauthorized: false })
 }
+
+export type ServerConfig = PublicConfig
+
+/** How the server runs (store driver, …); it only changes with a restart, so it is never refetched. */
+export const serverConfigQueryOptions = (fetchConfig: () => Promise<ServerConfig> = () => apiFetch<ServerConfig>('/api/config')) =>
+  queryOptions({
+    queryKey: queryKeys.config,
+    queryFn: fetchConfig,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  })
 
 export function useSession() {
   return useQuery(sessionQueryOptions())
@@ -98,12 +127,28 @@ export function useMocks(filter: MockFilter, options: { enabled?: boolean } = {}
   })
 }
 
-export function useIntegrations() {
+/**
+ * One page of mocks (`GET /api/mocks?limit=&offset=`) for the mocks list. Callers that need every matching mock (a
+ * scenario's steps, Reset my mocks) use `useMocks`, which asks without `limit` and gets the whole list.
+ */
+export function useMockPage(filter: MockFilter, page: MockPageArgs, options: { enabled?: boolean } = {}) {
   return useQuery({
+    queryKey: queryKeys.mockPage(filter, page),
+    queryFn: () => apiFetch<MockPage>('/api/mocks', { query: { ...filter, ...page } }),
+    placeholderData: keepPreviousData,
+    enabled: options.enabled ?? true,
+  })
+}
+
+export const integrationsQueryOptions = () =>
+  queryOptions({
     queryKey: queryKeys.integrations,
     queryFn: () => apiFetch<Integration[]>('/api/integrations'),
     staleTime: 60_000,
   })
+
+export function useIntegrations() {
+  return useQuery(integrationsQueryOptions())
 }
 
 export function useDuplicateMock() {
@@ -141,20 +186,23 @@ export function useResetMine() {
   })
 }
 
-export function useMock(id: string) {
+export function useMock(id: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.mock(id),
     queryFn: () => apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(id)}`),
+    enabled: options.enabled ?? true,
   })
 }
 
-export function useEndpoints(integration: string | undefined) {
-  return useQuery({
-    queryKey: queryKeys.endpoints(integration ?? ''),
-    queryFn: () => apiFetch<Endpoint[]>(`/api/integrations/${encodeURIComponent(integration!)}/endpoints`),
-    enabled: Boolean(integration),
+export const endpointsQueryOptions = (integration: string) =>
+  queryOptions({
+    queryKey: queryKeys.endpoints(integration),
+    queryFn: () => apiFetch<Endpoint[]>(`/api/integrations/${encodeURIComponent(integration)}/endpoints`),
     staleTime: 60_000,
   })
+
+export function useEndpoints(integration: string | undefined) {
+  return useQuery({ ...endpointsQueryOptions(integration ?? ''), enabled: Boolean(integration) })
 }
 
 export type CatalogMockInput = { integration: string; endpoint: string; input: SimpleMockInput }
@@ -164,11 +212,16 @@ export type BuiltStub = Omit<StubMapping, 'id'>
 const catalogMockPath = ({ integration, endpoint }: CatalogMockInput) =>
   `/api/integrations/${encodeURIComponent(integration)}/endpoints/${encodeURIComponent(endpoint)}`
 
+/** What the Simple form previews: an endpoint mock, or a quick mock of a URL ("Mock a URL directly"). */
+export type PreviewArgs = CatalogMockInput | { quick: QuickMockInput }
+
 /** Builds the stub for a Simple form on the server without saving it. */
 export function usePreviewMock() {
   return useMutation({
-    mutationFn: (args: CatalogMockInput) =>
-      apiFetch<BuiltStub>(`${catalogMockPath(args)}/preview`, { method: 'POST', body: args.input }),
+    mutationFn: (args: PreviewArgs) =>
+      'quick' in args
+        ? apiFetch<BuiltStub>('/api/mocks/preview', { method: 'POST', body: args.quick })
+        : apiFetch<BuiltStub>(`${catalogMockPath(args)}/preview`, { method: 'POST', body: args.input }),
   })
 }
 
@@ -179,7 +232,11 @@ export function useCreateCatalogMock() {
       apiFetch<StubMapping>(`${catalogMockPath(args)}/mocks`, { method: 'POST', body: args.input }),
     onSuccess: async (stub) => {
       queryClient.setQueryData(queryKeys.mock(stub.id), stub)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' }),
+        // A mock can join, leave or change a scenario.
+        queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
+      ])
     },
   })
 }
@@ -191,7 +248,11 @@ export function useUpdateMock() {
       apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(id)}`, { method: 'PUT', body: { stub, version } }),
     onSuccess: async (stub) => {
       queryClient.setQueryData(queryKeys.mock(stub.id), stub)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' }),
+        // A mock can join, leave or change a scenario.
+        queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
+      ])
     },
   })
 }
@@ -221,7 +282,11 @@ export function useCreateMock() {
     mutationFn: (stub: BuiltStub) => apiFetch<StubMapping>('/api/mocks', { method: 'POST', body: stub }),
     onSuccess: async (stub) => {
       queryClient.setQueryData(queryKeys.mock(stub.id), stub)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' }),
+        // A mock can join, leave or change a scenario.
+        queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
+      ])
     },
   })
 }
@@ -316,6 +381,61 @@ export function useNearMisses(id: string | undefined, options: { enabled?: boole
   })
 }
 
+/** One older page of the request log (`GET /api/requests?before=…`): filtered server-side, newest first. */
+export type OlderRequestsPage = { requests: RequestSummary[]; nextCursor: string | null; scanLimitReached?: boolean }
+
+/** Where "Load older" starts: just before this row (its logged time and id, so rows in the same millisecond keep their place). */
+export function requestCursor(row: Pick<RequestSummary, 'loggedAt' | 'id'>): string {
+  return `${row.loggedAt}|${row.id}`
+}
+
+/**
+ * Older pages of the request log, below the live first page. Loading one freezes what is on screen (so rows the live page
+ * trims later stay put) and appends the page; live updates keep arriving on top. Starts over when `filter` changes or the
+ * log is cleared.
+ */
+export function useOlderRequests(filter: RequestFilter, shown: RequestSummary[]) {
+  const key = JSON.stringify(filter)
+  const [state, setState] = useState<{ key: string; rows: RequestSummary[]; cursor: string | null; limited?: boolean }>({ key, rows: [], cursor: null })
+  const current = state.key === key ? state : { key, rows: [], cursor: null, limited: false }
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+  const load = async () => {
+    const oldest = current.rows.at(-1) ?? shown.at(-1)
+    const before = current.rows.length > 0 ? current.cursor : oldest ? requestCursor(oldest) : null
+    if (!before) return
+    const { windowMinutes, ...rest } = filter
+    const since = windowMinutes ? new Date(Date.now() - windowMinutes * 60_000).toISOString() : undefined
+    setPending(true)
+    setError(null)
+    try {
+      const page = await apiFetch<OlderRequestsPage>('/api/requests', { query: { ...rest, since, before, limit: MAX_REQUEST_ROWS } })
+      setState((prev) => {
+        const base = prev.key === key ? prev.rows : []
+        return { key, rows: mergeAll([...shown, ...base], page.requests), cursor: page.nextCursor, limited: page.scanLimitReached === true }
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)))
+    } finally {
+      setPending(false)
+    }
+  }
+  const reset = () => setState({ key, rows: [], cursor: null })
+  /** Live rows on top of the loaded older ones, newest first, no cap. */
+  const rows = current.rows.length > 0 ? mergeAll(current.rows, shown) : shown
+  /** More may exist: the live page is full, or the last older page said so. */
+  const more = current.rows.length > 0 ? current.cursor !== null : shown.length >= MAX_REQUEST_ROWS
+  /** The server stopped looking: requests older than the newest 10,000 were not searched. */
+  const limited = current.limited === true
+  return { rows, loaded: current.rows.length > 0, more, limited, pending, error, load, reset }
+}
+
+function mergeAll(a: RequestSummary[], b: RequestSummary[]): RequestSummary[] {
+  const byId = new Map<string, RequestSummary>()
+  for (const r of [...a, ...b]) byId.set(r.id, r)
+  return [...byId.values()].sort(newestFirst)
+}
+
 /** Empties WireMock's request journal (for everyone). */
 export function useClearRequests() {
   const queryClient = useQueryClient()
@@ -326,7 +446,31 @@ export function useClearRequests() {
       const lists = { queryKey: [...queryKeys.requests, 'list'] }
       queryClient.setQueriesData<RequestSummary[]>(lists, [])
       await queryClient.invalidateQueries(lists)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.recentUnmatched })
     },
+  })
+}
+
+/** The window and refresh rate of the sidebar's unmatched-requests count. */
+export const RECENT_UNMATCHED_MINUTES = 15
+export const RECENT_UNMATCHED_POLL_MS = 15_000
+
+/**
+ * How many requests matched no mock in the last RECENT_UNMATCHED_MINUTES (a small count endpoint over WireMock's
+ * unmatched journal, capped at 100 for the "99+" badge). Refreshed every RECENT_UNMATCHED_POLL_MS only while the tab
+ * is visible; a failure just shows no count.
+ */
+export function useRecentUnmatchedCount(options: { enabled?: boolean } = {}) {
+  const visible = useDocumentVisible()
+  return useQuery({
+    queryKey: queryKeys.recentUnmatched,
+    queryFn: async () =>
+      (await apiFetch<{ count: number; capped: boolean }>('/api/requests/unmatched-count', { query: { minutes: RECENT_UNMATCHED_MINUTES } }))
+        .count,
+    enabled: options.enabled ?? true,
+    refetchInterval: visible ? RECENT_UNMATCHED_POLL_MS : false,
+    refetchIntervalInBackground: false,
+    retry: false,
   })
 }
 
@@ -334,6 +478,53 @@ export function useCountRequests() {
   return useMutation({
     mutationFn: (pattern: Record<string, unknown>) =>
       apiFetch<{ count: number }>('/api/requests/count', { method: 'POST', body: { pattern } }),
+  })
+}
+
+/** Sends one request to WireMock through the server relay (the browser never talks to WireMock itself). */
+export function useSendTestRequest() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: TestRequestInput) => apiFetch<TestRequestResult>('/api/test-request', { method: 'POST', body: input }),
+    // The test request is in WireMock's log now: an open request log (or its unmatched badge) picks it up straight away.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
+  })
+}
+
+// ── Scenarios ─────────────────────────────────────────────────────────────────
+
+/** How often the Scenarios page asks for the live states, while the tab is visible. */
+export const SCENARIO_POLL_MS = 2000
+
+/** Every scenario with its states, mocks and live state. `live` polls every SCENARIO_POLL_MS while the tab is visible. */
+export function useScenarios(options: { live?: boolean; enabled?: boolean } = {}) {
+  const visible = useDocumentVisible()
+  const polling = Boolean(options.live) && visible
+  return useQuery({
+    queryKey: queryKeys.scenarios,
+    queryFn: async () => (await apiFetch<{ scenarios: Scenario[] }>('/api/scenarios')).scenarios,
+    enabled: options.enabled ?? true,
+    refetchInterval: polling ? SCENARIO_POLL_MS : false,
+    refetchIntervalInBackground: false,
+  })
+}
+
+const scenarioPath = (name: string) => `/api/scenarios/${encodeURIComponent(name)}/state`
+
+export function useSetScenarioState() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, state }: { name: string; state: string }) => apiFetch<Scenario>(scenarioPath(name), { method: 'PUT', body: { state } }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
+  })
+}
+
+/** Resets one scenario (`name`) or, without a name, every scenario back to Started. */
+export function useResetScenarios() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (name?: string) => apiFetch<void>('/api/scenarios/reset', { method: 'POST', body: name === undefined ? {} : { name } }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
   })
 }
 
@@ -424,11 +615,12 @@ export function useDeleteUser() {
 
 export const AUDIT_PAGE_SIZE = 50
 
-export function useAudit() {
+/** The audit trail, newest first, filtered on the server (by actor, action group and UTC day). */
+export function useAudit(filter: AuditFilter = {}) {
   return useInfiniteQuery({
-    queryKey: queryKeys.audit,
+    queryKey: [...queryKeys.audit, filter],
     queryFn: ({ pageParam }) =>
-      apiFetch<AuditPage>('/api/audit', { query: { limit: AUDIT_PAGE_SIZE, cursor: pageParam } }),
+      apiFetch<AuditViewPage>('/api/audit', { query: { limit: AUDIT_PAGE_SIZE, cursor: pageParam, ...filter } }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   })
@@ -446,5 +638,99 @@ export function useImport() {
         queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
         queryClient.invalidateQueries({ queryKey: queryKeys.audit }),
       ]),
+  })
+}
+
+// ── Recording (spec A12) ─────────────────────────────────────────────────────────
+
+export const RECORDING_POLL_MS = 5000
+
+/** Whether WireMock is recording, polled while the tab is visible (the app-wide banner and the Recording page). */
+export function useRecordingState(options: { enabled?: boolean } = {}) {
+  const visible = useDocumentVisible()
+  return useQuery({
+    queryKey: queryKeys.recordingState,
+    queryFn: () => apiFetch<RecordingState>('/api/recordings/status'),
+    enabled: options.enabled ?? true,
+    refetchInterval: visible ? RECORDING_POLL_MS : false,
+    refetchIntervalInBackground: false,
+    retry: false,
+  })
+}
+
+export function useStartRecording() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: StartInput) => apiFetch<RecordingState>('/api/recordings/start', { method: 'POST', body: input }),
+    onSuccess: (state) => queryClient.setQueryData(queryKeys.recordingState, state),
+  })
+}
+
+export function useStopRecording() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiFetch<RecordResult>('/api/recordings/stop', { method: 'POST' }),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.recordingState }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
+      ]),
+  })
+}
+
+export function useSnapshot() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: SnapshotInput) => apiFetch<RecordResult>('/api/recordings/snapshot', { method: 'POST', body: input }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
+  })
+}
+
+/** Review lists waiting to be accepted (they expire after 24 hours): summaries, without their rows. */
+export function useRecordings(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.recordings,
+    queryFn: async () => (await apiFetch<{ recordings: RecordingSummary[] }>('/api/recordings')).recordings,
+    enabled: options.enabled ?? true,
+  })
+}
+
+/** One review list with its rows (404 once accepted, discarded or expired). */
+export function useRecording(id: string) {
+  return useQuery({
+    queryKey: queryKeys.recording(id),
+    queryFn: () => apiFetch<Recording>(`/api/recordings/${encodeURIComponent(id)}`),
+  })
+}
+
+export function useAcceptRecording() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, items, owner }: { id: string; items: AcceptItem[]; owner: 'me' | 'baseline' }) =>
+      apiFetch<AcceptResult>(`/api/recordings/${encodeURIComponent(id)}/accept`, { method: 'POST', body: { items, owner } }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
+        // Repeated requests are accepted as scenarios.
+        queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
+      ]),
+  })
+}
+
+/** Drops the given rows, or the whole review list when `ids` is left out. */
+export function useDiscardRecording() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ids }: { id: string; ids?: string[] }): Promise<Recording | null> => {
+      const path = `/api/recordings/${encodeURIComponent(id)}`
+      if (!ids) {
+        await apiFetch<void>(path, { method: 'DELETE' })
+        return null
+      }
+      return (await apiFetch<{ recording: Recording | null }>(`${path}/discard`, { method: 'POST', body: { ids } })).recording
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
   })
 }

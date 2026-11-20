@@ -9,7 +9,7 @@ export function LiveDot({ label, active = true, className }: { label: string; ac
     <span
       role="status"
       className={cn(
-        'inline-flex items-center gap-2 rounded-full border px-2.5 py-0.5 text-[10px] font-medium tracking-[0.14em] uppercase',
+        'inline-flex items-center gap-2 rounded-full border px-2.5 py-0.5 text-[11px] font-medium tracking-[0.14em] uppercase',
         active ? 'border-signal/25 bg-signal/5 text-signal-fg' : 'border-line bg-surface-2 text-muted-foreground',
         className,
       )}

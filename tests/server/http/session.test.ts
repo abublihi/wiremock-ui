@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'vitest'
 import { changePassword, getSession, login as loginHandler, logout } from '../../../src/server/http/handlers/session'
 import { createMock, listMocks } from '../../../src/server/http/handlers/mocks'
 import type { Runtime } from '../../../src/server/runtime'
-import { basic, login, req, startTestRuntime } from '../../helpers/http'
+import { STORELESS, basic, login, req, startTestRuntime } from '../../helpers/http'
 
 let env: Awaited<ReturnType<typeof startTestRuntime>>
 let rt: Runtime
@@ -67,7 +67,8 @@ test('basic auth with the bootstrap admin still works for scripts (no CSRF neede
   expect(created.status).toBe(201)
 })
 
-test('password change keeps the current session and drops the others', async () => {
+// WireMock-only mode refuses password changes (tests/server/none-mode.test.ts).
+test.skipIf(STORELESS)('password change keeps the current session and drops the others', async () => {
   await rt.users.create({ username: 'pw-user', password: 'password-1' }, 'ui-admin')
   const a = await login(rt, 'pw-user', 'password-1')
   const b = await login(rt, 'pw-user', 'password-1')

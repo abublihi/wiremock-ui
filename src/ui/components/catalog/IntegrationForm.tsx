@@ -16,6 +16,33 @@ import { useT } from '@/ui/i18n'
 type FieldName = 'key' | 'name' | 'prefix' | 'description'
 const FIELDS: readonly string[] = ['key', 'name', 'prefix', 'description']
 
+/** Lower-case letters, digits and dashes: what an integration or endpoint ID may hold (server rule). */
+export const KEY_RE = /^[a-z0-9][a-z0-9-]{0,62}$/
+
+/** An ID made from a name until the user types one: "Blog API" → "blog-api". */
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 63)
+    .replace(/-+$/, '')
+}
+
+type IntegrationForm = { key: string; name: string; prefix: string }
+type MessageKey = 'catalog.integration.keyRequired' | 'catalog.integration.keyInvalid' | 'catalog.integration.nameRequired' | 'catalog.integration.prefixInvalid'
+
+/** The fields the server would refuse, checked before sending (so a blank ID never reaches the API). */
+export function integrationProblems(form: IntegrationForm, adding: boolean): Partial<Record<'key' | 'name' | 'prefix', MessageKey>> {
+  const out: Partial<Record<'key' | 'name' | 'prefix', MessageKey>> = {}
+  const key = form.key.trim()
+  if (adding && key === '') out.key = 'catalog.integration.keyRequired'
+  else if (adding && !KEY_RE.test(key)) out.key = 'catalog.integration.keyInvalid'
+  if (form.name.trim() === '') out.name = 'catalog.integration.nameRequired'
+  if (!form.prefix.trim().startsWith('/')) out.prefix = 'catalog.integration.prefixInvalid'
+  return out
+}
+
 /** The form field a server validation message names ("prefix must start with /" → prefix), if any. */
 export function fieldOf(message: string): string | undefined {
   const word = /^(\w+)\b/.exec(message)?.[1]
@@ -63,16 +90,30 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
   })
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({})
   const [formError, setFormError] = useState<string | null>(null)
+  // A new integration's ID and prefix follow its name until the user types their own.
+  const [typed, setTyped] = useState({ key: Boolean(integration), prefix: Boolean(integration) })
 
   const set = (field: FieldName, value: string) => {
-    setForm((f) => ({ ...f, [field]: value }))
-    setErrors((e) => ({ ...e, [field]: undefined }))
+    setForm((f) => {
+      const next = { ...f, [field]: value }
+      if (field === 'name' && !typed.key) next.key = slugify(value)
+      if (field === 'name' && !typed.prefix) next.prefix = `/${slugify(value)}`
+      return next
+    })
+    if (field === 'key' || field === 'prefix') setTyped((t) => ({ ...t, [field]: true }))
+    setErrors((e) => ({ ...e, [field]: undefined, ...(field === 'name' ? { key: undefined, prefix: undefined } : {}) }))
+    setFormError(null)
   }
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     setErrors({})
     setFormError(null)
+    const problems = integrationProblems(form, !integration)
+    if (Object.keys(problems).length > 0) {
+      setErrors(Object.fromEntries(Object.entries(problems).map(([field, key]) => [field, t(key)])))
+      return
+    }
     // Fast path; the server refuses (409) an add over an existing key either way, even before the list loads.
     if (!integration && existing.data?.some((i) => i.key === form.key.trim())) {
       setErrors({ key: t('catalog.integration.keyTaken') })
@@ -94,7 +135,7 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
         setErrors({ key: t('catalog.integration.keyTaken') })
         return
       }
-      const field = error instanceof ApiError && error.status === 400 ? fieldOf(message) : undefined
+      const field = error instanceof ApiError && error.status === 400 ? fieldOf(error.field ?? message) : undefined
       if (field) setErrors({ [field]: message })
       else setFormError(message)
     }
@@ -131,9 +172,9 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
         </Alert>
       )}
       <FieldGroup className="gap-4">
-        {input('key', t('catalog.integration.key'), { mono: true, disabled: Boolean(integration), hint: integration ? undefined : t('catalog.integration.keyHint'), placeholder: 'nic' })}
+        {input('key', t('catalog.integration.key'), { mono: true, disabled: Boolean(integration), hint: integration ? undefined : t('catalog.integration.keyHint'), placeholder: 'blog' })}
         {input('name', t('catalog.integration.name'))}
-        {input('prefix', t('catalog.integration.prefix'), { mono: true, hint: t('catalog.integration.prefixHint'), placeholder: '/nic' })}
+        {input('prefix', t('catalog.integration.prefix'), { mono: true, hint: t('catalog.integration.prefixHint'), placeholder: '/blog' })}
         <Field data-invalid={Boolean(errors.description)}>
           <FieldLabel htmlFor={id('description')}>{t('catalog.integration.descriptionLabel')}</FieldLabel>
           <Textarea

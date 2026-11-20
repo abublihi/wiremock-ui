@@ -1,35 +1,25 @@
-import { useId, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { AlertCircleIcon, PlusIcon } from 'lucide-react'
+import { AlertCircleIcon, ArrowRightIcon, BookOpenIcon, PlusIcon, RotateCwIcon, TerminalIcon, WebhookIcon } from 'lucide-react'
 import type { LoggedEvent } from '@/server/wiremock/types'
-import { useRequest } from '@/ui/api/queries'
+import { useNearMisses, useRequest } from '@/ui/api/queries'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { StatusBadge } from '@/ui/components/common/StatusBadge'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/ui/components/ui/sheet'
 import { Skeleton } from '@/ui/components/ui/skeleton'
+import { TestPanel, copyCurl } from '@/ui/components/editor/TestPanel'
+import { useWiremockPublicUrl } from '@/ui/config'
 import { useT } from '@/ui/i18n'
-import { parseJsonBody } from '@/ui/lib/prefill'
-import { NearMissPanel } from './NearMissPanel'
+import { curlFromLoggedRequest } from '@/ui/lib/curl'
+import { callbacksOf, forwardedUrl } from '@/ui/lib/forwarding'
+import { topicId } from '@/ui/lib/guide'
+import { draftFromLoggedRequest } from '@/ui/lib/test-request'
+import { Body, HeaderTable, type Headers, Part, prettyBody } from './HttpParts'
+import { NearMissPanel, createMockSearch } from './NearMissPanel'
 import { NoMatchStamp } from './NoMatchStamp'
 import { LoggedTime } from './RequestTable'
-
-type Headers = Record<string, unknown> | undefined
-
-/** Header values as WireMock logs them: a string, a list, or `{ values: [...] }`. */
-function headerValue(value: unknown): string {
-  if (Array.isArray(value)) return value.map(headerValue).join(', ')
-  if (value && typeof value === 'object' && 'values' in value) return headerValue((value as { values: unknown }).values)
-  return String(value ?? '')
-}
-
-/** The body as text, JSON pretty-printed. */
-function prettyBody(body: string | undefined): string | null {
-  if (!body) return null
-  const json = parseJsonBody(body)
-  return json ? JSON.stringify(json, null, 2) : body
-}
 
 /** The request detail drawer: the near-miss explanation (unmatched) or the matching mock, then request, response and timing. */
 export function RequestDrawer({ id, onClose }: { id: string | undefined; onClose: () => void }) {
@@ -43,6 +33,10 @@ export function RequestDrawer({ id, onClose }: { id: string | undefined; onClose
 function DrawerBody({ id }: { id: string }) {
   const t = useT()
   const event = useRequest(id)
+  const publicUrl = useWiremockPublicUrl()
+  const [resending, setResending] = useState(false)
+  // Shares the near-miss panel's query: the closest near miss decides where "Create mock" goes.
+  const misses = useNearMisses(id, { enabled: event.data ? !event.data.wasMatched : false })
 
   if (event.isPending) {
     return (
@@ -82,7 +76,7 @@ function DrawerBody({ id }: { id: string }) {
   return (
     <>
       <SheetHeader className="gap-2 border-b border-line pe-12">
-        <p className="text-[9.5px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">— {t('request.title')}</p>
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">— {t('request.title')}</p>
         <SheetTitle className="flex min-w-0 items-center gap-2 text-sm">
           <MethodBadge method={e.request.method} />
           <span dir="ltr" className="min-w-0 font-mono font-medium wrap-anywhere">
@@ -113,6 +107,7 @@ function DrawerBody({ id }: { id: string }) {
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto px-4 py-4">
         {!e.wasMatched && <NearMissPanel requestId={id} />}
+        {e.wasMatched && <WhatItDid event={e} status={status} />}
         <Part title={t('request.request')}>
           <HeaderTable headers={e.request.headers} />
           <Body text={prettyBody(e.request.body)} />
@@ -129,73 +124,69 @@ function DrawerBody({ id }: { id: string }) {
         <Timing event={e} />
       </div>
 
-      <SheetFooter className="border-t border-line sm:flex-row sm:justify-end">
+      <SheetFooter className="border-t border-line sm:flex-row sm:flex-wrap sm:justify-end">
+        <Button variant="outline" onClick={() => void copyCurl(publicUrl === undefined ? undefined : curlFromLoggedRequest(e, publicUrl), t)}>
+          <TerminalIcon data-icon="inline-start" />
+          {t('curl.copy')}
+        </Button>
+        <Button variant="outline" onClick={() => setResending(true)}>
+          <RotateCwIcon data-icon="inline-start" />
+          {t('request.resend')}
+        </Button>
         <Button asChild>
-          <Link to="/mocks/new" search={{ from: id }}>
+          <Link to="/mocks/new" search={e.wasMatched ? { from: id } : createMockSearch(id, misses.data?.[0])}>
             <PlusIcon data-icon="inline-start" />
             {t('request.createMock')}
           </Link>
         </Button>
       </SheetFooter>
+      <TestPanel open={resending} onOpenChange={setResending} initial={draftFromLoggedRequest(e)} variant="resend" />
     </>
   )
 }
 
-function Part({ title, children }: { title: string; children: ReactNode }) {
-  const headingId = useId()
-  return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <h3 id={headingId} className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-        <span aria-hidden>— </span>
-        {title}
-      </h3>
-      {children}
-    </section>
-  )
-}
-
-function HeaderTable({ headers }: { headers: Headers }) {
+/** For a mock that forwards or calls back: where the request went, and what it calls (WireMock reports no result). */
+function WhatItDid({ event, status }: { event: LoggedEvent; status: number | undefined }) {
   const t = useT()
-  const entries = Object.entries(headers ?? {})
-  if (entries.length === 0) return <p className="text-[11px] text-muted-foreground">{t('request.noHeaders')}</p>
+  const forwarded = forwardedUrl(event.stubMapping, event.request.url)
+  const callbacks = callbacksOf(event.stubMapping)
+  if (!forwarded && callbacks.length === 0) return null
   return (
-    <div className="overflow-hidden rounded-md border border-line">
-      <table className="w-full table-fixed text-xs">
-        <caption className="sr-only">{t('request.headers')}</caption>
-        <colgroup>
-          <col className="w-2/5" />
-          <col />
-        </colgroup>
-        <thead className="sr-only">
-          <tr>
-            <th scope="col">{t('request.header')}</th>
-            <th scope="col">{t('request.value')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map(([name, value]) => (
-            <tr key={name} className="border-t border-line first:border-t-0">
-              <th scope="row" dir="ltr" className="bg-surface-2/50 px-2.5 py-1.5 text-start align-top font-mono font-normal break-all text-muted-foreground">
-                {name}
-              </th>
-              <td dir="ltr" className="px-2.5 py-1.5 font-mono break-all">
-                {headerValue(value)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function Body({ text }: { text: string | null }) {
-  const t = useT()
-  if (text === null) return <p className="text-[11px] text-muted-foreground">{t('request.noBody')}</p>
-  return (
-    <pre dir="ltr" aria-label={t('request.body')} className="max-h-80 overflow-auto rounded-md border border-line bg-canvas p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">
-      {text}
-    </pre>
+    <Part title={t('request.didTitle')}>
+      <ul className="flex flex-col gap-2 text-sm">
+        {forwarded && (
+          <li className="flex items-start gap-2">
+            <ArrowRightIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-signal-fg" />
+            <span className="min-w-0">
+              {t('request.forwardedTo')}{' '}
+              <code dir="ltr" className="font-mono wrap-anywhere">
+                {forwarded}
+              </code>
+              {typeof status === 'number' && ` (${status})`}
+            </span>
+          </li>
+        )}
+        {callbacks.map((c, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <WebhookIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-hazard-fg" />
+            <span className="min-w-0">
+              {t('request.callsBack')}{' '}
+              <code dir="ltr" className="font-mono wrap-anywhere">
+                {c.method} {c.url}
+              </code>
+              {' — '}
+              <span className="text-muted-foreground">{t('request.callbackUnreported')}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {callbacks.length > 0 && (
+        <Link to="/guide" hash={topicId('troubleshooting', 'A webhook never arrives')} className="flex w-fit items-center gap-1.5 text-xs text-signal-fg hover:underline">
+          <BookOpenIcon aria-hidden className="size-3.5" />
+          {t('request.callbackHelp')}
+        </Link>
+      )}
+    </Part>
   )
 }
 

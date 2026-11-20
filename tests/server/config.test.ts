@@ -21,7 +21,13 @@ test('config picks redis when REDIS_URL is set, unless STORE_DRIVER says otherwi
   expect(loadConfig({ ...base, STORE_DRIVER: 'sqlite', SQLITE_PATH: '/data/x.db' })).toMatchObject({ storeDriver: 'sqlite', sqlitePath: '/data/x.db' })
 })
 test('rejects an unknown STORE_DRIVER', () => {
-  expect(() => loadConfig({ ...base, STORE_DRIVER: 'mongo' })).toThrow('STORE_DRIVER must be "redis" or "sqlite", got "mongo"')
+  expect(() => loadConfig({ ...base, STORE_DRIVER: 'mongo' })).toThrow('STORE_DRIVER must be "redis", "sqlite" or "none", got "mongo"')
+})
+test('STORE_DRIVER=none (WireMock-only mode) must be chosen explicitly and needs no Redis', () => {
+  const { REDIS_URL, ...rest } = base
+  expect(loadConfig({ ...rest, STORE_DRIVER: 'none' })).toMatchObject({ storeDriver: 'none' })
+  expect(loadConfig({ ...base, STORE_DRIVER: 'none' })).toMatchObject({ storeDriver: 'none' })
+  expect(loadConfig(rest).storeDriver).toBe('sqlite')
 })
 test('rejects non-positive SYNC_INTERVAL_SECONDS', () => {
   expect(() => loadConfig({ ...base, SYNC_INTERVAL_SECONDS: '0' })).toThrow(/SYNC_INTERVAL_SECONDS/)
@@ -46,4 +52,19 @@ test('parses TRUST_PROXY/SEED_PRUNE booleans and rejects "yes"', () => {
   expect(() => loadConfig({ ...base, TRUST_PROXY: 'yes' })).toThrow(/TRUST_PROXY/)
   expect(() => loadConfig({ ...base, SEED_PRUNE: 'yes' })).toThrow(/SEED_PRUNE/)
   expect(loadConfig({ ...base, PUBLIC_UI_URL: 'https://ui.example', SEED_PATH: '/seed' })).toMatchObject({ publicUiUrl: 'https://ui.example', seedPath: '/seed' })
+})
+test('WIREMOCK_PUBLIC_URL defaults to WIREMOCK_URL and must be an http(s) URL', () => {
+  expect(loadConfig(base).wiremockPublicUrl).toBe('http://localhost:8080')
+  expect(loadConfig({ ...base, WIREMOCK_URL: 'http://wiremock:8080/' }).wiremockPublicUrl).toBe('http://wiremock:8080')
+  expect(loadConfig({ ...base, WIREMOCK_PUBLIC_URL: 'https://mocks.test.example/' }).wiremockPublicUrl).toBe('https://mocks.test.example')
+  expect(() => loadConfig({ ...base, WIREMOCK_PUBLIC_URL: 'mocks.test.example' })).toThrow('WIREMOCK_PUBLIC_URL must be an http:// or https:// URL')
+  expect(() => loadConfig({ ...base, WIREMOCK_PUBLIC_URL: 'ftp://mocks.test.example' })).toThrow('WIREMOCK_PUBLIC_URL must be an http:// or https:// URL')
+})
+test('RECORDING_ALLOWED defaults to true; false or 0 turns recording off; anything else is refused', () => {
+  expect(loadConfig(base).recordingAllowed).toBe(true)
+  expect(loadConfig({ ...base, RECORDING_ALLOWED: 'false' }).recordingAllowed).toBe(false)
+  expect(loadConfig({ ...base, RECORDING_ALLOWED: '0' }).recordingAllowed).toBe(false)
+  expect(loadConfig({ ...base, RECORDING_ALLOWED: 'TRUE' }).recordingAllowed).toBe(true)
+  expect(loadConfig({ ...base, RECORDING_ALLOWED: '' }).recordingAllowed).toBe(true)
+  expect(() => loadConfig({ ...base, RECORDING_ALLOWED: 'off' })).toThrow(/RECORDING_ALLOWED/)
 })

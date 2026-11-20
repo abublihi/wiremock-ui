@@ -1,0 +1,64 @@
+{
+  "integrations": [
+    { "key": "blog", "name": "Blog API", "prefix": "/blog", "description": "A small posts service (JSONPlaceholder style)." }
+  ],
+  "catalog": [
+    {
+      "integration": "blog",
+      "key": "list-posts",
+      "name": "List posts",
+      "method": "GET",
+      "path": "/posts",
+      "pathType": "exact",
+      "lookup": { "location": "query", "expression": "userId" },
+      "contentType": "json",
+      "allowedStatuses": [200],
+      "exampleResponses": {
+        "200": "[{\"id\":42,\"userId\":7,\"title\":\"Hello from the mock\"}]"
+      },
+      "description": "Lists one user's posts."
+    },
+    {
+      "integration": "blog",
+      "key": "get-post",
+      "name": "Get post",
+      "method": "GET",
+      "path": "/posts/{id}",
+      "pathType": "template",
+      "lookup": { "location": "path", "expression": "id" },
+      "contentType": "json",
+      "allowedStatuses": [200, 404],
+      "exampleResponses": {
+        "200": "{\"id\":42,\"userId\":7,\"title\":\"Hello from the mock\",\"body\":\"A post served by WireMock.\"}",
+        "404": "{\"error\":\"post not found\"}"
+      },
+      "description": "Reads one post by its id."
+    },
+    {
+      "integration": "blog",
+      "key": "create-post",
+      "name": "Create post",
+      "method": "POST",
+      "path": "/posts",
+      "pathType": "exact",
+      "lookup": { "location": "jsonPath", "expression": "$.userId" },
+      "contentType": "json",
+      "allowedStatuses": [200, 400],
+      "exampleRequest": "{\"userId\":7,\"title\":\"Hello\",\"body\":\"My first post.\"}",
+      "exampleResponses": {
+        "200": "{\"id\":101,\"userId\":7,\"title\":\"Hello from the mock\"}",
+        "400": "{\"error\":\"title is required\"}"
+      },
+      "description": "Creates a post for a user."
+    }
+  ],
+  "mocks": [
+    {
+      "id": "6f0f8a52-2b1f-4c43-9d3e-0b7c2c1f0e01",
+      "name": "Blog health (baseline)",
+      "request": { "method": "GET", "urlPath": "/blog/health" },
+      "response": { "status": 200, "jsonBody": { "status": "up" }, "headers": { "Content-Type": "application/json" } },
+      "metadata": { "wiremockUi": { "integration": "blog" } }
+    }
+  ]
+}

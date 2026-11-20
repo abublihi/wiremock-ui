@@ -12,11 +12,11 @@ import {
 } from '../../../src/server/http/handlers/catalog'
 import { createMock } from '../../../src/server/http/handlers/mocks'
 import type { Runtime } from '../../../src/server/runtime'
-import { login, req, startTestRuntime } from '../../helpers/http'
+import { login, req, signIn, startTestRuntime } from '../../helpers/http'
 
 let env: Awaited<ReturnType<typeof startTestRuntime>>
 let rt: Runtime
-type Session = { cookie: string; csrf: string }
+type Session = { cookie: string; csrf: string; username?: string }
 let admin: Session
 let developer: Session
 let tester: Session
@@ -37,11 +37,9 @@ const endpointBody = (extra: Record<string, unknown> = {}) => ({
 beforeAll(async () => {
   env = await startTestRuntime()
   rt = env.rt
-  await rt.users.create({ username: 'dev1', password: 'password-1' }, 'ui-admin')
-  await rt.users.create({ username: 'tess', password: 'password-1' }, 'ui-admin')
   admin = await login(rt, 'ui-admin', 'ui-admin-pass')
-  developer = await login(rt, 'dev1', 'password-1')
-  tester = await login(rt, 'tess', 'password-1')
+  developer = await signIn(rt, 'dev1')
+  tester = await signIn(rt, 'tess')
 }, 120_000)
 
 afterAll(async () => {
@@ -54,7 +52,7 @@ const putInt = (s: Session, key: string, body: unknown = { name: 'Payments', pre
 test('any signed-in user writes and deletes catalog entries', async () => {
   const ok = await putInt(tester, 'roles')
   expect(ok.status).toBe(200)
-  expect(await ok.json()).toMatchObject({ key: 'roles', name: 'Payments', prefix: '/pay', updatedBy: 'tess' })
+  expect(await ok.json()).toMatchObject({ key: 'roles', name: 'Payments', prefix: '/pay', updatedBy: tester.username })
   const del = await deleteIntegration(rt, req('/api/integrations/roles', 'DELETE', undefined, as(developer)), { key: 'roles' })
   expect(del.status).toBe(204)
   expect((await listIntegrations(rt, req('/api/integrations', 'GET', undefined, as(tester)))).status).toBe(200)
@@ -74,11 +72,11 @@ test('endpoint CRUD over HTTP, body key mismatch → 400, validation → 400, un
 
   const bad = await putEndpoint(rt, req(path, 'PUT', endpointBody({ path: 'users' }), as(developer)), params)
   expect(bad.status).toBe(400)
-  expect(await bad.json()).toEqual({ error: 'path must start with /' })
+  expect(await bad.json()).toEqual({ error: 'path must start with /', field: 'path' })
 
   const created = await putEndpoint(rt, req(path, 'PUT', endpointBody(), as(developer)), params)
   expect(created.status).toBe(200)
-  expect(await created.json()).toMatchObject({ integration: 'crud', key: 'get-user', updatedBy: 'dev1' })
+  expect(await created.json()).toMatchObject({ integration: 'crud', key: 'get-user', updatedBy: developer.username })
   const got = await getEndpoint(rt, req(path, 'GET', undefined, as(tester)), params)
   expect((await got.json()).name).toBe('Get user')
   const list = await listEndpoints(rt, req('/api/integrations/crud/endpoints', 'GET', undefined, as(tester)), { key: 'crud' })

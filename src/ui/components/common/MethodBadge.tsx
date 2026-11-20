@@ -17,7 +17,7 @@ export function MethodBadge({ method, className }: { method: string; className?:
   return (
     <span
       className={cn(
-        'inline-flex h-5 shrink-0 items-center rounded-sm border px-1.5 font-mono text-[10px] font-semibold tracking-wide transition-shadow hover:shadow-[0_0_8px_-1px_currentColor]',
+        'inline-flex h-5 shrink-0 items-center rounded-sm border px-1.5 font-mono text-[11px] font-semibold tracking-wide transition-shadow hover:shadow-[0_0_8px_-1px_currentColor]',
         METHOD_CLASS[name] ?? MUTED,
         className,
       )}

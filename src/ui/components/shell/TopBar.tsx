@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useRouterState } from '@tanstack/react-router'
-import { MenuIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { CopyIcon, MenuIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { toast } from 'sonner'
+import { useWiremockPublicUrl } from '@/ui/config'
+import { copyText } from '@/ui/lib/clipboard'
 import type { PublicUser } from '@/server/users/types'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -14,8 +17,9 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/ui/components/ui/sheet'
 import { useT } from '@/ui/i18n'
 import { THEMES, isTheme, useTheme, type Theme } from '@/ui/theme'
+import { HelpPanel } from '@/ui/components/guide/HelpPanel'
 import { Brand } from './Brand'
-import { Rail, type NavItem } from './Rail'
+import { Rail, type NavCounts, type NavItem } from './Rail'
 import { UserMenu } from './UserMenu'
 
 export { Brand } from './Brand'
@@ -50,17 +54,19 @@ export function ThemeMenu() {
 /** Brand, navigation and the signed-in user: the desktop sidebar and the mobile nav sheet. */
 export function SidebarContent({
   nav,
+  counts,
   user,
   onNavigate,
 }: {
   nav: NavItem[]
+  counts?: NavCounts
   user: PublicUser | null
   onNavigate?: () => void
 }) {
   return (
     <>
       <div className="flex-1 overflow-y-auto">
-        <Rail nav={nav} onNavigate={onNavigate} />
+        <Rail nav={nav} counts={counts} onNavigate={onNavigate} />
       </div>
       {user && (
         <div className="border-t border-line/60 p-3">
@@ -71,7 +77,35 @@ export function SidebarContent({
   )
 }
 
-export function TopBar({ nav, user }: { nav: NavItem[]; user: PublicUser | null }) {
+/** WireMock's address as apps and curl reach it (WIREMOCK_PUBLIC_URL): shown in the top bar, one click copies it. */
+function WireMockAddress() {
+  const t = useT()
+  const url = useWiremockPublicUrl()
+  if (!url) return null
+  const copy = async () => {
+    try {
+      await copyText(url)
+      toast.success(t('shell.wiremockCopied'))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('error.generic'))
+    }
+  }
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="hidden max-w-64 font-mono text-xs text-muted-foreground lg:inline-flex"
+      aria-label={t('shell.wiremockAddress', { url })}
+      title={t('shell.wiremockAddress', { url })}
+      onClick={() => void copy()}
+    >
+      <CopyIcon data-icon="inline-start" />
+      <span className="truncate">{url.replace(/^https?:\/\//, '')}</span>
+    </Button>
+  )
+}
+
+export function TopBar({ nav, counts, user }: { nav: NavItem[]; counts?: NavCounts; user: PublicUser | null }) {
   const t = useT()
   const [navOpen, setNavOpen] = useState(false)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
@@ -89,17 +123,19 @@ export function TopBar({ nav, user }: { nav: NavItem[]; user: PublicUser | null 
               <Brand caption />
             </SheetTitle>
           </SheetHeader>
-          <SidebarContent nav={nav} user={user} onNavigate={() => setNavOpen(false)} />
+          <SidebarContent nav={nav} counts={counts} user={user} onNavigate={() => setNavOpen(false)} />
         </SheetContent>
       </Sheet>
       <span className="md:hidden">
         <Brand />
       </span>
       {/* A shell prompt with the current path: decoration, the page title says where you are. */}
-      <p aria-hidden className="hidden truncate text-[11px] text-muted-foreground md:block">
+      <p aria-hidden className="hidden truncate text-xs text-muted-foreground md:block">
         <span className="text-signal-fg">$</span> cd ~{pathname}
       </p>
       <div className="ms-auto flex items-center gap-1">
+        <WireMockAddress />
+        <HelpPanel />
         <ThemeMenu />
       </div>
     </header>

@@ -1,0 +1,333 @@
+{
+  "integrations": [
+    {
+      "key": "blog",
+      "name": "Blog API",
+      "prefix": "/blog",
+      "description": "A small posts service (JSONPlaceholder style)."
+    },
+    {
+      "key": "orders",
+      "name": "Orders API",
+      "prefix": "/orders",
+      "description": "Orders and their delivery status."
+    }
+  ],
+  "catalog": [
+    {
+      "integration": "blog",
+      "key": "list-posts",
+      "name": "List posts",
+      "method": "GET",
+      "path": "/posts",
+      "pathType": "exact",
+      "lookup": {
+        "location": "query",
+        "expression": "userId"
+      },
+      "contentType": "json",
+      "exampleResponses": {
+        "200": "[{\"id\":42,\"userId\":7,\"title\":\"Hello from the mock\"}]"
+      },
+      "allowedStatuses": [
+        200
+      ],
+      "description": "Lists one user's posts."
+    },
+    {
+      "integration": "blog",
+      "key": "get-post",
+      "name": "Get post",
+      "method": "GET",
+      "path": "/posts/{id}",
+      "pathType": "template",
+      "lookup": {
+        "location": "path",
+        "expression": "id"
+      },
+      "contentType": "json",
+      "exampleResponses": {
+        "200": "{\"id\":42,\"userId\":7,\"title\":\"Hello from the mock\",\"body\":\"A post served by WireMock.\"}",
+        "404": "{\"error\":\"post not found\"}"
+      },
+      "allowedStatuses": [
+        200,
+        404
+      ],
+      "description": "Reads one post by its id."
+    },
+    {
+      "integration": "blog",
+      "key": "create-post",
+      "name": "Create post",
+      "method": "POST",
+      "path": "/posts",
+      "pathType": "exact",
+      "lookup": {
+        "location": "jsonPath",
+        "expression": "$.userId"
+      },
+      "contentType": "json",
+      "exampleRequest": "{\"userId\":7,\"title\":\"Hello\",\"body\":\"My first post.\"}",
+      "exampleResponses": {
+        "200": "{\"id\":101,\"userId\":7,\"title\":\"Hello from the mock\"}",
+        "400": "{\"error\":\"title is required\"}"
+      },
+      "allowedStatuses": [
+        200,
+        400
+      ],
+      "description": "Creates a post for a user."
+    },
+    {
+      "integration": "orders",
+      "key": "get-order",
+      "name": "Get order",
+      "method": "GET",
+      "path": "/{orderId}",
+      "pathType": "template",
+      "lookup": {
+        "location": "path",
+        "expression": "orderId"
+      },
+      "contentType": "json",
+      "exampleResponses": {
+        "200": "{\"orderId\":\"1001\",\"status\":\"pending\",\"items\":[{\"sku\":\"MUG-01\",\"quantity\":2}]}",
+        "404": "{\"error\":\"order not found\"}"
+      },
+      "allowedStatuses": [
+        200,
+        404
+      ],
+      "description": "Reads one order and its delivery status."
+    }
+  ],
+  "mocks": [
+    {
+      "id": "36bfd613-388f-4f0d-854b-fb94b247794f",
+      "name": "Get post 42",
+      "priority": 5,
+      "request": {
+        "method": "GET",
+        "urlPathTemplate": "/blog/posts/{id}",
+        "pathParameters": {
+          "id": {
+            "equalTo": "42"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "id": 42,
+          "userId": 7,
+          "title": "Hello from the mock",
+          "body": "A post served by WireMock."
+        }
+      },
+      "metadata": {
+        "wiremockUi": {
+          "integration": "blog",
+          "endpoint": "get-post"
+        }
+      }
+    },
+    {
+      "id": "c87c22cd-aaac-4fe2-baef-a0a6f7687eaa",
+      "name": "Get post — any other id",
+      "priority": 10,
+      "request": {
+        "method": "GET",
+        "urlPathTemplate": "/blog/posts/{id}"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "error": "post not found"
+        }
+      },
+      "metadata": {
+        "wiremockUi": {
+          "integration": "blog",
+          "endpoint": "get-post"
+        }
+      }
+    },
+    {
+      "id": "52552107-7a53-4c89-b3cd-31ea8aca77a6",
+      "name": "Posts of user 7",
+      "priority": 5,
+      "request": {
+        "method": "GET",
+        "urlPath": "/blog/posts",
+        "queryParameters": {
+          "userId": {
+            "equalTo": "7"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": [
+          {
+            "id": 42,
+            "userId": 7,
+            "title": "Hello from the mock"
+          },
+          {
+            "id": 43,
+            "userId": 7,
+            "title": "A second post"
+          }
+        ]
+      },
+      "metadata": {
+        "wiremockUi": {
+          "integration": "blog",
+          "endpoint": "list-posts"
+        }
+      }
+    },
+    {
+      "id": "5882d0ef-f2a4-45aa-aaea-34fe39acef29",
+      "name": "Create post for user 7",
+      "priority": 5,
+      "request": {
+        "method": "POST",
+        "urlPath": "/blog/posts",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.userId",
+              "equalTo": "7"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "id": 101,
+          "userId": 7,
+          "title": "Hello from the mock"
+        }
+      },
+      "metadata": {
+        "wiremockUi": {
+          "integration": "blog",
+          "endpoint": "create-post"
+        }
+      }
+    },
+    {
+      "id": "04f00584-b554-4541-9e83-cf1b56b2fe78",
+      "name": "order-1001 — Started",
+      "priority": 5,
+      "request": {
+        "method": "GET",
+        "urlPathTemplate": "/orders/{orderId}",
+        "pathParameters": {
+          "orderId": {
+            "equalTo": "1001"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "orderId": "1001",
+          "status": "pending"
+        }
+      },
+      "scenarioName": "order-1001",
+      "requiredScenarioState": "Started",
+      "newScenarioState": "shipped",
+      "metadata": {
+        "wiremockUi": {
+          "integration": "orders",
+          "endpoint": "get-order"
+        }
+      }
+    },
+    {
+      "id": "7c30a5d8-842f-4b64-b7ad-6fb200699266",
+      "name": "order-1001 — shipped",
+      "priority": 5,
+      "request": {
+        "method": "GET",
+        "urlPathTemplate": "/orders/{orderId}",
+        "pathParameters": {
+          "orderId": {
+            "equalTo": "1001"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "orderId": "1001",
+          "status": "shipped"
+        }
+      },
+      "scenarioName": "order-1001",
+      "requiredScenarioState": "shipped",
+      "newScenarioState": "delivered",
+      "metadata": {
+        "wiremockUi": {
+          "integration": "orders",
+          "endpoint": "get-order"
+        }
+      }
+    },
+    {
+      "id": "1b934017-1dd3-4f1c-93b1-6f82d00163fb",
+      "name": "order-1001 — delivered",
+      "priority": 5,
+      "request": {
+        "method": "GET",
+        "urlPathTemplate": "/orders/{orderId}",
+        "pathParameters": {
+          "orderId": {
+            "equalTo": "1001"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "orderId": "1001",
+          "status": "delivered"
+        }
+      },
+      "scenarioName": "order-1001",
+      "requiredScenarioState": "delivered",
+      "metadata": {
+        "wiremockUi": {
+          "integration": "orders",
+          "endpoint": "get-order"
+        }
+      }
+    }
+  ]
+}

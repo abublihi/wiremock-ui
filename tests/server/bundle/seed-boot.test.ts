@@ -25,7 +25,7 @@ test('SEED_PATH folder is imported at boot; a bad seed fails the boot', async ()
       expect(mock.metadata?.wiremockUi).toMatchObject({ owner: 'baseline', source: 'seed', updatedBy: 'system' })
       expect(await (await fetch(`${wm.url}/seedpay/charges/1`)).text()).toBe('seeded')
     } finally {
-      rt.reconciler.stop()
+      rt.reconciler?.stop()
       await rt.stores.close()
     }
     await expect(bootRuntime({ ...env, SEED_PATH: resolve('tests/fixtures/missing') })).rejects.toBeInstanceOf(ConfigError)
@@ -52,7 +52,7 @@ test('seeding a baseline mock leaves an existing tester mock with the same match
     const first = await bootRuntime(env)
     const tester = await first.users.create({ username: 'seed-tester', password: 'password-1' }, 'ui-admin')
     await first.mocks.create({ request: { method: 'GET', urlPath: '/seedpay/charges/1' }, response: { status: 200, body: 'mine' } }, tester)
-    first.reconciler.stop()
+    first.reconciler?.stop()
     await first.stores.close()
     expect(warn.mock.calls.some(([, msg]) => String(msg).includes('content-derived'))).toBe(false)
 
@@ -64,12 +64,12 @@ test('seeding a baseline mock leaves an existing tester mock with the same match
       const hint = warn.mock.calls.find(([, msg]) => String(msg).includes('content-derived'))
       expect(hint?.[0]).toMatchObject({ count: 1 })
     } finally {
-      second.reconciler.stop()
+      second.reconciler?.stop()
       await second.stores.close()
     }
     warn.mockClear()
     const pruned = await bootRuntime({ ...env, SEED_PATH: resolve('tests/fixtures/bundle'), SEED_PRUNE: 'true' })
-    pruned.reconciler.stop()
+    pruned.reconciler?.stop()
     await pruned.stores.close()
     expect(warn.mock.calls.some(([, msg]) => String(msg).includes('content-derived'))).toBe(false)
   } finally {

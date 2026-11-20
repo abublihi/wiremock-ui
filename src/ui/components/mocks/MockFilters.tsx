@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { SearchIcon } from 'lucide-react'
+import { SearchIcon, WorkflowIcon } from 'lucide-react'
 import type { Integration } from '@/server/catalog/types'
 import { Input } from '@/ui/components/ui/input'
+import { Toggle } from '@/ui/components/ui/toggle'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
+import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 
-export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string }
+/** `scenarios: 'only'`: only mocks that belong to a scenario (the "Scenario mocks" chip). `page`: the list page, from 1. */
+export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string; scenarios?: 'only'; page?: number }
 
 const ANY = '__any__'
 const STATUSES = ['200', '201', '204', '400', '401', '403', '404', '409', '422', '500', '502', '503']
@@ -23,6 +26,8 @@ export function MockFilters({
   onChange: (next: MocksSearch) => void
 }) {
   const t = useT()
+  // WireMock-only mode has one account and WireMock's own stubs: there is no "mine" to filter by.
+  const wiremockOnly = useWireMockOnly()
   const owner = search.owner ?? 'me'
   const [text, setText] = useState(search.q ?? '')
   const pushed = useRef(search.q ?? '')
@@ -45,17 +50,19 @@ export function MockFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <ToggleGroup
-        type="single"
-        variant="outline"
-        size="sm"
-        aria-label={t('mocks.filterOwner')}
-        value={owner === 'me' || owner === 'all' ? owner : ''}
-        onValueChange={(value) => value && onChange({ owner: value })}
-      >
-        <ToggleGroupItem value="me" className={ON}>{t('mocks.ownerMe')}</ToggleGroupItem>
-        <ToggleGroupItem value="all" className={ON}>{t('mocks.ownerAll')}</ToggleGroupItem>
-      </ToggleGroup>
+      {!wiremockOnly && (
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          aria-label={t('mocks.filterOwner')}
+          value={owner === 'me' || owner === 'all' ? owner : ''}
+          onValueChange={(value) => value && onChange({ owner: value })}
+        >
+          <ToggleGroupItem value="me" className={ON}>{t('mocks.ownerMe')}</ToggleGroupItem>
+          <ToggleGroupItem value="all" className={ON}>{t('mocks.ownerAll')}</ToggleGroupItem>
+        </ToggleGroup>
+      )}
 
       <div className="relative min-w-48 basis-full sm:flex-1 sm:basis-auto sm:max-w-72">
         <SearchIcon aria-hidden className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -73,7 +80,7 @@ export function MockFilters({
         value={search.integration ?? ANY}
         onValueChange={(value) => onChange({ integration: value === ANY ? undefined : value })}
       >
-        <SelectTrigger aria-label={t('mocks.integration')} className="w-44">
+        <SelectTrigger aria-label={t('mocks.integration')} className="w-52">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -87,7 +94,7 @@ export function MockFilters({
       </Select>
 
       <Select value={search.status ?? ANY} onValueChange={(value) => onChange({ status: value === ANY ? undefined : value })}>
-        <SelectTrigger aria-label={t('mocks.status')} className="w-36">
+        <SelectTrigger aria-label={t('mocks.status')} className="w-40">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -99,6 +106,17 @@ export function MockFilters({
           ))}
         </SelectContent>
       </Select>
+
+      <Toggle
+        variant="outline"
+        size="sm"
+        pressed={search.scenarios === 'only'}
+        onPressedChange={(on) => onChange({ scenarios: on ? 'only' : undefined })}
+        className={ON}
+      >
+        <WorkflowIcon />
+        {t('mocks.scenarioOnly')}
+      </Toggle>
     </div>
   )
 }

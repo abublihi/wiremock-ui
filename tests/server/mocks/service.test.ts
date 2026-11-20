@@ -50,6 +50,8 @@ function failingStore(real: MockStore, fail: 'save' | 'delete' = 'save'): MockSt
     },
     history: (id) => real.history(id),
     acquireLock: (n, t) => real.acquireLock(n, t),
+    getFlag: (n) => real.getFlag(n),
+    setFlag: (n, on) => real.setFlag(n, on),
     releaseLock: (n, t) => real.releaseLock(n, t),
     ping: () => real.ping(),
     close: () => real.close(),

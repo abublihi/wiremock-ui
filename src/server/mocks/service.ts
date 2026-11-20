@@ -1,6 +1,8 @@
 import { safeRecord, type AuditLog } from '../audit/log'
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../errors'
 import { logger } from '../logger'
+import { newestFirst, pageMocks, type MockPage } from './paging'
+import { assertPowerFields, normalisePowerFields } from './power-fields'
 import type { MockStore } from '../store/types'
 import type { PublicUser } from '../users/types'
 import type { WireMockClient } from '../wiremock/client'
@@ -19,6 +21,8 @@ type Deps = {
   audit: AuditLog
   now?: () => Date
   newId?: () => string
+  /** WireMock-only mode (spec A10): the store writes WireMock itself, so the service does not write it first. */
+  storeIsWireMock?: boolean
 }
 
 const URL_FIELDS = ['url', 'urlPath', 'urlPattern', 'urlPathPattern', 'urlPathTemplate'] as const
@@ -40,6 +44,8 @@ export function assertValidStub(stub: unknown): asserts stub is Record<string, u
   if (!isObject(stub.request)) throw new ValidationError('mock.request must be an object')
   if (!isObject(stub.response)) throw new ValidationError('mock.response must be an object')
   if ('bodyFileName' in stub.response) throw new ValidationError('bodyFileName is not supported; put the body inline')
+  // Here too, so a bundle import refuses a bad proxy, webhook or scenario field before writing anything.
+  assertPowerFields(stub as Pick<StubBase, 'response'> & Record<string, unknown>)
 }
 
 const IGNORED_META = ['version', 'updatedAt', 'updatedBy', 'source'] as const
@@ -49,7 +55,8 @@ function comparable(stub: StubMapping): string {
   const { persistent: _p, ...rest } = stub
   const ui = { ...(stub.metadata?.wiremockUi ?? {}) } as Record<string, unknown>
   for (const k of IGNORED_META) delete ui[k]
-  return canonicalJson({ ...rest, metadata: { ...stub.metadata, wiremockUi: ui } })
+  // Saving normalises proxy/webhook fields, so an import of the un-normalised original is unchanged.
+  return canonicalJson(normalisePowerFields({ ...rest, metadata: { ...stub.metadata, wiremockUi: ui } }))
 }
 
 export function canonicalJson(value: unknown): string {
@@ -67,6 +74,11 @@ export function canonicalJson(value: unknown): string {
   return JSON.stringify(sort(value))
 }
 
+/** How a mock entered the store other than through the editor. */
+export type ImportSource = 'import' | 'seed'
+/** How a mock entered the store other than through the editor or an import: an accepted recording (spec A12). */
+export type CreateSource = ImportSource | 'recording'
+
 const ownerOf = (stub: StubMapping) => stub.metadata?.wiremockUi?.owner ?? 'baseline'
 
 export class MockService {
@@ -75,8 +87,10 @@ export class MockService {
   private audit: AuditLog
   private now: () => Date
   private newId: () => string
+  private storeIsWireMock: boolean
 
   constructor(deps: Deps) {
+    this.storeIsWireMock = deps.storeIsWireMock ?? false
     this.wiremock = deps.wiremock
     this.store = deps.store
     this.audit = deps.audit
@@ -87,6 +101,14 @@ export class MockService {
   async create(input: MockInput, actor: PublicUser): Promise<StubMapping> {
     const stub = await this.save(this.newId(), input, 0, actor.username, null)
     await this.record({ actor: actor.username, action: 'mock.create', target: stub.id })
+    return stub
+  }
+
+  /** A stub accepted from a recording's review list (spec A12): the normal create path, for `owner` (the user or baseline). */
+  async createRecorded(input: MockInput, owner: string, actor: PublicUser): Promise<StubMapping> {
+    this.validate(input)
+    const stub = await this.save(this.newId(), input, 0, actor.username, null, { owner, version: 1, source: 'recording' })
+    await this.record({ actor: actor.username, action: 'mock.create', target: stub.id, details: { source: 'recording' } })
     return stub
   }
 
@@ -115,6 +137,7 @@ export class MockService {
     if (expectedVersion !== undefined && current.metadata?.wiremockUi?.version !== expectedVersion) {
       throw new ConflictError()
     }
+    if (this.storeIsWireMock) return this.store.delete(id, expectedVersion)
     await this.wiremock.deleteStub(id)
     try {
       await this.store.delete(id, expectedVersion)
@@ -135,15 +158,28 @@ export class MockService {
     return stub
   }
 
-  async list(filter?: { integration?: string; owner?: string; status?: number; q?: string }): Promise<StubMapping[]> {
+  /** `scenario`: a scenario's name, or `*` for every mock that belongs to a scenario. */
+  async list(filter?: { integration?: string; owner?: string; status?: number; q?: string; scenario?: string }): Promise<StubMapping[]> {
     const all = await this.store.list({ integration: filter?.integration, owner: filter?.owner })
     const status = filter?.status
     const q = filter?.q?.trim().toLowerCase()
-    return all.filter((stub) => {
-      if (status !== undefined && (stub.response.status ?? 200) !== status) return false
-      if (q && !matchesQuery(stub, q)) return false
-      return true
-    })
+    const scenario = filter?.scenario
+    return all
+      .filter((stub) => {
+        if (status !== undefined && (stub.response.status ?? 200) !== status) return false
+        if (scenario !== undefined) {
+          const name = typeof stub.scenarioName === 'string' ? stub.scenarioName : ''
+          if (scenario === '*' ? name === '' : name !== scenario) return false
+        }
+        if (q && !matchesQuery(stub, q)) return false
+        return true
+      })
+      .sort(newestFirst)
+  }
+
+  /** One page of `list(filter)`; a scenario is one row (see `pageMocks`). */
+  async listPage(filter: Parameters<MockService['list']>[0], page: { limit: number; offset: number }): Promise<MockPage> {
+    return pageMocks(await this.list(filter), page)
   }
 
   async duplicate(id: string, actor: PublicUser): Promise<StubMapping> {
@@ -176,7 +212,7 @@ export class MockService {
   async upsertImported(
     stub: StubMapping,
     owner: string,
-    source: 'import' | 'seed',
+    source: ImportSource,
     actor: string,
   ): Promise<'created' | 'updated' | 'unchanged'> {
     assertValidStub(stub)
@@ -232,6 +268,7 @@ export class MockService {
     if ('bodyFileName' in input.response) {
       throw new ValidationError('bodyFileName is not supported; put the body inline')
     }
+    assertPowerFields(input as MockInput & Record<string, unknown>)
   }
 
   private async save(
@@ -240,7 +277,7 @@ export class MockService {
     expectedVersion: number,
     user: string,
     previous: StubMapping | null,
-    override?: { owner: string; version: number; source?: 'import' | 'seed' },
+    override?: { owner: string; version: number; source?: CreateSource },
   ): Promise<StubMapping> {
     this.validate(input)
     const prevMeta = previous?.metadata?.wiremockUi
@@ -255,13 +292,23 @@ export class MockService {
     }
     // WireMock treats `id` and `uuid` as one field (last wins): a body value could retarget another stub.
     const { id: _id, uuid: _uuid, ...body } = input as MockInput & { id?: unknown; uuid?: unknown }
-    const stub: StubMapping = {
+    const stub: StubMapping = normalisePowerFields({
       ...body,
       id,
       persistent: false,
       metadata: { ...input.metadata, wiremockUi },
-    }
+    } as StubMapping)
 
+    if (this.storeIsWireMock) {
+      await this.store.save(stub, expectedVersion)
+      // The store keeps a stub WireMock holds in its own files persistent: report what was stored.
+      // The save went through: a failed read-back only loses that detail (the written stub is the answer).
+      const stored = await this.store.get(id).catch((err: unknown) => {
+        logger.warn({ err, id }, 'reading a saved mock back from WireMock failed')
+        return null
+      })
+      return stored ? { ...stub, persistent: stored.persistent } : stub
+    }
     await this.wiremock.importStubs([stub], { deleteAllNotInImport: false })
     try {
       await this.store.save(stub, expectedVersion)

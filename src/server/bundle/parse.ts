@@ -1,43 +1,9 @@
 import { readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ValidationError } from '../errors'
-import type { StubMapping } from '../wiremock/types'
+import { byPath, emptyBundle, mergeInto, parseBundle, type Bundle } from './shape'
 
-export type Bundle = {
-  integrations: unknown[]
-  catalog: unknown[]
-  mocks: StubMapping[]
-  oidcIdentities: unknown[]
-}
-
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-const BUNDLE_KEYS = ['integrations', 'catalog', 'mocks', 'oidcIdentities'] as const
-
-export const emptyBundle = (): Bundle => ({ integrations: [], catalog: [], mocks: [], oidcIdentities: [] })
-
-function list(value: unknown, field: string, source: string): unknown[] {
-  if (value === undefined) return []
-  if (!Array.isArray(value)) throw new ValidationError(`${source}: ${field} must be an array`)
-  return value
-}
-
-/** Accepts a bundle, a WireMock export ({ mappings }), a single stub or an array of stubs. */
-export function parseBundle(json: unknown, source: string): Bundle {
-  if (Array.isArray(json)) return { ...emptyBundle(), mocks: json as StubMapping[] }
-  if (isObject(json)) {
-    if (BUNDLE_KEYS.some((k) => k in json)) {
-      return {
-        integrations: list(json.integrations, 'integrations', source),
-        catalog: list(json.catalog, 'catalog', source),
-        mocks: list(json.mocks, 'mocks', source) as StubMapping[],
-        oidcIdentities: list(json.oidcIdentities, 'oidcIdentities', source),
-      }
-    }
-    if ('mappings' in json) return { ...emptyBundle(), mocks: list(json.mappings, 'mappings', source) as StubMapping[] }
-    if (isObject(json.request) && isObject(json.response)) return { ...emptyBundle(), mocks: [json as StubMapping] }
-  }
-  throw new ValidationError(`${source}: unrecognised bundle shape (expected a bundle, a WireMock export, a stub or an array of stubs)`)
-}
+export { emptyBundle, parseBundle, type Bundle } from './shape'
 
 async function jsonFiles(dir: string, skipped: string[], rel = '', seen = new Set<string>()): Promise<string[]> {
   const real = await realpath(join(dir, rel))
@@ -77,14 +43,10 @@ export async function readBundleFromPath(path: string): Promise<{ bundle: Bundle
   if (!info.isDirectory()) return { bundle: await readFileBundle(path, path), skipped: [] }
   const merged = emptyBundle()
   const skipped: string[] = []
-  const files = (await jsonFiles(path, skipped)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  const files = (await jsonFiles(path, skipped)).sort(byPath)
   if (files.length === 0) throw new ValidationError(`SEED_PATH ${path} contains no .json files`)
   for (const rel of files) {
-    const part = await readFileBundle(join(path, rel), join(path, rel))
-    merged.integrations.push(...part.integrations)
-    merged.catalog.push(...part.catalog)
-    merged.mocks.push(...part.mocks)
-    merged.oidcIdentities.push(...part.oidcIdentities)
+    mergeInto(merged, await readFileBundle(join(path, rel), join(path, rel)))
   }
   return { bundle: merged, skipped }
 }

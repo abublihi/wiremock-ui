@@ -40,3 +40,41 @@ test('/api/requests/count is not captured by /api/requests/$id', () => {
 test('audit route resolves', () => {
   expect(leaf('/api/audit')).toBe('/api/audit')
 })
+
+test('test-request and scenario routes resolve to their own files', () => {
+  expect(leaf('/api/test-request')).toBe('/api/test-request')
+  expect(leaf('/api/scenarios')).toBe('/api/scenarios')
+  expect(leaf('/api/scenarios/reset')).toBe('/api/scenarios/reset')
+  expect(leaf('/api/scenarios/order-flow/state')).toBe('/api/scenarios/$name/state')
+  expect(leaf('/api/scenarios/reset/state')).toBe('/api/scenarios/$name/state')
+})
+
+test('the scenario name reaches the handler decoded', () => {
+  expect(router.matchRoutes('/api/scenarios/order%20flow/state').at(-1)?.params).toMatchObject({ name: 'order flow' })
+})
+
+test('the quick-mock preview is not captured by /api/mocks/$id', () => {
+  expect(leaf('/api/mocks/preview')).toBe('/api/mocks/preview')
+})
+
+test('Integrations pages resolve under /integrations; old /catalog URLs land on the redirect routes', () => {
+  expect(leaf('/integrations')).toBe('/_app/integrations/')
+  expect(leaf('/integrations/nic')).toBe('/_app/integrations/$key/')
+  expect(leaf('/integrations/nic/endpoints/new')).toBe('/_app/integrations/$key/endpoints/new')
+  expect(leaf('/integrations/nic/endpoints/fetch/edit')).toBe('/_app/integrations/$key/endpoints/$endpoint/edit')
+  expect(leaf('/catalog')).toBe('/catalog/')
+  expect(leaf('/catalog/nic')).toBe('/catalog/$')
+  expect(leaf('/catalog/nic/endpoints/fetch/edit')).toBe('/catalog/$')
+})
+
+test('recording routes are not captured by /api/recordings/$id', () => {
+  expect(leaf('/api/recordings')).toBe('/api/recordings')
+  for (const name of ['status', 'start', 'stop', 'snapshot']) expect(leaf(`/api/recordings/${name}`)).toBe(`/api/recordings/${name}`)
+  expect(leaf('/api/recordings/abc')).toBe('/api/recordings/$id')
+  expect(leaf('/api/recordings/abc/accept')).toBe('/api/recordings/$id/accept')
+  expect(leaf('/api/recordings/abc/discard')).toBe('/api/recordings/$id/discard')
+})
+
+test('/api/requests/unmatched-count is not captured by /api/requests/$id', () => {
+  expect(leaf('/api/requests/unmatched-count')).toBe('/api/requests/unmatched-count')
+})

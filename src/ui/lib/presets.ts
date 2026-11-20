@@ -53,3 +53,11 @@ export const FAULT_OPTIONS: readonly { value: Fault; label: MessageKey }[] = [
 ]
 
 export const isFault = (value: unknown): value is Fault => FAULT_OPTIONS.some((f) => f.value === value)
+
+/** The methods the webhook form offers (the server accepts any method token; others stay in Advanced mode). */
+export const WEBHOOK_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
+export type WebhookMethod = (typeof WEBHOOK_METHODS)[number]
+export const isWebhookMethod = (value: unknown): value is WebhookMethod => WEBHOOK_METHODS.includes(value as WebhookMethod)
+
+/** The webhook delay cap (src/server/mocks/power-fields.ts). */
+export const MAX_WEBHOOK_DELAY_MS = 600_000

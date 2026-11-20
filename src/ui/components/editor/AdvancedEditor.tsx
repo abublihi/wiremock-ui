@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { AlertCircleIcon, SaveIcon } from 'lucide-react'
 import type { StubMapping } from '@/server/wiremock/types'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
@@ -8,6 +8,8 @@ import { Spinner } from '@/ui/components/ui/spinner'
 import { useT } from '@/ui/i18n'
 import { type EditableStub, parseStubJson } from '@/ui/lib/editor-sync'
 import { isValidDate, relativeTime } from '@/ui/lib/time'
+import { applyBodyFile, type BodyFile } from '@/ui/lib/body-file'
+import { BodyFileButton } from './BodyFileButton'
 import { CodeEditor } from './CodeEditor'
 import { Eyebrow } from './EditorShell'
 
@@ -20,6 +22,7 @@ export function AdvancedEditor({
   onTextChange,
   mock,
   endpointLabel,
+  jsonEndpoint,
   saving,
   error,
   onSave,
@@ -28,8 +31,10 @@ export function AdvancedEditor({
   onTextChange: (text: string) => void
   /** The saved version this draft started from; undefined for a new mock. */
   mock?: StubMapping
-  /** "NIC → Fetch citizen" when the mock belongs to a catalog endpoint. */
+  /** "Blog API → Get post" when the mock belongs to a catalog endpoint. */
   endpointLabel?: string
+  /** The mock's endpoint answers JSON: a text file that parses goes in as jsonBody. */
+  jsonEndpoint?: boolean
   saving: boolean
   error: { title: string; message: string } | null
   onSave: (stub: EditableStub) => void
@@ -37,6 +42,13 @@ export function AdvancedEditor({
   const t = useT()
   const errorId = useId()
   const parsed = useMemo(() => parseStubJson(text), [text])
+  const [fileError, setFileError] = useState<string | null>(null)
+  const onBodyFile = (file: BodyFile) => {
+    // Read the editor's current text, not a stale parse: the file goes into what is on screen.
+    const current = parseStubJson(text)
+    if (!current.ok) return setFileError(t('editor.bodyFile.fixJson'))
+    onTextChange(JSON.stringify(applyBodyFile(current.value, file, { json: jsonEndpoint }), null, 2))
+  }
   const problem = parsed.ok
     ? null
     : parsed.reason === 'notObject'
@@ -65,7 +77,15 @@ export function AdvancedEditor({
       <ServerFields mock={mock} endpointLabel={endpointLabel} />
 
       <section className="glow-border flex flex-col gap-3 rounded-md border border-line bg-surface p-4 sm:p-5">
-        <Eyebrow>{t('editor.json')}</Eyebrow>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Eyebrow>{t('editor.json')}</Eyebrow>
+          <BodyFileButton onFile={onBodyFile} onError={setFileError} />
+        </div>
+        {fileError && (
+          <p role="alert" className="text-xs text-mismatch">
+            {fileError}
+          </p>
+        )}
         <Field data-invalid={Boolean(problem)}>
           <CodeEditor
             value={text}
@@ -82,7 +102,7 @@ export function AdvancedEditor({
               {problem}
             </FieldError>
           ) : (
-            <FieldDescription className="text-[11px]">{t('editor.jsonHint')}</FieldDescription>
+            <FieldDescription className="text-xs">{t('editor.jsonHint')}</FieldDescription>
           )}
         </Field>
       </section>

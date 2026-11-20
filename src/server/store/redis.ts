@@ -142,6 +142,15 @@ export class RedisMockStore implements MockStore {
     await this.redis.eval(RELEASE_LUA, 1, name, token)
   }
 
+  async getFlag(name: string): Promise<boolean> {
+    return (await this.redis.exists(`flag:${name}`)) === 1
+  }
+
+  async setFlag(name: string, on: boolean): Promise<void> {
+    if (on) await this.redis.set(`flag:${name}`, '1')
+    else await this.redis.del(`flag:${name}`)
+  }
+
   async ping(): Promise<boolean> {
     try {
       return (await this.redis.ping()) === 'PONG'

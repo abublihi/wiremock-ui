@@ -1,4 +1,4 @@
-import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
+import { GenericContainer, Network, Wait, type StartedNetwork, type StartedTestContainer } from 'testcontainers'
 
 export type WireMockHandle = {
   url: string
@@ -12,10 +12,11 @@ const USER = 'admin'
 const PASSWORD = 'secret'
 const authHeader = `Basic ${Buffer.from(`${USER}:${PASSWORD}`).toString('base64')}`
 
-export async function startWireMock(opts: { auth?: boolean } = {}): Promise<WireMockHandle> {
+export async function startWireMock(opts: { auth?: boolean; network?: StartedNetwork; alias?: string } = {}): Promise<WireMockHandle> {
   const auth = opts.auth !== false
-  let container: StartedTestContainer = await new GenericContainer('wiremock/wiremock:3.13.1')
-    .withExposedPorts(8080)
+  let image = new GenericContainer('wiremock/wiremock:3.13.1').withExposedPorts(8080)
+  if (opts.network) image = image.withNetwork(opts.network).withNetworkAliases(...(opts.alias ? [opts.alias] : []))
+  const container: StartedTestContainer = await image
     .withCommand(
       auth
         ? ['--admin-api-basic-auth', `${USER}:${PASSWORD}`, '--max-request-journal-entries', '5000']
@@ -38,6 +39,32 @@ export async function startWireMock(opts: { auth?: boolean } = {}): Promise<Wire
     },
     async stop() {
       await container.stop()
+    },
+  }
+}
+
+/**
+ * Two WireMocks on one Docker network: `wm` (admin auth, the one the UI manages) and `upstream` (no auth), which
+ * stands in for the real service a recording proxies to. `upstreamInternalUrl` is how `wm` reaches it.
+ */
+export async function startRecordingPair(): Promise<{
+  wm: WireMockHandle
+  upstream: WireMockHandle
+  upstreamInternalUrl: string
+  stop(): Promise<void>
+}> {
+  const network = await new Network().start()
+  const [wm, upstream] = await Promise.all([
+    startWireMock({ network }),
+    startWireMock({ network, alias: 'upstream', auth: false }),
+  ])
+  return {
+    wm,
+    upstream,
+    upstreamInternalUrl: 'http://upstream:8080',
+    async stop() {
+      await Promise.all([wm.stop().catch(() => {}), upstream.stop().catch(() => {})])
+      await network.stop().catch(() => {})
     },
   }
 }

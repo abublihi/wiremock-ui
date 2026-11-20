@@ -20,16 +20,23 @@ import {
 import { Button } from '@/ui/components/ui/button'
 import { Spinner } from '@/ui/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/components/ui/tabs'
+import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 import {
   type EditableStub,
+  type ScenarioSeed,
   type SimpleForm,
   emptyForm,
+  emptyQuickForm,
   fromEditable,
+  fromQuickStub,
   fromStub,
   linkOf,
   parseStubJson,
+  seedScenario,
+  withKey,
   toEditable,
+  toQuickInput,
   toSimpleInput,
 } from '@/ui/lib/editor-sync'
 import { AdvancedEditor } from './AdvancedEditor'
@@ -57,10 +64,14 @@ const messageOf = (error: unknown, fallback: string) => (error instanceof Error 
 export function MockEditor({
   mock,
   catalog,
+  keyValue,
+  quick,
   initialStub,
+  scenarioSeed,
   simpleUnavailable,
   initialMode,
   onModeChange,
+  onFormChange,
   onSaved,
   onReload,
   onRestored,
@@ -69,12 +80,20 @@ export function MockEditor({
   mock?: StubMapping
   /** The catalog endpoint Simple mode edits; undefined for a free-form mock. */
   catalog?: Catalog
-  /** A new free-form mock's starting JSON (instead of the blank stub); opens in Advanced and is created with POST. */
+  /** A new endpoint mock's key value ("Make a mock for p-2"); ignored when the endpoint has no key. */
+  keyValue?: string
+  /** A new quick mock of a URL ("Mock a URL directly"): opens in the quick Simple form. */
+  quick?: boolean
+  /** A new free-form mock's starting JSON (instead of the blank stub): in the quick form when it can show it, else Advanced. */
   initialStub?: EditableStub
+  /** A new mock's scenario ("Add a mock to this scenario"): the Scenario section, or the JSON, starts with it. */
+  scenarioSeed?: ScenarioSeed
   /** Why Simple mode can't be used at all (no catalog link, endpoint gone). */
   simpleUnavailable?: string
   initialMode?: EditorMode
   onModeChange?: (mode: EditorMode) => void
+  /** Every change of the Simple form (e.g. the page follows the scenario state it answers in). */
+  onFormChange?: (form: SimpleForm) => void
   onSaved: (stub: StubMapping, mode: EditorMode) => void | Promise<void>
   /** Fetches the live version and starts over from it (conflict → Reload). */
   onReload?: () => Promise<void>
@@ -82,11 +101,27 @@ export function MockEditor({
   onRestored?: (stub: StubMapping, dirty: boolean) => void
 }) {
   const t = useT()
+  const wiremockOnly = useWireMockOnly()
   const link = mock ? linkOf(mock) : catalog && { integration: catalog.integration.key, endpoint: catalog.endpoint.key }
+  // A free-form mock (no catalog link) edits in the quick form whenever its stub is one the quick form can show.
+  const quickable = !catalog && !link
 
   const [init] = useState(() => {
-    const form = catalog ? (mock ? fromStub(mock, catalog.integration, catalog.endpoint) : emptyForm(catalog.endpoint)) : null
-    const text = mock ? pretty(toEditable(mock)) : catalog ? '' : initialStub ? pretty(initialStub) : BLANK
+    const form = catalog
+      ? mock
+        ? fromStub(mock, catalog.integration, catalog.endpoint)
+        : seedScenario(withKey(emptyForm(catalog.endpoint), catalog.endpoint, keyValue), scenarioSeed)
+      : quickable && mock
+        ? fromQuickStub(mock)
+        : quickable && quick
+          ? emptyQuickForm(scenarioSeed)
+          : quickable && initialStub
+            ? // A starting stub the quick form can show (a logged request's method, path and body) opens there.
+              fromQuickStub(seedStub(initialStub, scenarioSeed))
+            : null
+    const start = initialStub ?? (JSON.parse(BLANK) as EditableStub)
+    const seeded = scenarioSeed ? { ...start, scenarioName: scenarioSeed.name, requiredScenarioState: scenarioSeed.requiredState } : start
+    const text = mock ? pretty(toEditable(mock)) : catalog || quick ? '' : initialStub || scenarioSeed ? pretty(seeded) : BLANK
     const mode: EditorMode = form && initialMode !== 'advanced' ? 'simple' : 'advanced'
     return { form, text, mode }
   })
@@ -126,14 +161,18 @@ export function MockEditor({
   })
 
   const buildFromForm = (form: SimpleForm) =>
-    preview.mutateAsync({ integration: catalog!.integration.key, endpoint: catalog!.endpoint.key, input: toSimpleInput(form) })
+    preview.mutateAsync(
+      form.quick
+        ? { quick: toQuickInput(form) }
+        : { integration: catalog!.integration.key, endpoint: catalog!.endpoint.key, input: toSimpleInput(form) },
+    )
 
   const changeMode = async (next: EditorMode) => {
     if (next === mode || preview.isPending) return
     if (next === 'advanced') {
       // Simple → Advanced: the stub the server builds from the form (unless Simple had nothing to show).
       const form = formRef.current
-      if (simple.form && form && catalog) {
+      if (simple.form && form && (catalog || quickable)) {
         try {
           const built = pretty(toEditable(await buildFromForm(form)))
           setText(built)
@@ -146,10 +185,8 @@ export function MockEditor({
     } else {
       // Advanced → Simple: read the JSON back; anything the form can't show keeps Simple closed.
       const parsed = parseStubJson(text)
-      const form =
-        parsed.ok && catalog
-          ? fromStub({ id: mock?.id ?? '', ...fromEditable(parsed.value, link) } as StubMapping, catalog.integration, catalog.endpoint)
-          : null
+      const stub = parsed.ok ? ({ id: mock?.id ?? '', ...fromEditable(parsed.value, link) } as StubMapping) : null
+      const form = stub && catalog ? fromStub(stub, catalog.integration, catalog.endpoint) : stub && quickable ? fromQuickStub(stub) : null
       formRef.current = form
       setSimple((s) => ({ form, invalidJson: !parsed.ok, n: s.n + 1 }))
       setSimpleChanged(false)
@@ -205,7 +242,7 @@ export function MockEditor({
   }
 
   const endpointLabel = catalog && t('editor.endpointRef', { integration: catalog.integration.name, endpoint: catalog.endpoint.name })
-  const unavailable = !catalog ? simpleUnavailable : simple.invalidJson ? t('editor.fixJsonFirst') : t('editor.cantShow')
+  const unavailable = !catalog && !quickable ? simpleUnavailable : simple.invalidJson ? t('editor.fixJsonFirst') : t('editor.cantShow')
 
   return (
     <div className="flex flex-col gap-4">
@@ -238,20 +275,23 @@ export function MockEditor({
               {t('editor.mode.advanced')}
             </TabsTrigger>
           </TabsList>
-          {mock && onRestored && <HistorySheet id={mock.id} keepsDraft={dirty} onRestored={(stub) => onRestored(stub, dirty)} />}
+          {mock && onRestored && !wiremockOnly && <HistorySheet id={mock.id} keepsDraft={dirty} onRestored={(stub) => onRestored(stub, dirty)} />}
         </div>
 
         <TabsContent value="simple">
-          {catalog && simple.form ? (
+          {(catalog || quickable) && simple.form ? (
             <SimpleEditor
               key={simple.n}
-              integration={catalog.integration}
-              endpoint={catalog.endpoint}
+              integration={catalog?.integration}
+              endpoint={catalog?.endpoint}
               // A fresh new mock lets the body follow the catalog example; anything else is the user's draft.
-              initial={mock || simple.n > 0 ? simple.form : undefined}
+              initial={mock || initialStub || simple.n > 0 ? simple.form : undefined}
               mock={mock}
+              keyValue={keyValue}
+              scenarioSeed={scenarioSeed}
               onChange={(form) => {
                 formRef.current = form
+                onFormChange?.(form)
                 setSimpleChanged(!sameForm(form, simple.form))
               }}
               onSaved={(saved) => finishSave(saved, 'simple')}
@@ -276,6 +316,7 @@ export function MockEditor({
             onTextChange={setText}
             mock={mock}
             endpointLabel={endpointLabel}
+            jsonEndpoint={catalog?.endpoint.contentType === 'json'}
             saving={saving}
             error={formError}
             onSave={(value) => void saveAdvanced(value)}
@@ -314,4 +355,10 @@ export function MockEditor({
       </AlertDialog>
     </div>
   )
+}
+
+/** A starting stub as a stub the quick form can read: no id yet, and the scenario it is added to. */
+function seedStub(stub: EditableStub, seed?: ScenarioSeed): StubMapping {
+  const seeded = seed ? { ...stub, scenarioName: seed.name, requiredScenarioState: seed.requiredState } : stub
+  return { id: '', ...seeded } as StubMapping
 }

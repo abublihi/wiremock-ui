@@ -37,7 +37,7 @@ const highlight = syntaxHighlighting(
     { tag: [tags.propertyName, tags.tagName], color: 'var(--signal-fg)' },
     { tag: [tags.string, tags.attributeValue], color: 'var(--ink)' },
     { tag: [tags.number, tags.bool, tags.null, tags.keyword], color: 'var(--hazard-fg)' },
-    { tag: [tags.punctuation, tags.bracket, tags.separator, tags.angleBracket, tags.comment], color: 'var(--muted-text)' },
+    { tag: [tags.punctuation, tags.bracket, tags.brace, tags.squareBracket, tags.paren, tags.separator, tags.angleBracket, tags.comment], color: 'var(--muted-text)' },
     { tag: tags.attributeName, color: 'var(--hazard-fg)' },
     { tag: tags.invalid, color: 'var(--mismatch)' },
   ]),

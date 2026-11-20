@@ -115,7 +115,7 @@ describe.each(drivers)('UserService on %s', (_driver, start) => {
   test('reserved usernames, bad usernames, short/long passwords rejected (400)', async () => {
     await admin()
     const base = { password: 'longenough1' }
-    for (const username of ['baseline', 'System', 'a', 'has space']) {
+    for (const username of ['baseline', 'System', 'WireMock', 'a', 'has space']) {
       await expect(svc.create({ ...base, username }, 'root')).rejects.toMatchObject({ status: 400 })
     }
     await expect(svc.create({ ...base, username: 'okname', password: 'short' }, 'root')).rejects.toMatchObject({ status: 400, message: 'password must be 8–72 characters' })
@@ -142,5 +142,13 @@ describe.each(drivers)('UserService on %s', (_driver, start) => {
     const updated = await svc.update(created.id, { displayName: 'B' }, 'root')
     const login = await svc.login('bob', 'bobpass12', '1.1.1.1', config)
     for (const v of [created, updated, login, await svc.list()]) expect(JSON.stringify(v)).not.toContain('passwordHash')
+  })
+
+  test('reservedAccounts lists accounts made before their names were reserved', async () => {
+    await admin()
+    expect(await svc.reservedAccounts()).toEqual([])
+    const ts = new Date().toISOString()
+    await store.createUser({ id: 'old-wm', username: 'wiremock', displayName: 'wm', role: 'admin', passwordHash: 'x', disabled: false, createdAt: ts, updatedAt: ts })
+    expect(await svc.reservedAccounts()).toEqual(['wiremock'])
   })
 })

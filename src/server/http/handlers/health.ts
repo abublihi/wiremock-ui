@@ -18,8 +18,8 @@ export const healthz = withErrors(async (rt) => {
     ui: 'ok',
     store: store ? 'ok' : 'error',
     wiremock: wiremock ? 'ok' : 'error',
-    lastSyncAt: rt.reconciler.lastSyncAt?.toISOString() ?? null,
-    lastSyncError: rt.reconciler.lastError ? 'sync failed; see logs' : null,
+    lastSyncAt: rt.reconciler?.lastSyncAt?.toISOString() ?? null,
+    lastSyncError: rt.reconciler?.lastError ? 'sync failed; see logs' : null,
   }
   return json(body, store && wiremock ? 200 : 503)
 })

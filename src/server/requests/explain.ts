@@ -17,7 +17,13 @@ const json = (v: unknown) => {
 }
 const show = (v: unknown) => (typeof v === 'string' ? v : json(v))
 
-/** WireMock `matches` is a full-string regex. Invalid expressions yield null instead of throwing. */
+/**
+ * WireMock `matches` is a full-string regex. Invalid expressions yield null instead of throwing.
+ * The stub's regex runs in Node's engine, not WireMock's Java one: dialects differ in corners (possessive
+ * quantifiers, some classes), and a pathological pattern can hold this request's thread for a while. Accepted:
+ * stubs come from signed-in users (spec A8, everyone is trusted) or WireMock admins, and values are capped at
+ * MAX_REGEX_INPUT characters.
+ */
 const MAX_REGEX_INPUT = 10_000
 const TOO_LONG = ' (value too long to check)'
 
@@ -372,4 +378,51 @@ export function explainMismatch(stub: StubMapping, request: LoggedRequest): Fiel
     // Never let an odd stub or request break the explanation; keep what was computed so far.
   }
   return rows
+}
+
+/** A simple XPath (`//name`, `/a/b/name`, optionally `/text()`): the last element name, else null. */
+function xPathElement(expression: string): string | null {
+  const m = /^\/{1,2}(?:[A-Za-z_][\w.-]*\/{1,2})*([A-Za-z_][\w.-]*)(?:\/text\(\))?$/.exec(expression.trim())
+  return m ? m[1] : null
+}
+
+/**
+ * The value a request carries where an endpoint keeps its key (the value a mock "for this request" would match), or
+ * null when it has none or it can't be read. `template` is the endpoint's full path (integration prefix included),
+ * used for path variables.
+ */
+export function requestKeyValue(lookup: { location: string; expression: string }, template: string, request: LoggedRequest): string | null {
+  const first = (values: string[]) => values[0] ?? null
+  try {
+    switch (lookup.location) {
+      case 'query':
+        return first(queryValues(request, lookup.expression))
+      case 'header':
+        return first(lookupCI(request.headers, lookup.expression))
+      case 'form': {
+        const text = bodyText(request)
+        return text === null ? null : first(parseForm(text).get(lookup.expression) ?? [])
+      }
+      case 'path':
+        return matchTemplate(template, splitUrl(request.url).path).values?.[lookup.expression] ?? null
+      case 'jsonPath': {
+        const text = bodyText(request)
+        if (text === null) return null
+        const out = JSONPath({ path: lookup.expression, json: JSON.parse(text) as object, wrap: true, eval: 'safe' }) as unknown
+        return Array.isArray(out) && out.length > 0 && out[0] !== null && typeof out[0] !== 'object' ? stringify(out[0]) : null
+      }
+      case 'xPath': {
+        const name = xPathElement(lookup.expression)
+        const text = bodyText(request)
+        if (!name || text === null) return null
+        const escaped = name.replace(/[.-]/g, '\\$&')
+        const hit = new RegExp(`<(?:[\\w-]+:)?${escaped}(?:\\s[^>]*)?>([^<]*)</`).exec(text)
+        return hit ? hit[1].trim() : null
+      }
+      default:
+        return null
+    }
+  } catch {
+    return null
+  }
 }

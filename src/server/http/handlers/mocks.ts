@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ValidationError } from '../../errors'
+import { MAX_PAGE_LIMIT } from '../../mocks/paging'
 import type { MockInput } from '../../mocks/service'
 import { idOf, json, parse, readJson, requireJson, withAuth } from '../wrap'
 
@@ -40,6 +41,21 @@ function parseStatus(raw: string | null): number | undefined {
   return n
 }
 
+/** `limit` and `offset` from the query, or null when there is no `limit` (the plain-array response). */
+function parsePage(q: URLSearchParams): { limit: number; offset: number } | null {
+  const limit = q.get('limit')
+  const offset = q.get('offset')
+  if (limit === null) {
+    if (offset !== null) throw new ValidationError('offset needs limit')
+    return null
+  }
+  if (!/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > MAX_PAGE_LIMIT) {
+    throw new ValidationError(`limit must be an integer between 1 and ${MAX_PAGE_LIMIT}`)
+  }
+  if (offset !== null && !/^\d+$/.test(offset)) throw new ValidationError('offset must be a non-negative integer')
+  return { limit: Number(limit), offset: offset === null ? 0 : Number(offset) }
+}
+
 const restoreBody = z.object(
   { version: z.number({ error: 'version must be a positive integer' }).int('version must be a positive integer').min(1, 'version must be a positive integer') },
   { error: 'body must be an object' },
@@ -53,8 +69,12 @@ export const listMocks = withAuth('mocks.read', async ({ rt, request, principal 
     owner: owner === 'me' ? principal.user.username : owner,
     status: parseStatus(q.get('status')),
     q: q.get('q')?.trim() || undefined,
+    // A scenario's name, or * for every mock that belongs to one.
+    scenario: q.get('scenario') || undefined,
   }
-  return json(await rt.mocks.list(filter))
+  // With limit: { items, total, totalMocks, baseline, offset, limit }; without: the plain array scripts rely on.
+  const page = parsePage(q)
+  return json(page ? await rt.mocks.listPage(filter, page) : await rt.mocks.list(filter))
 })
 
 export const createMock = withAuth('mocks.create', async ({ rt, request, principal }) => {

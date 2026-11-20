@@ -1,5 +1,5 @@
 import { ValidationError } from '../../errors'
-import { buildStub, simpleMockSchema } from '../../catalog/build'
+import { buildQuickStub, buildStub, quickMockSchema, simpleMockSchema } from '../../catalog/build'
 import { json, parse, readJson, requireJson, withAuth, type AuthContext } from '../wrap'
 
 const need = (value: string | undefined, name: string) => {
@@ -76,3 +76,9 @@ export const previewMock = withAuth('mocks.read', async (ctx) => json(await buil
 export const createCatalogMock = withAuth('mocks.create', async (ctx) =>
   json(await ctx.rt.mocks.create(await buildFromRequest(ctx), ctx.principal.user), 201),
 )
+
+/** "Mock a URL directly": the stub the quick form builds (saved like any other mock, with POST/PUT /api/mocks). */
+export const previewQuickMock = withAuth('mocks.read', async ({ request }) => {
+  requireJson(request)
+  return json(buildQuickStub(parse(quickMockSchema, await readJson(request))))
+})

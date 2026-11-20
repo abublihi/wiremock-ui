@@ -25,12 +25,14 @@ export const runImport = withAuth('import.run', async ({ rt, request, principal 
   }
   const bundle = parseBundle(body, 'request body')
   const prune = new URL(request.url).searchParams.get('prune') === 'true'
+  // Spec A10: never delete stubs from the user's own WireMock.
+  if (prune && rt.config.storeDriver === 'none') throw new ValidationError('Prune is not available in WireMock-only mode')
   const report = await importBundle(bundle, {
     catalog: rt.catalog,
     mocks: rt.mocks,
     store: rt.store,
     audit: rt.audit,
-    reposition: () => rt.reconciler.repositionPersonMocks(),
+    reposition: rt.reconciler ? () => rt.reconciler!.repositionPersonMocks() : undefined,
   }, {
     actor: principal.user.username,
     prune,

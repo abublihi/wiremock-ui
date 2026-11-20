@@ -33,11 +33,16 @@ for (const theme of ['dark', 'light'] as const) {
       await signIn(page, USER_A)
       const pages: [string, string | RegExp][] = [
         ['/mocks?owner=all', 'Mocks'],
-        ['/mocks/new?integration=nic&endpoint=fetch-citizen', 'New mock'],
+        ['/mocks/new?integration=blog&endpoint=create-post', 'New mock'],
         ['/requests', 'Request log'],
-        ['/catalog', 'Catalog'],
-        ['/catalog/nic', 'NIC'],
+        ['/scenarios', 'Scenarios'],
+        ['/integrations', 'Integrations'],
+        ['/catalog', 'Integrations'], // the old URL redirects
+        ['/integrations/blog', 'Blog API'],
+        ['/integrations/blog/endpoints/new', 'Add endpoint'],
+        ['/integrations/blog/endpoints/create-post/edit', 'Edit endpoint'],
         ['/users', 'Users'],
+        ['/guide', 'Guide'],
       ]
       for (const [url, heading] of pages) {
         await test.step(url, async () => {
@@ -49,10 +54,33 @@ for (const theme of ['dark', 'light'] as const) {
       }
     })
 
+    test('the new-mock page with no integrations, and with one that has no endpoints yet', async ({ page }) => {
+      await signIn(page, USER_A)
+      await page.route('**/api/integrations', (r) => (r.request().method() === 'GET' ? r.fulfill({ json: [] }) : r.fallback()))
+      await page.goto('/mocks/new')
+      await expect(page.getByText('No integrations yet')).toBeVisible()
+      await expectNoSeriousViolations(page)
+      await page.unroute('**/api/integrations')
+      // Blog API answers with no endpoints: the picker shows "No endpoints yet — Add one" instead of a list.
+      await page.route('**/api/integrations/blog/endpoints', (r) => r.fulfill({ json: [] }))
+      await page.goto('/mocks/new')
+      await expect(page.getByRole('link', { name: 'Add one endpoint to Blog API' })).toBeVisible()
+      await page.waitForLoadState('networkidle')
+      await expectNoSeriousViolations(page)
+    })
+
+    test('the help panel', async ({ page }) => {
+      await signIn(page, USER_A)
+      await page.goto('/requests')
+      await page.getByRole('button', { name: /How this works/ }).click()
+      await expect(page.getByRole('dialog', { name: 'Request log and near misses' })).toBeVisible()
+      await expectNoSeriousViolations(page)
+    })
+
     test('the mock editor of an existing mock', async ({ page }) => {
       await signIn(page, USER_A)
       await page.goto('/mocks?owner=all')
-      await page.getByRole('link', { name: 'NIC health (baseline)' }).click()
+      await page.getByRole('link', { name: 'Blog health (baseline)' }).click()
       await expect(page.getByRole('tab', { name: 'Advanced' })).toBeVisible()
       await expectNoSeriousViolations(page)
       await page.getByRole('tab', { name: 'Advanced' }).click()
@@ -61,7 +89,7 @@ for (const theme of ['dark', 'light'] as const) {
     })
 
     test('a request with its near misses', async ({ page }) => {
-      await fetch(`${wiremockUrl()}/nic/citizens/fetch`, { method: 'POST', body: JSON.stringify({ idNo: `a11y-${theme}` }) })
+      await fetch(`${wiremockUrl()}/blog/posts`, { method: 'POST', body: JSON.stringify({ userId: `a11y-${theme}` }) })
       await signIn(page, USER_A)
       await page.goto('/requests')
       await page.getByRole('button', { name: 'No match — see why' }).first().click()
@@ -76,7 +104,7 @@ test('closing a dialog returns focus to the button that opened it', async ({ pag
   await signIn(page, USER_A)
   const cases: [string, string, string][] = [
     ['/users', 'Add user', 'Add user'],
-    ['/catalog', 'Add integration', 'Add integration'],
+    ['/integrations', 'Add integration', 'Add integration'],
   ]
   for (const [url, trigger, title] of cases) {
     await test.step(`${url}: ${trigger}`, async () => {
@@ -94,7 +122,7 @@ test('closing a dialog returns focus to the button that opened it', async ({ pag
 
   await test.step('/mocks: row actions menu and delete confirmation', async () => {
     await page.goto('/mocks?owner=all')
-    const actions = page.getByRole('button', { name: 'Actions for NIC health (baseline)' })
+    const actions = page.getByRole('button', { name: 'Actions for Blog health (baseline)' })
     await actions.click()
     await page.getByRole('menuitem', { name: 'Delete' }).click()
     const confirm = page.getByRole('alertdialog')

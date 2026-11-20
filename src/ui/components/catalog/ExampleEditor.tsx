@@ -14,6 +14,7 @@ export function ExampleEditor({
   label,
   invalid,
   describedBy,
+  size = 'compact',
 }: {
   value: string
   onChange: (value: string) => void
@@ -21,6 +22,8 @@ export function ExampleEditor({
   label: string
   invalid?: boolean
   describedBy?: string
+  /** `large`: a taller editor for a full-width column. */
+  size?: 'compact' | 'large'
 }) {
   if (contentType === 'json' || contentType === 'xml') {
     return (
@@ -32,8 +35,8 @@ export function ExampleEditor({
           label={label}
           invalid={invalid}
           describedBy={describedBy}
-          minHeight="6rem"
-          maxHeight="16rem"
+          minHeight={size === 'large' ? '12rem' : '6rem'}
+          maxHeight={size === 'large' ? '32rem' : '16rem'}
         />
       </Suspense>
     )
@@ -41,7 +44,7 @@ export function ExampleEditor({
   return (
     <Textarea
       dir="ltr"
-      className="min-h-24 font-mono text-xs md:text-xs"
+      className={`${size === 'large' ? 'min-h-48' : 'min-h-24'} font-mono text-xs md:text-xs`}
       spellCheck={false}
       aria-label={label}
       aria-invalid={invalid}

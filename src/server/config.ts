@@ -1,11 +1,15 @@
 import { z } from 'zod'
 import { ConfigError } from './errors'
+import { isHttpUrl, trimTrailingSlashes } from './url'
 
 export type Config = {
   wiremockUrl: string
+  /** Where clients reach WireMock's stub port (curl commands, docs). Never fetched by the server. */
+  wiremockPublicUrl: string
   wiremockAdminUser?: string
   wiremockAdminPassword?: string
-  storeDriver: 'redis' | 'sqlite'
+  /** `none` = WireMock-only mode (spec A10): WireMock holds the mocks, everything else lives in memory. */
+  storeDriver: 'redis' | 'sqlite' | 'none'
   /** Set when storeDriver is redis. */
   redisUrl?: string
   sqlitePath: string
@@ -18,21 +22,24 @@ export type Config = {
   publicUiUrl?: string
   seedPath?: string
   seedPrune: boolean
+  /** RECORDING_ALLOWED (default true): false turns recording and snapshots off (spec A12). */
+  recordingAllowed: boolean
 }
 
 const required = (name: string) =>
   z.string({ error: `${name} is required` }).min(1, `${name} is required`)
 
-const boolean = (name: string) =>
+const boolean = (name: string, fallback = false) =>
   z
     .string()
     .transform((v) => v.toLowerCase())
     .pipe(z.enum(['true', 'false', '1', '0'], { error: `${name} must be true, false, 1 or 0` }))
     .transform((v) => v === 'true' || v === '1')
-    .default(false)
+    .default(fallback)
 
 const schema = z.object({
   WIREMOCK_URL: z.string().min(1).default('http://localhost:8080'),
+  WIREMOCK_PUBLIC_URL: z.string().min(1).optional(),
   WIREMOCK_ADMIN_USER: z.string().min(1).optional(),
   WIREMOCK_ADMIN_PASSWORD: z.string().min(1).optional(),
   STORE_DRIVER: z.string().optional(),
@@ -54,7 +61,15 @@ const schema = z.object({
   PUBLIC_UI_URL: z.string().min(1).optional(),
   SEED_PATH: z.string().min(1).optional(),
   SEED_PRUNE: boolean('SEED_PRUNE'),
+  RECORDING_ALLOWED: boolean('RECORDING_ALLOWED', true),
 })
+
+/** Every environment variable loadConfig reads (the README's configuration table is checked against it). */
+export const CONFIG_ENV_VARS: readonly string[] = Object.keys(schema.shape)
+
+/** Whether a restart deletes baseline mocks missing from the seed: SEED_PRUNE with a SEED_PATH, outside WireMock-only mode. */
+export const prunesBaseline = (config: Pick<Config, 'seedPrune' | 'seedPath' | 'storeDriver'>): boolean =>
+  config.seedPrune && Boolean(config.seedPath) && config.storeDriver !== 'none'
 
 export function loadConfig(env: Record<string, string | undefined>): Config {
   // Treat empty strings as unset so `FOO=` in an env file behaves like absent.
@@ -69,13 +84,16 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   }
   const data = parsed.success ? parsed.data : undefined
 
-  // Spec A9: Redis when REDIS_URL is set, otherwise SQLite.
+  // Spec A9: Redis when REDIS_URL is set, otherwise SQLite. WireMock-only mode (A10) is never a default.
   const driver = cleaned.STORE_DRIVER ?? (cleaned.REDIS_URL ? 'redis' : 'sqlite')
-  if (driver !== 'redis' && driver !== 'sqlite') {
-    problems.push(`STORE_DRIVER must be "redis" or "sqlite", got "${driver}"`)
+  if (driver !== 'redis' && driver !== 'sqlite' && driver !== 'none') {
+    problems.push(`STORE_DRIVER must be "redis", "sqlite" or "none", got "${driver}"`)
   } else if (driver === 'redis' && !cleaned.REDIS_URL) {
     problems.push('REDIS_URL is required when STORE_DRIVER=redis')
   }
+
+  const publicUrl = cleaned.WIREMOCK_PUBLIC_URL
+  if (publicUrl !== undefined && !isHttpUrl(publicUrl)) problems.push('WIREMOCK_PUBLIC_URL must be an http:// or https:// URL')
 
   if (problems.length > 0 || !data) {
     throw new ConfigError(`Invalid configuration: ${problems.join('; ')}`)
@@ -83,6 +101,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
 
   return {
     wiremockUrl: data.WIREMOCK_URL,
+    wiremockPublicUrl: trimTrailingSlashes(data.WIREMOCK_PUBLIC_URL ?? data.WIREMOCK_URL),
     wiremockAdminUser: data.WIREMOCK_ADMIN_USER,
     wiremockAdminPassword: data.WIREMOCK_ADMIN_PASSWORD,
     storeDriver: driver as Config['storeDriver'],
@@ -97,5 +116,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     publicUiUrl: data.PUBLIC_UI_URL,
     seedPath: data.SEED_PATH,
     seedPrune: data.SEED_PRUNE,
+    recordingAllowed: data.RECORDING_ALLOWED,
   }
 }

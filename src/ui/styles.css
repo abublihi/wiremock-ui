@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "./shadcn-tailwind.css";
 
 /* Fonts (self-hosted, no runtime CDN): JetBrains Mono for everything; Rajdhani for display
    (page titles, big numbers). */
@@ -36,8 +36,8 @@
   --line: #1c2535;
   --ink: #cdd6e2;
   --muted-ink: #556579;
-  --signal: #00cc92;
-  --hazard: #f5b82e;
+  --signal: #0fb2ef;
+  --hazard: #ff9505;
   --mismatch: #e5484d;
   --match: #00cc92;
 
@@ -47,8 +47,8 @@
   /* Signal / hazard as text on the canvas (the fills are already AA in dark). */
   --signal-fg: var(--signal);
   --hazard-fg: var(--hazard);
-  /* Dark text on signal fills: 9:1 (dark) / 6:1 (light). */
-  --on-signal: #04140e;
+  /* WireMock brand: signal = logo blue #0FB2EF, hazard = logo orange #FF9505. Dark text on signal fills: 7.8:1 (dark) / 5.3:1 (light). */
+  --on-signal: #04121a;
   --grid-dot: rgb(38 50 72 / 0.6);
   --glass: rgb(11 17 28 / 0.62);
   --glass-line: rgb(37 49 69 / 0.7);
@@ -63,15 +63,15 @@
   --line: #d9e1ea;
   --ink: #0b111c;
   --muted-ink: #5b6676;
-  --signal: #00a676;
-  --hazard: #e09a00;
+  --signal: #0891c9;
+  --hazard: #f08a00;
   --mismatch: #d13438;
   --match: #00a676;
 
   --muted-text: var(--muted-ink);
-  --signal-fg: #006f4f;
-  --hazard-fg: #8a5a00;
-  --on-signal: #04140e;
+  --signal-fg: #02668f;
+  --hazard-fg: #9a5200;
+  --on-signal: #04121a;
   --grid-dot: rgb(140 156 178 / 0.45);
   --glass: rgb(255 255 255 / 0.72);
   --glass-line: rgb(205 216 228 / 0.9);
@@ -87,15 +87,15 @@
     --line: #d9e1ea;
     --ink: #0b111c;
     --muted-ink: #5b6676;
-    --signal: #00a676;
-    --hazard: #e09a00;
+    --signal: #0891c9;
+    --hazard: #f08a00;
     --mismatch: #d13438;
     --match: #00a676;
 
     --muted-text: var(--muted-ink);
-    --signal-fg: #006f4f;
-    --hazard-fg: #8a5a00;
-    --on-signal: #04140e;
+    --signal-fg: #02668f;
+    --hazard-fg: #9a5200;
+    --on-signal: #04121a;
     --grid-dot: rgb(140 156 178 / 0.45);
     --glass: rgb(255 255 255 / 0.72);
     --glass-line: rgb(205 216 228 / 0.9);
@@ -136,8 +136,10 @@
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
   --font-display: "Rajdhani", "JetBrains Mono", ui-sans-serif, sans-serif;
 
-  /* Type scale: 11 / 13 (base UI) / 16 / 18 / 20 / 28 / 40 px. */
-  --text-xs: 0.6875rem;
+  /* Type scale on a 16 px root: 12 (smallest UI text) / 13 (base UI) / 16 / 18 / 20 / 28 / 36 px. Tiny badges and
+     captions may use text-xs; nothing smaller. Spacing keeps the 3.25 px step the layouts were drawn with. */
+  --spacing: 0.203125rem;
+  --text-xs: 0.75rem;
   --text-xs--line-height: 1rem;
   --text-sm: 0.8125rem;
   --text-sm--line-height: 1.25rem;
@@ -146,7 +148,7 @@
   --text-xl: 1.25rem;
   --text-2xl: 1.75rem;
   --text-2xl--line-height: 2rem;
-  --text-4xl: 2.5rem;
+  --text-4xl: 2.25rem;
   --text-4xl--line-height: 2.5rem;
 
   --color-canvas: var(--canvas);
@@ -316,6 +318,21 @@
 @utility fade-up {
   animation: wmui-fade-up 0.3s ease-out;
 }
+/* The recording banner's dot: a slow on-air pulse. */
+@keyframes wmui-recording-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--mismatch) 55%, transparent);
+  }
+  50% {
+    opacity: 0.45;
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+@utility recording-pulse {
+  animation: wmui-recording-pulse 1.4s ease-in-out infinite;
+}
 @utility status-pulse {
   animation: wmui-status-pulse 2s infinite;
 }
@@ -338,16 +355,56 @@
   & > :nth-child(11) { animation-delay: 0.33s; }
 }
 
+/* A step card the scenario builder just moved: one signal-tinted flash on both cards that swapped. */
+@keyframes wmui-move-flash {
+  from {
+    box-shadow: 0 0 0 2px var(--signal);
+    background-color: color-mix(in oklab, var(--signal) 12%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@utility move-flash {
+  animation: wmui-move-flash 1.2s ease-out;
+}
+
+/* The guide's rendered Markdown: readable line length, console accents for code and tables. */
+@utility guide-prose {
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  & h2 { font-family: "Rajdhani", "JetBrains Mono", ui-sans-serif, sans-serif; font-size: 1.5rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; margin: 1.5rem 0 0.5rem; }
+  & h3 { font-family: "Rajdhani", "JetBrains Mono", ui-sans-serif, sans-serif; font-size: 1.15rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin: 1.25rem 0 0.4rem; color: var(--signal-fg); }
+  & h4 { font-weight: 600; margin: 1rem 0 0.25rem; }
+  & p, & ul, & ol, & table, & pre, & details, & blockquote { margin: 0.5rem 0; }
+  & ul { list-style: disc; padding-inline-start: 1.25rem; }
+  & ol { list-style: decimal; padding-inline-start: 1.25rem; }
+  & li { margin: 0.2rem 0; }
+  & li > p { margin: 0; }
+  & a { color: var(--signal-fg); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, var(--signal) 45%, transparent); }
+  & a:hover { text-decoration-color: currentColor; }
+  & strong { font-weight: 600; color: var(--foreground); }
+  & code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.92em; padding: 0.05rem 0.3rem; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--line); overflow-wrap: anywhere; }
+  & pre { overflow-x: auto; padding: 0.75rem; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); font-size: 0.75rem; line-height: 1.55; }
+  & pre code { padding: 0; border: 0; background: none; overflow-wrap: normal; }
+  & table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.75rem; }
+  & th, & td { border: 1px solid var(--line); padding: 0.35rem 0.6rem; text-align: start; vertical-align: top; }
+  & th { background: var(--surface-2); font-weight: 600; }
+  & blockquote { border-inline-start: 3px solid var(--hazard); padding-inline-start: 0.75rem; color: var(--muted-foreground); }
+  & hr { border-color: var(--line); margin: 1rem 0; }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   html {
-    @apply font-sans text-sm antialiased;
+    /* The root stays at the browser size (16 px, or what the reader set): the UI text size is on body. */
+    @apply font-sans antialiased;
     font-feature-settings: "calt" 1, "liga" 0;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-sm text-foreground;
   }
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;
@@ -384,7 +441,9 @@
   .slide-in,
   .fade-up,
   .status-pulse,
+  .recording-pulse,
   .live-flash,
+  .move-flash,
   .stagger-children > * {
     animation: none !important;
   }

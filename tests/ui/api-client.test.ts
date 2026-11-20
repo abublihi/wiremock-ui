@@ -58,6 +58,12 @@ describe('apiFetch', () => {
     expect(error).toMatchObject({ status: 404, message: 'No such mock' })
   })
 
+  it('ApiError carries the field a 400 names', async () => {
+    server.use(http.get('http://localhost:3000/api/echo', () => HttpResponse.json({ error: 'needs text', field: 'lookup.expression' }, { status: 400 })))
+    const error = await apiFetch('/api/echo').catch((e: unknown) => e)
+    expect(error).toMatchObject({ status: 400, message: 'needs text', field: 'lookup.expression' })
+  })
+
   it('falls back to the status text when the body has no error', async () => {
     server.use(http.get('http://localhost:3000/api/echo', () => new HttpResponse('<html>', { status: 502, statusText: 'Bad Gateway' })))
     await expect(apiFetch('/api/echo')).rejects.toMatchObject({ status: 502, message: 'Bad Gateway' })

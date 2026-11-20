@@ -39,7 +39,7 @@ function TableShell({ children }: { children: React.ReactNode }) {
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             {COLUMNS.map((col) => (
-              <TableHead key={col.key} className={cn('text-[10px] tracking-[0.14em] text-muted-foreground uppercase', col.hide && 'hidden md:table-cell')}>
+              <TableHead key={col.key} className={cn('text-[11px] tracking-[0.14em] text-muted-foreground uppercase', col.hide && 'hidden md:table-cell')}>
                 {t(col.key)}
               </TableHead>
             ))}
@@ -85,8 +85,8 @@ export function UsersTable({ users }: { users: PublicUser[] }) {
               <span dir="ltr" className="font-mono text-xs font-medium">
                 {user.username}
               </span>
-              {user.id === me && <span className="ms-2 text-[10px] text-muted-foreground">({t('users.you')})</span>}
-              <p className="truncate text-[10px] text-muted-foreground md:hidden">{user.displayName}</p>
+              {user.id === me && <span className="ms-2 text-[11px] text-muted-foreground">({t('users.you')})</span>}
+              <p className="truncate text-[11px] text-muted-foreground md:hidden">{user.displayName}</p>
             </TableCell>
             <TableCell className="hidden text-xs md:table-cell">{user.displayName}</TableCell>
             <TableCell>

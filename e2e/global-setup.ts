@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { startWireMock } from '../tests/helpers/containers'
+import { startRecordingPair } from '../tests/helpers/containers'
 import { ADMIN, E2E_UI_PORT, E2E_UI_URL, USER_A, USER_B } from './env'
 
 const root = resolve(import.meta.dirname, '..')
@@ -43,12 +43,13 @@ async function addUser(user: { username: string; password: string }, displayName
   if (!res.ok) throw new Error(`Creating ${user.username} failed: ${res.status} ${await res.text()}`)
 }
 
-/** Starts WireMock (admin auth on) and the built app on SQLite with the e2e seed; returns the teardown. */
+/** Starts WireMock (admin auth on, with an "upstream" WireMock beside it to record from) and the built app on SQLite with the e2e seed; returns the teardown. */
 export default async function globalSetup(): Promise<() => Promise<void>> {
   if (!existsSync(join(root, 'dist/server/server.js'))) throw new Error('No build found: run `npm run build` (npm run test:e2e does)')
   await assertPortFree(E2E_UI_PORT)
 
-  const wiremock = await startWireMock()
+  const pair = await startRecordingPair()
+  const wiremock = pair.wm
   // From here on, anything that throws still stops WireMock (and the app, if it started).
   let app: ChildProcess | undefined
   let dataDir: string | undefined
@@ -62,7 +63,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))])
       if (running.exitCode === null) running.kill('SIGKILL')
     }
-    await wiremock.stop()
+    await pair.stop()
     if (dataDir) rmSync(dataDir, { recursive: true, force: true })
   }
 
@@ -98,5 +99,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     throw err
   }
   process.env.E2E_WIREMOCK_URL = wiremock.url
+  process.env.E2E_UPSTREAM_URL = pair.upstream.url
+  process.env.E2E_UPSTREAM_INTERNAL_URL = pair.upstreamInternalUrl
   return teardown
 }

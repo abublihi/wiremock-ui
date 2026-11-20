@@ -137,6 +137,25 @@ describe('response', () => {
   })
 })
 
+describe('binary body (base64Body)', () => {
+  test('base64Body is written as is, with the Content-Type the input gives', () => {
+    const r = build({}, { base64Body: 'iVBORw0KGgo=', headers: { 'Content-Type': 'image/png' } }).response
+    expect(r).toEqual({ status: 200, headers: { 'Content-Type': 'image/png' }, base64Body: 'iVBORw0KGgo=' })
+  })
+  test('without a Content-Type it falls back to application/octet-stream, not the endpoint type', () => {
+    expect(build({}, { base64Body: 'AAEC' }).response.headers).toEqual({ 'Content-Type': 'application/octet-stream' })
+  })
+  test('body and base64Body together → 400', () => {
+    expect(failure(() => build({}, { base64Body: 'AAEC', body: '{}' }))).toEqual({ status: 400, message: 'body and base64Body cannot be combined' })
+  })
+  test('invalid base64 → 400', () => {
+    expect(failure(() => build({}, { base64Body: '%%%' }))).toEqual({ status: 400, message: 'base64Body must be valid base64' })
+  })
+  test('the schema accepts base64Body', () => {
+    expect(simpleMockSchema.safeParse({ isDefault: true, status: 200, base64Body: 'AAEC' }).success).toBe(true)
+  })
+})
+
 describe('validation', () => {
   test('keyValue required unless default', () => {
     for (const keyValue of [undefined, '']) {
@@ -193,5 +212,121 @@ describe('fault mocks, trimming', () => {
     expect(s.name).toBe('Mine')
     expect(failure(() => build({}, { keyValue: '   ' }))).toEqual({ status: 400, message: 'keyValue is required' })
     expect(failure(() => build({}, { name: ' \t' }))).toEqual({ status: 400, message: 'name must not be empty' })
+  })
+})
+
+describe('proxy', () => {
+  const proxy = (extra: Partial<NonNullable<SimpleMockInput['proxy']>> = {}) => ({ baseUrl: 'https://real.example/api', ...extra })
+  test('maps to WireMock proxy fields only: no status, headers or body', () => {
+    const r = build({}, { status: undefined, body: '{"a":1}', headers: { 'X-A': '1' }, proxy: proxy() }).response
+    expect(r).toEqual({ proxyBaseUrl: 'https://real.example/api' })
+  })
+  test('every field, remove-headers lower-cased, slow keeps its delay', () => {
+    const r = build({}, {
+      delayMs: 2000,
+      proxy: proxy({ addHeaders: { 'X-Env': 'qa' }, removeHeaders: ['Authorization', 'x-secret'], stripPrefix: '/pay' }),
+    }).response
+    expect(r).toEqual({
+      proxyBaseUrl: 'https://real.example/api',
+      additionalProxyRequestHeaders: { 'X-Env': 'qa' },
+      removeProxyRequestHeaders: ['authorization', 'x-secret'],
+      proxyUrlPrefixToRemove: '/pay',
+      fixedDelayMilliseconds: 2000,
+    })
+  })
+  test('empty header map and list are left out', () => {
+    expect(build({}, { proxy: proxy({ addHeaders: {}, removeHeaders: [] }) }).response).toEqual({ proxyBaseUrl: 'https://real.example/api' })
+  })
+  test('status is not required and the allowed list does not apply', () => {
+    expect(build({ allowedStatuses: [200] }, { status: undefined, proxy: proxy() }).response.proxyBaseUrl).toBe('https://real.example/api')
+  })
+  test('validation names the field', () => {
+    for (const baseUrl of ['ftp://x', 'real.example', '', 'http://']) {
+      expect(failure(() => build({}, { proxy: proxy({ baseUrl }) }))).toEqual({ status: 400, message: 'proxy.baseUrl must be an http:// or https:// URL' })
+    }
+    expect(failure(() => build({}, { proxy: proxy({ stripPrefix: 'pay' }) }))).toEqual({ status: 400, message: 'proxy.stripPrefix must start with /' })
+    expect(failure(() => build({}, { proxy: proxy(), fault: 'EMPTY_RESPONSE' }))).toEqual({
+      status: 400, message: 'proxy and fault cannot be combined: a proxied mock answers with the real service\'s response',
+    })
+  })
+  test('schema', () => {
+    expect(simpleMockSchema.safeParse({ isDefault: true, proxy: proxy({ addHeaders: { A: 'b' }, removeHeaders: ['c'], stripPrefix: '/x' }) }).success).toBe(true)
+    for (const bad of [{ baseUrl: 1 }, { ...proxy(), extra: 1 }, { ...proxy(), removeHeaders: [''] }, { ...proxy(), addHeaders: { A: 1 } }, {}]) {
+      expect(simpleMockSchema.safeParse({ isDefault: true, proxy: bad }).success).toBe(false)
+    }
+  })
+})
+
+describe('webhook', () => {
+  const hook = (extra: Partial<NonNullable<SimpleMockInput['webhook']>> = {}) => ({ method: 'post', url: 'http://hooks.example/cb', ...extra })
+  const listeners = (i: Partial<SimpleMockInput>) => build({}, i).serveEventListeners
+  test('maps to one webhook serveEventListener, method upper-cased', () => {
+    expect(listeners({ webhook: hook() })).toEqual([{ name: 'webhook', parameters: { method: 'POST', url: 'http://hooks.example/cb' } }])
+    expect(build().serveEventListeners).toBeUndefined()
+  })
+  test('headers, body and each delay', () => {
+    const full = hook({ headers: { 'Content-Type': 'application/json' }, body: `{"id":"{{jsonPath request.body '$.id'}}"}`, delay: { type: 'fixed', milliseconds: 500 } })
+    expect(listeners({ webhook: full })![0]!.parameters).toEqual({ ...full, method: 'POST' })
+    expect(listeners({ webhook: hook({ delay: { type: 'uniform', lower: 100, upper: 900 } }) })![0]!.parameters.delay).toEqual({ type: 'uniform', lower: 100, upper: 900 })
+  })
+  test('empty headers and body are left out', () => {
+    expect(listeners({ webhook: hook({ headers: {}, body: '' }) })![0]!.parameters).toEqual({ method: 'POST', url: 'http://hooks.example/cb' })
+  })
+  test('combines with a response, a fault or a proxy', () => {
+    expect(build({}, { webhook: hook() }).response.status).toBe(200)
+    expect(build({}, { fault: 'EMPTY_RESPONSE', webhook: hook() }).serveEventListeners).toHaveLength(1)
+    expect(build({}, { proxy: { baseUrl: 'http://x.example' }, webhook: hook() }).serveEventListeners).toHaveLength(1)
+  })
+  test('a templated URL is allowed', () => {
+    expect(listeners({ webhook: hook({ url: 'http://{{request.headers.X-Host}}/cb' }) })).toHaveLength(1)
+  })
+  test('validation names the field', () => {
+    expect(failure(() => build({}, { webhook: hook({ url: 'hooks.example' }) }))).toEqual({ status: 400, message: 'webhook.url must be an http:// or https:// URL' })
+    expect(failure(() => build({}, { webhook: hook({ method: 'NO WAY' }) })).message).toMatch(/^webhook\.method must be an HTTP method/)
+    expect(failure(() => build({}, { webhook: hook({ delay: { type: 'uniform', lower: 9, upper: 1 } }) })).message).toBe('webhook.delay.lower must not be greater than upper')
+    expect(failure(() => build({}, { webhook: hook({ delay: { type: 'fixed', milliseconds: 600_001 } }) })).message).toBe(
+      'webhook.delay.milliseconds must be an integer between 0 and 600000',
+    )
+  })
+  test('schema: only fixed and uniform delays', () => {
+    expect(simpleMockSchema.safeParse({ isDefault: true, webhook: hook({ delay: { type: 'fixed', milliseconds: 1 } }) }).success).toBe(true)
+    for (const bad of [
+      { method: 'POST' },
+      { ...hook(), extra: 1 },
+      { ...hook(), body: 1 },
+      { ...hook(), delay: { type: 'lognormal', median: 1, sigma: 1 } },
+      { ...hook(), delay: { type: 'fixed', milliseconds: 1, extra: 1 } },
+    ]) {
+      expect(simpleMockSchema.safeParse({ isDefault: true, webhook: bad }).success).toBe(false)
+    }
+  })
+})
+
+describe('scenario', () => {
+  test('maps to scenarioName / requiredScenarioState / newScenarioState; required state defaults to Started', () => {
+    expect(build({}, { scenario: { name: 'checkout', newState: 'approved' } })).toMatchObject({
+      scenarioName: 'checkout',
+      requiredScenarioState: 'Started',
+      newScenarioState: 'approved',
+    })
+    const pending = build({}, { scenario: { name: ' checkout ', requiredState: ' approved ' } })
+    expect(pending).toMatchObject({ scenarioName: 'checkout', requiredScenarioState: 'approved' })
+    expect(pending).not.toHaveProperty('newScenarioState')
+    expect(build()).not.toHaveProperty('scenarioName')
+    expect(build()).not.toHaveProperty('requiredScenarioState')
+  })
+  test('blank states fall back: required to Started, new state left out', () => {
+    const s = build({}, { scenario: { name: 'checkout', requiredState: '  ', newState: '' } })
+    expect(s.requiredScenarioState).toBe('Started')
+    expect(s).not.toHaveProperty('newScenarioState')
+  })
+  test('validation names the field', () => {
+    expect(failure(() => build({}, { scenario: { name: '  ' } }))).toEqual({ status: 400, message: 'scenario.name must not be empty' })
+  })
+  test('schema', () => {
+    expect(simpleMockSchema.safeParse({ isDefault: true, scenario: { name: 'a', requiredState: 'b', newState: 'c' } }).success).toBe(true)
+    for (const bad of [{}, { name: 1 }, { name: 'a', extra: 1 }, { name: 'a', newState: 2 }]) {
+      expect(simpleMockSchema.safeParse({ isDefault: true, scenario: bad }).success).toBe(false)
+    }
   })
 })

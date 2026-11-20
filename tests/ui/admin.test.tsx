@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
+import { strToU8, zipSync } from 'fflate'
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { AuditEntry } from '@/server/audit/log'
+import type { AuditFilter, AuditView } from '@/server/audit/view'
 import type { ImportReport } from '@/server/bundle/importer'
 import type { PublicUser } from '@/server/users/types'
 import { AuditPage } from '@/routes/_app/audit'
@@ -214,12 +217,72 @@ describe('audit page', () => {
     await renderApp(<AuditPage />)
     const ue = userEvent.setup()
     await screen.findByText('mock.create1')
-    expect(screen.getByText('{"n":1}')).toBeTruthy()
+    expect(screen.getAllByText('n:')[0]!.nextSibling?.textContent).toBe('1')
     await ue.click(screen.getByRole('button', { name: 'Load more' }))
     await screen.findByText('mock.create3')
     expect(seen).toEqual([null, 'cur-2'])
     expect(screen.getByText('mock.create1')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
+  })
+})
+
+describe('audit page: sentences and filters', () => {
+  const at = '2026-01-01T00:00:00.000Z'
+  const entries: AuditView[] = [
+    { at, actor: 'admin', action: 'recording.accept', target: 'rec-1', details: { accepted: 3, failed: 0, owner: 'admin' } },
+    { at, actor: 'sara', action: 'mock.update', target: 'm-1', subject: { kind: 'mock', name: 'Refund ok' } },
+    { at, actor: 'sara', action: 'mock.delete', target: 'm-2', subject: { kind: 'mock', name: null } },
+    { at, actor: 'sara', action: 'mock.update', target: 'm-3', subject: { kind: 'mock', name: null } },
+    { at, actor: 'omar', action: 'catalog.integration.upsert', target: 'pay', subject: { kind: 'integration', name: 'Payments' } },
+    { at, actor: 'omar', action: 'scenario.set-state', target: 'checkout', details: { state: 'paid' } },
+    { at, actor: 'system', action: 'sync', details: { stubs: 12 } },
+  ]
+
+  it('says what happened in plain sentences, linking to what it was about', async () => {
+    server.use(http.get(`${BASE}/api/audit`, () => HttpResponse.json({ entries, nextCursor: null })))
+    await renderApp(<AuditPage />)
+    const table = await screen.findByRole('table')
+    expect(within(table).getAllByText((_, el) => el?.tagName === 'P' && el.textContent === 'admin accepted 3 recorded mocks')).toHaveLength(1)
+    expect(within(table).getByRole('link', { name: 'Refund ok' }).getAttribute('href')).toBe('/mocks/m-1')
+    expect(within(table).getAllByText((_, el) => el?.tagName === 'P' && el.textContent === 'sara deleted a mock')).toHaveLength(1)
+    // Edited, then deleted later: the name went with it.
+    expect(within(table).getByText('deleted mock')).toBeTruthy()
+    expect(within(table).getByRole('link', { name: 'Payments' }).getAttribute('href')).toBe('/integrations/pay')
+    expect(within(table).getByRole('link', { name: 'checkout' }).getAttribute('href')).toBe('/scenarios?scenario=checkout')
+    expect(within(table).getAllByText((_, el) => el?.tagName === 'P' && el.textContent === 'system synced 12 mocks to WireMock')).toHaveLength(1)
+    // Details as key: value.
+    expect(within(table).getAllByText('owner:')[0]!.nextSibling?.textContent).toBe('admin')
+  })
+
+  it('filters by who, what and day on the server', async () => {
+    const seen: URLSearchParams[] = []
+    server.use(
+      http.get(`${BASE}/api/users`, () => HttpResponse.json([{ id: 'u1', username: 'sara', role: 'admin', disabled: false }])),
+      http.get(`${BASE}/api/audit`, ({ request }) => {
+        const q = new URL(request.url).searchParams
+        seen.push(q)
+        return HttpResponse.json({ entries: q.get('actor') ? [] : entries, nextCursor: null })
+      }),
+    )
+    function Harness() {
+      const [search, setSearch] = useState<AuditFilter>({})
+      return <AuditPage search={search} onSearchChange={setSearch} />
+    }
+    await renderApp(<Harness />)
+    const ue = userEvent.setup()
+    await screen.findByRole('table')
+    await ue.click(screen.getByRole('combobox', { name: 'Who' }))
+    await ue.click(await screen.findByRole('option', { name: 'sara' }))
+    await ue.click(screen.getByRole('combobox', { name: 'What' }))
+    await ue.click(await screen.findByRole('option', { name: 'Mocks' }))
+    await ue.type(screen.getByLabelText('From'), '2026-01-01')
+    await waitFor(() => expect(seen.at(-1)?.get('from')).toBe('2026-01-01'))
+    expect(seen.at(-1)?.get('actor')).toBe('sara')
+    expect(seen.at(-1)?.get('action')).toBe('mock')
+    expect(await screen.findByText('Nothing matches these filters. Widen the dates or clear the filters.')).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Clear filters' }))
+    await screen.findByRole('table')
+    expect(seen.at(-1)?.get('actor')).toBeNull()
   })
 })
 
@@ -238,22 +301,23 @@ describe('import page', () => {
   const file = (content: string, name = 'bundle.json') => new File([content], name, { type: 'application/json' })
   const bundle = JSON.stringify({ integrations: [{ key: 'a' }], catalog: [{ key: 'x' }, { key: 'y' }], mocks: [{}, {}, {}], oidcIdentities: [{}] })
 
-  it('rejects a non-JSON file and an oversize file before upload', async () => {
+  it('lists each problem file with its error and blocks the import until it is removed', async () => {
     const calls = mockImport()
     await renderApp(<ImportPage />)
     const ue = userEvent.setup({ applyAccept: false })
-    const input = screen.getByLabelText('Choose file')
-    await ue.upload(input, file('x', 'notes.txt'))
-    await screen.findByText('notes.txt is not a .json file.')
     const big = file('{}', 'big.json')
     Object.defineProperty(big, 'size', { value: 10 * 1024 * 1024 + 1 })
-    await ue.upload(input, big)
-    await screen.findByText(/big\.json is 10\.0 MB\. The limit is 10 MB\./)
-    await ue.upload(input, file('{nope', 'bad.json'))
-    await screen.findByText(/bad\.json is not valid JSON/)
-    await ue.upload(input, file('{"hello":1}', 'odd.json'))
-    await screen.findByText(/odd\.json is not a bundle/)
-    expect(screen.queryByRole('button', { name: 'Import' })).toBeNull()
+    await ue.upload(screen.getByLabelText('Choose files'), [file('x', 'notes.txt'), big, file('{nope', 'bad.json'), file('{"hello":1}', 'odd.json'), file(bundle, 'good.json')])
+    const list = await screen.findByRole('list', { name: 'Files' })
+    expect(within(list).getByText('notes.txt is not a .json or .zip file.')).toBeTruthy()
+    expect(within(list).getByText(/big\.json is 10\.0 MB\. The limit is 10 MB\./)).toBeTruthy()
+    expect(within(list).getByText(/bad\.json is not valid JSON/)).toBeTruthy()
+    expect(within(list).getByText(/odd\.json: unrecognised bundle shape/)).toBeTruthy()
+    expect(within(list).getByText('1 integration · 2 endpoints · 3 mocks')).toBeTruthy()
+    expect(screen.getByText('Remove the files marked with an error (or fix them and choose again) to import the rest.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement).disabled).toBe(true)
+    for (const name of ['notes.txt', 'big.json', 'bad.json', 'odd.json']) await ue.click(screen.getByRole('button', { name: `Remove ${name}` }))
+    expect((screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement).disabled).toBe(false)
     expect(calls).toHaveLength(0)
   })
 
@@ -261,7 +325,7 @@ describe('import page', () => {
     const calls = mockImport()
     await renderApp(<ImportPage />)
     const ue = userEvent.setup({ applyAccept: false })
-    await ue.upload(screen.getByLabelText('Choose file'), file(bundle))
+    await ue.upload(screen.getByLabelText('Choose files'), file(bundle))
     const summary = await screen.findByRole('region', { name: /In bundle\.json/ })
     expect(within(summary).getByText('Integrations').nextSibling?.textContent).toBe('1')
     expect(within(summary).getByText('Endpoints').nextSibling?.textContent).toBe('2')
@@ -278,26 +342,102 @@ describe('import page', () => {
     expect(screen.getByText('Ignored OIDC identities').nextSibling?.textContent).toBe('1')
   })
 
+  it('merges several files and a zip in path order into one request', async () => {
+    const calls = mockImport()
+    await renderApp(<ImportPage />)
+    const ue = userEvent.setup({ applyAccept: false })
+    const stub = (path: string) => ({ request: { method: 'GET', urlPath: path }, response: { status: 200 } })
+    const zip = zipSync({ 'mappings/z1.json': strToU8(JSON.stringify(stub('/z1'))), '../evil.json': strToU8(JSON.stringify(stub('/evil'))) })
+    await ue.upload(screen.getByLabelText('Choose files'), [
+      file(JSON.stringify(stub('/b')), 'b.json'),
+      new File([zip], 'more.zip', { type: 'application/zip' }),
+      file(JSON.stringify({ mappings: [stub('/a1'), stub('/a2')] }), 'a.json'),
+    ])
+    const summary = await screen.findByRole('region', { name: /In 3 files/ })
+    expect(within(summary).getByText('Mocks').nextSibling?.textContent).toBe('4')
+    expect(within(summary).getByText('more.zip/mappings/z1.json')).toBeTruthy()
+    expect(within(summary).getByText(/Skipped 1 zip entry outside the archive: more\.zip\/\.\.\/evil\.json/)).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Import' }))
+    await screen.findByText('Import finished')
+    const sent = calls[0]!.body as { mocks: { request: { urlPath: string } }[] }
+    expect(sent.mocks.map((m) => m.request.urlPath)).toEqual(['/a1', '/a2', '/b', '/z1'])
+  })
+
+  it('two files with the same name are listed and removed separately', async () => {
+    mockImport()
+    await renderApp(<ImportPage />)
+    const ue = userEvent.setup({ applyAccept: false })
+    await ue.upload(screen.getByLabelText('Choose files'), [file(bundle, 'same.json'), file(JSON.stringify({ mappings: [{}] }), 'same.json')])
+    const list = await screen.findByRole('list', { name: 'Files' })
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2)
+    await ue.click(screen.getByRole('button', { name: 'Remove same.json (2)' }))
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(list).getByText('same.json')).toBeTruthy()
+  })
+
+  it('reads a chosen folder: .json files only, hidden ones skipped', async () => {
+    const calls = mockImport()
+    await renderApp(<ImportPage />)
+    const ue = userEvent.setup({ applyAccept: false })
+    const inFolder = (content: string, path: string) => {
+      const f = file(content, path.split('/').pop())
+      Object.defineProperty(f, 'webkitRelativePath', { value: path })
+      return f
+    }
+    const stub = JSON.stringify({ request: { method: 'GET', urlPath: '/f' }, response: { status: 200 } })
+    await ue.upload(screen.getByLabelText('Choose folder'), [
+      inFolder(stub, 'mocks/sub/two.json'),
+      inFolder(stub, 'mocks/one.json'),
+      inFolder('junk', 'mocks/readme.md'),
+      inFolder('junk', 'mocks/.hidden.json'),
+      inFolder('junk', 'mocks/.git/x.json'),
+    ])
+    const list = await screen.findByRole('list', { name: 'Files' })
+    expect(within(list).getAllByRole('listitem').map((li) => li.querySelector('[data-path]')?.textContent)).toEqual(['mocks/one.json', 'mocks/sub/two.json'])
+    await ue.click(screen.getByRole('button', { name: 'Import' }))
+    await screen.findByText('Import finished')
+    expect((calls[0]!.body as { mocks: unknown[] }).mocks).toHaveLength(2)
+  })
+
+  it('says when the merged files are over the 10 MB limit', async () => {
+    mockImport()
+    await renderApp(<ImportPage />)
+    const ue = userEvent.setup({ applyAccept: false })
+    const pad = 'x'.repeat(6 * 1024 * 1024)
+    const big = (n: number) => file(JSON.stringify({ request: { method: 'GET', urlPath: '/p' }, response: { status: 200, body: pad } }), `p${n}.json`)
+    await ue.upload(screen.getByLabelText('Choose files'), [big(1), big(2)])
+    await screen.findByText(/Together these files are 12\.0 MB; one import can be at most 10 MB\. Split them into smaller imports\./)
+    expect((screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('sends ?prune=true only when the box is checked, and summarises a WireMock export', async () => {
     const calls = mockImport()
     await renderApp(<ImportPage />)
     const ue = userEvent.setup({ applyAccept: false })
-    await ue.upload(screen.getByLabelText('Choose file'), file(JSON.stringify({ mappings: [{}, {}] }), 'export.json'))
+    await ue.upload(screen.getByLabelText('Choose files'), file(JSON.stringify({ mappings: [{}, {}] }), 'export.json'))
     const summary = await screen.findByRole('region', { name: /In export\.json/ })
     expect(within(summary).getByText('Mocks').nextSibling?.textContent).toBe('2')
-    await ue.click(screen.getByRole('checkbox', { name: "Remove baseline mocks that aren't in this file" }))
+    await ue.click(screen.getByRole('checkbox', { name: "Remove baseline mocks that aren't in this import" }))
     await ue.click(screen.getByRole('button', { name: 'Import' }))
     await screen.findByText('Import finished')
     expect(calls[0]!.search).toBe('?prune=true')
   })
 
-  it('shows a server refusal and keeps the file', async () => {
+  it('shows a server refusal and keeps the files', async () => {
     server.use(http.post(`${BASE}/api/import`, () => HttpResponse.json({ error: 'catalog[0]: integration "zz" does not exist' }, { status: 400 })))
     await renderApp(<ImportPage />)
     const ue = userEvent.setup({ applyAccept: false })
-    await ue.upload(screen.getByLabelText('Choose file'), file(bundle))
+    await ue.upload(screen.getByLabelText('Choose files'), file(bundle))
     await ue.click(await screen.findByRole('button', { name: 'Import' }))
     await screen.findByText('catalog[0]: integration "zz" does not exist')
     expect(screen.getByRole('button', { name: 'Import' })).toBeTruthy()
+  })
+
+  it('offers an export of everything as a bundle or WireMock mappings', async () => {
+    await renderApp(<ImportPage />)
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('button', { name: 'Export' }))
+    expect(screen.getByRole('menuitem', { name: /Bundle \(\.json\)/ }).getAttribute('href')).toBe('/api/export?scope=all&format=bundle')
+    expect(screen.getByRole('menuitem', { name: /WireMock mappings \(\.zip\)/ }).getAttribute('href')).toBe('/api/export?scope=all&format=mappings')
   })
 })
