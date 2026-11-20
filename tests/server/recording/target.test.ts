@@ -88,6 +88,9 @@ test('isLoopbackHost', () => {
   expect(is('http://localhost')).toBe(true)
   expect(is('http://[::ffff:7f00:1]')).toBe(true)
   expect(is('http://[::ffff:a00:1]')).toBe(false)
+  // IPv4-compatible IPv6 (deprecated, still parsed): [::127.0.0.1] is [::7f00:1].
+  expect(is('http://[::127.0.0.1]')).toBe(true)
+  expect(is('http://[::10.0.0.1]')).toBe(false)
   expect(is('http://10.0.0.1')).toBe(false)
   expect(is('http://localhost.example.com')).toBe(false)
   expect(is('http://128.0.0.1')).toBe(false)

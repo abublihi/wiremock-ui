@@ -17,7 +17,7 @@ const hostOf = (url: URL) => url.hostname.toLowerCase().replace(/\.$/, '')
 
 /**
  * True for a host that means "this machine" to whoever connects to it: localhost and *.localhost, 127.0.0.0/8,
- * ::1, IPv4-mapped 127.x, and the unspecified 0.0.0.0 / ::. The URL parser has already canonicalised spellings
+ * ::1, IPv4-mapped and IPv4-compatible 127.x, and the unspecified 0.0.0.0 / ::. The URL parser has already canonicalised spellings
  * like 127.1, 0x7f.0.0.1, 2130706433 and [::ffff:127.0.0.1] (→ [::ffff:7f00:1]).
  */
 export function isLoopbackHost(url: URL): boolean {
@@ -25,8 +25,8 @@ export function isLoopbackHost(url: URL): boolean {
   if (host === 'localhost' || host.endsWith('.localhost')) return true
   if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) || host === '0.0.0.0') return true
   if (host === '[::1]' || host === '[::]') return true
-  // IPv4-mapped IPv6: [::ffff:7fxx:xxxx] is 127.x.x.x, [::ffff:0:0] is 0.0.0.0.
-  const mapped = /^\[::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})\]$/.exec(host)
+  // IPv4-mapped [::ffff:7fxx:xxxx] and IPv4-compatible [::7fxx:xxxx] IPv6 are 127.x.x.x; [::ffff:0:0] is 0.0.0.0.
+  const mapped = /^\[::(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})\]$/.exec(host)
   if (mapped) {
     const high = parseInt(mapped[1], 16)
     return high >> 8 === 0x7f || (high === 0 && parseInt(mapped[2], 16) === 0)
