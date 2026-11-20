@@ -702,6 +702,7 @@ export const en = {
   'request.total': 'Total',
   'request.loggedAt': 'Logged at',
   'request.matchedBy': 'Matched by',
+  'requests.recordedVia': 'Recording → forwarded to',
   'request.didTitle': 'What the mock did',
   'request.forwardedTo': 'Forwarded to',
   'request.callsBack': 'Calls back:',

@@ -32,6 +32,8 @@ type Row = {
   stubName: string | null
   integration: string | null
   durationMs: number | null
+  forwardedTo?: string | null
+  recordingProxy?: boolean
 }
 const row = (id: string, over: Partial<Row> = {}): Row => ({
   id,
@@ -295,6 +297,16 @@ function mockDetail(nearMisses: unknown[] = misses) {
   )
   return calls
 }
+
+describe('recording proxy rows', () => {
+  it('label a request the recording forwarded with its target', async () => {
+    mockList([[row('r', { stubName: null, recordingProxy: true, forwardedTo: 'https://pay.example.com' })]])
+    await renderApp(<Harness />)
+    const cell = await screen.findByText('Recording → forwarded to', { exact: false })
+    expect(cell.textContent).toBe('Recording → forwarded to https://pay.example.com')
+    expect(screen.queryByText('Unnamed mock')).toBeNull()
+  })
+})
 
 describe('request drawer', () => {
   it('opens from the No match stamp and shows the request and the response', async () => {

@@ -111,7 +111,18 @@ export function RequestTable({
               {r.status === null ? <span className="text-muted-foreground">—</span> : <StatusBadge status={r.status} />}
             </TableCell>
             <TableCell className="max-w-44 md:max-w-64">
-              {r.matched ? (
+              {r.matched && r.recordingProxy ? (
+                // The recording's catch-all proxy has no name of ours: say what it did.
+                <span className="flex min-w-0 items-center gap-2" title={r.forwardedTo ?? undefined}>
+                  <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-hazard motion-reduce:animate-none" />
+                  <span className="truncate text-xs">
+                    {t('requests.recordedVia')}{' '}
+                    <span dir="ltr" className="font-mono text-muted-foreground">
+                      {r.forwardedTo ?? ''}
+                    </span>
+                  </span>
+                </span>
+              ) : r.matched ? (
                 <span className="flex min-w-0 items-center gap-2">
                   <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-match" />
                   {r.stubId ? (

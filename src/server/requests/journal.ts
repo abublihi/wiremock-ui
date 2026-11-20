@@ -2,6 +2,7 @@ import { safeRecord, type AuditLog } from '../audit/log'
 import { longestPrefixMatch } from '../catalog/prefix'
 import type { CatalogService } from '../catalog/service'
 import { NotFoundError, ValidationError } from '../errors'
+import { isRecordingProxy } from '../recording/proxy'
 import { MARKER_ID } from '../sync/marker'
 import type { WireMockClient } from '../wiremock/client'
 import type { LoggedEvent } from '../wiremock/types'
@@ -18,6 +19,10 @@ export type RequestSummary = {
   stubName: string | null
   integration: string | null
   durationMs: number | null
+  /** The matched mock forwards (a proxy): where to. */
+  forwardedTo: string | null
+  /** The matched mock is the recording's catch-all proxy (the request was recorded, not answered by a mock). */
+  recordingProxy: boolean
 }
 
 export type NearMissView = {
@@ -242,6 +247,7 @@ const loggedMs = (e: LoggedEvent) =>
   typeof e.request.loggedDate === 'number' ? e.request.loggedDate : Date.parse(e.request.loggedDateString ?? '')
 
 function summarize(e: LoggedEvent, integration: string | null): RequestSummary {
+  const matchedStub = e.wasMatched ? e.stubMapping : undefined
   const logged = e.request.loggedDate
   return {
     id: e.id,
@@ -255,5 +261,7 @@ function summarize(e: LoggedEvent, integration: string | null): RequestSummary {
     stubName: e.wasMatched ? (e.stubMapping?.name ?? null) : null,
     integration,
     durationMs: typeof e.timing?.totalTime === 'number' ? e.timing.totalTime : null,
+    forwardedTo: matchedStub && typeof matchedStub.response?.proxyBaseUrl === 'string' ? matchedStub.response.proxyBaseUrl : null,
+    recordingProxy: matchedStub ? isRecordingProxy(matchedStub) : false,
   }
 }
