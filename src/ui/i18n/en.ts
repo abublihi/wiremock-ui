@@ -657,7 +657,11 @@ export const en = {
   'requests.loadFailed': 'Could not load the request log',
   'requests.refreshFailed': 'Live updates stopped: {message}',
   'requests.retry': 'Try again',
-  'requests.capped': '// showing the newest {max} — narrow with filters',
+  'requests.capped': '// showing the newest {count}; live updates arrive on top',
+  'requests.loadOlder': 'Load older',
+  'requests.olderHint': '// {count} shown; new requests still arrive on top',
+  'requests.olderEnd': '// that is everything in WireMock’s request log',
+  'requests.olderFailed': 'Could not load older requests: {message}',
 
   'request.title': 'Request details',
   'request.loadFailed': 'Could not load this request',

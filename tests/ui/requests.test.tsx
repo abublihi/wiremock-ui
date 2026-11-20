@@ -183,6 +183,46 @@ describe('live polling', () => {
   })
 })
 
+describe('load older', () => {
+  const at = (n: number) => new Date(Date.parse('2026-11-20T10:00:00.000Z') - n * 1000).toISOString()
+  const page = (from: number, count: number) => Array.from({ length: count }, (_, n) => row(`r${from + n}`, { loggedAt: at(from + n) }))
+
+  it('is offered when the live page is full; pages back with the cursor, keeps the filters, and says when it reached the end', async () => {
+    const calls: URLSearchParams[] = []
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/requests`, ({ request }) => {
+        const q = new URL(request.url).searchParams
+        calls.push(q)
+        if (!q.get('before')) return HttpResponse.json(q.get('since') ? [] : page(0, 500))
+        if (q.get('before') === `${at(499)}|r499`) return HttpResponse.json({ requests: page(500, 3), nextCursor: 'c-2' })
+        return HttpResponse.json({ requests: page(503, 1), nextCursor: null })
+      }),
+    )
+    await renderApp(<Harness initial={{ matched: 'false' }} />)
+    expect(await screen.findByText('// showing the newest 500; live updates arrive on top')).toBeTruthy()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Load older' }))
+    await screen.findByText('// 503 shown; new requests still arrive on top')
+    const first = calls.find((q) => q.get('before'))!
+    expect(first.get('matched')).toBe('false')
+    expect(first.get('limit')).toBe('500')
+    expect(screen.getAllByRole('row')).toHaveLength(504)
+    await user.click(screen.getByRole('button', { name: 'Load older' }))
+    await screen.findByText(/that is everything in WireMock/)
+    expect(calls.filter((q) => q.get('before')).map((q) => q.get('before'))[1]).toBe('c-2')
+    expect(screen.queryByRole('button', { name: 'Load older' })).toBeNull()
+    expect(screen.getAllByRole('row')).toHaveLength(505)
+  })
+
+  it('is not offered while the live page has room', async () => {
+    mockList([[row('a')]])
+    await renderApp(<Harness />)
+    await screen.findByRole('link', { name: 'Mock a' })
+    expect(screen.queryByRole('button', { name: 'Load older' })).toBeNull()
+  })
+})
+
 describe('clear log', () => {
   it('is offered to every signed-in user and empties the table after confirming', async () => {
     let cleared = false

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { keepPreviousData, queryOptions, type QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
@@ -370,6 +370,59 @@ export function useNearMisses(id: string | undefined, options: { enabled?: boole
 }
 
 /** Empties WireMock's request journal (for everyone). */
+/** One older page of the request log (`GET /api/requests?before=…`): filtered server-side, newest first. */
+export type OlderRequestsPage = { requests: RequestSummary[]; nextCursor: string | null }
+
+/** Where "Load older" starts: just before this row (its logged time and id, so rows in the same millisecond keep their place). */
+export function requestCursor(row: Pick<RequestSummary, 'loggedAt' | 'id'>): string {
+  return `${row.loggedAt}|${row.id}`
+}
+
+/**
+ * Older pages of the request log, below the live first page. Loading one freezes what is on screen (so rows the live page
+ * trims later stay put) and appends the page; live updates keep arriving on top. Starts over when `filter` changes or the
+ * log is cleared.
+ */
+export function useOlderRequests(filter: RequestFilter, shown: RequestSummary[]) {
+  const key = JSON.stringify(filter)
+  const [state, setState] = useState<{ key: string; rows: RequestSummary[]; cursor: string | null }>({ key, rows: [], cursor: null })
+  const current = state.key === key ? state : { key, rows: [], cursor: null }
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+  const load = async () => {
+    const oldest = current.rows.at(-1) ?? shown.at(-1)
+    const before = current.rows.length > 0 ? current.cursor : oldest ? requestCursor(oldest) : null
+    if (!before) return
+    const { windowMinutes, ...rest } = filter
+    const since = windowMinutes ? new Date(Date.now() - windowMinutes * 60_000).toISOString() : undefined
+    setPending(true)
+    setError(null)
+    try {
+      const page = await apiFetch<OlderRequestsPage>('/api/requests', { query: { ...rest, since, before, limit: MAX_REQUEST_ROWS } })
+      setState((prev) => {
+        const base = prev.key === key ? prev.rows : []
+        return { key, rows: mergeAll([...shown, ...base], page.requests), cursor: page.nextCursor }
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)))
+    } finally {
+      setPending(false)
+    }
+  }
+  const reset = () => setState({ key, rows: [], cursor: null })
+  /** Live rows on top of the loaded older ones, newest first, no cap. */
+  const rows = current.rows.length > 0 ? mergeAll(current.rows, shown) : shown
+  /** More may exist: the live page is full, or the last older page said so. */
+  const more = current.rows.length > 0 ? current.cursor !== null : shown.length >= MAX_REQUEST_ROWS
+  return { rows, loaded: current.rows.length > 0, more, pending, error, load, reset }
+}
+
+function mergeAll(a: RequestSummary[], b: RequestSummary[]): RequestSummary[] {
+  const byId = new Map<string, RequestSummary>()
+  for (const r of [...a, ...b]) byId.set(r.id, r)
+  return [...byId.values()].sort(newestFirst)
+}
+
 export function useClearRequests() {
   const queryClient = useQueryClient()
   return useMutation({

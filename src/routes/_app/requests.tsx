@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { AlertCircleIcon, FileStackIcon, PauseIcon, PlayIcon, RadioTowerIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
-import { MAX_REQUEST_ROWS, type RequestFilter, useClearRequests, useDocumentVisible, useIntegrations, useRequests, useSnapshot } from '@/ui/api/queries'
+import { type RequestFilter, useClearRequests, useDocumentVisible, useIntegrations, useOlderRequests, useRequests, useSnapshot } from '@/ui/api/queries'
 import { useRecordingAllowed } from '@/ui/config'
 import { emptyMessage } from '@/ui/components/recording/RecordForms'
 import { WithTerm } from '@/ui/components/guide/Term'
@@ -25,6 +25,7 @@ import {
   AlertDialogTrigger,
 } from '@/ui/components/ui/alert-dialog'
 import { Button } from '@/ui/components/ui/button'
+import { Spinner } from '@/ui/components/ui/spinner'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
 import { useT } from '@/ui/i18n'
 
@@ -83,8 +84,11 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
   const integrations = useIntegrations()
   const filtered = Boolean(search.matched || search.integration || search.status || search.q || search.range)
 
-  const rows = requests.data ?? []
-  const fresh = useFreshIds(rows, requests.isSuccess && !requests.isPlaceholderData, JSON.stringify(filter))
+  const live1 = requests.data ?? []
+  // "Load older" pages sit below the live first page; live updates keep arriving on top.
+  const older = useOlderRequests(filter, live1)
+  const rows = older.rows
+  const fresh = useFreshIds(live1, requests.isSuccess && !requests.isPlaceholderData, JSON.stringify(filter))
   const unmatched = rows.filter((r) => !r.matched).length
   const clearFilters = () =>
     onSearchChange({ matched: undefined, integration: undefined, status: undefined, q: undefined, range: undefined })
@@ -114,7 +118,7 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
           </Button>
           <CountTool />
           <CreateMocksButton ids={rows.map((r) => r.id)} />
-          <ClearLogButton />
+          <ClearLogButton onCleared={older.reset} />
         </div>
       </header>
 
@@ -163,8 +167,20 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
       ) : (
         <>
           <RequestTable rows={rows} fresh={fresh} selectedId={search.open} onOpen={open} />
-          {rows.length >= MAX_REQUEST_ROWS && (
-            <p className="text-center text-[11px] text-muted-foreground">{t('requests.capped', { max: MAX_REQUEST_ROWS })}</p>
+          {older.more && (
+            <div className="flex flex-col items-center gap-1.5">
+              <Button variant="outline" size="sm" disabled={older.pending} onClick={() => void older.load()}>
+                {older.pending && <Spinner data-icon="inline-start" />}
+                {t('requests.loadOlder')}
+              </Button>
+              <p className="text-center text-[11px] text-muted-foreground">{t(older.loaded ? 'requests.olderHint' : 'requests.capped', { count: rows.length })}</p>
+            </div>
+          )}
+          {older.loaded && !older.more && <p className="text-center text-[11px] text-muted-foreground">{t('requests.olderEnd')}</p>}
+          {older.error && (
+            <p role="alert" className="text-center text-xs text-mismatch">
+              {t('requests.olderFailed', { message: older.error.message })}
+            </p>
           )}
         </>
       )}
@@ -203,13 +219,14 @@ function CreateMocksButton({ ids }: { ids: string[] }) {
   )
 }
 
-function ClearLogButton() {
+function ClearLogButton({ onCleared }: { onCleared: () => void }) {
   const t = useT()
   const clear = useClearRequests()
   const [open, setOpen] = useState(false)
   const confirm = async () => {
     try {
       await clear.mutateAsync()
+      onCleared()
       toast.success(t('requests.cleared'))
     } catch (error) {
       toast.error(t('requests.clearFailed'), { description: error instanceof Error ? error.message : undefined })
