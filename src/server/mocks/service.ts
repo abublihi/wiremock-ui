@@ -1,6 +1,7 @@
 import { safeRecord, type AuditLog } from '../audit/log'
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../errors'
 import { logger } from '../logger'
+import { newestFirst, pageMocks, type MockPage } from './paging'
 import { assertPowerFields, normalisePowerFields } from './power-fields'
 import type { MockStore } from '../store/types'
 import type { PublicUser } from '../users/types'
@@ -153,15 +154,22 @@ export class MockService {
     const status = filter?.status
     const q = filter?.q?.trim().toLowerCase()
     const scenario = filter?.scenario
-    return all.filter((stub) => {
-      if (status !== undefined && (stub.response.status ?? 200) !== status) return false
-      if (scenario !== undefined) {
-        const name = typeof stub.scenarioName === 'string' ? stub.scenarioName : ''
-        if (scenario === '*' ? name === '' : name !== scenario) return false
-      }
-      if (q && !matchesQuery(stub, q)) return false
-      return true
-    })
+    return all
+      .filter((stub) => {
+        if (status !== undefined && (stub.response.status ?? 200) !== status) return false
+        if (scenario !== undefined) {
+          const name = typeof stub.scenarioName === 'string' ? stub.scenarioName : ''
+          if (scenario === '*' ? name === '' : name !== scenario) return false
+        }
+        if (q && !matchesQuery(stub, q)) return false
+        return true
+      })
+      .sort(newestFirst)
+  }
+
+  /** One page of `list(filter)`; a scenario is one row (see `pageMocks`). */
+  async listPage(filter: Parameters<MockService['list']>[0], page: { limit: number; offset: number }): Promise<MockPage> {
+    return pageMocks(await this.list(filter), page)
   }
 
   async duplicate(id: string, actor: PublicUser): Promise<StubMapping> {

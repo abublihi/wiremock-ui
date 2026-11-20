@@ -118,6 +118,40 @@ async function open() {
 }
 
 describe('editing a scenario', () => {
+  it('loads every mock of a long scenario (more than one page of the mocks list): no limit is sent', async () => {
+    const steps = Array.from(
+      { length: 60 },
+      (_, i) =>
+        ({
+          id: `long-${i}`,
+          name: `loan — ${i}`,
+          request: REQUEST,
+          response: { status: 200, body: `answer ${i}` },
+          scenarioName: 'loan',
+          requiredScenarioState: i === 0 ? 'Started' : `s${i}`,
+          ...(i < 59 ? { newScenarioState: `s${i + 1}` } : {}),
+          metadata: meta(1),
+        }) as StubMapping,
+    )
+    const urls: URL[] = []
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
+      http.get(`${BASE}/api/integrations/nic/endpoints`, () => HttpResponse.json([endpoint])),
+      http.get(`${BASE}/api/scenarios`, () => HttpResponse.json({ scenarios: [] })),
+      http.get(`${BASE}/api/mocks`, ({ request }) => {
+        const url = new URL(request.url)
+        urls.push(url)
+        // A paged request would get one page of rows only; the loader must not ask for one.
+        return url.searchParams.has('limit') ? HttpResponse.json({ error: 'unexpected limit' }, { status: 400 }) : HttpResponse.json(steps)
+      }),
+    )
+    await open()
+    expect(urls.every((u) => !u.searchParams.has('limit'))).toBe(true)
+    expect(textbox('Step 1 response body').value).toBe('answer 0')
+    expect(textbox('Step 60 response body').value).toBe('answer 59')
+    expect(screen.queryByRole('textbox', { name: 'Step 61 response body' })).toBeNull()
+  })
+
   it('loads its mocks as steps, shows the request read-only and lists the mocks kept as is', async () => {
     const calls = mockApi()
     await open()
@@ -290,8 +324,8 @@ describe('the mocks list', () => {
     await renderApp(<MockTable mocks={[approved, plain, cancel, pending]} />)
     const ue = userEvent.setup()
     const rows = () => screen.getAllByRole('row').slice(1)
-    expect(rows().map((r) => r.textContent?.slice(0, 30))).toEqual([expect.stringContaining('Scenario: loan · 3 steps'), expect.stringContaining('Plain mock')])
-    const toggle = screen.getByRole('button', { name: 'Scenario: loan · 3 steps' })
+    expect(rows().map((r) => r.textContent?.slice(0, 30))).toEqual([expect.stringContaining('Scenario: loan · 3 mocks'), expect.stringContaining('Plain mock')])
+    const toggle = screen.getByRole('button', { name: 'Scenario: loan · 3 mocks' })
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
     expect(screen.queryByRole('link', { name: 'loan — Started' })).toBeNull()
 

@@ -169,6 +169,20 @@ describe('integration page', () => {
     expect(href.searchParams.get('endpoint')).toBe('get-citizen')
   })
 
+  it('a long endpoint list shows 50 at a time with Show more', async () => {
+    mockApi({ endpoints: Array.from({ length: 120 }, (_, i) => endpoint({ key: `e-${i}`, name: `Endpoint ${i}` })) })
+    await renderApp(<IntegrationPage integrationKey="nic" />)
+    await screen.findByText('Endpoint 49')
+    expect(screen.queryByText('Endpoint 50')).toBeNull()
+    expect(screen.getByText('Showing 50 of 120 endpoints')).toBeTruthy()
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('button', { name: 'Show 50 more' }))
+    expect(screen.getByText('Endpoint 99')).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Show 20 more' }))
+    expect(screen.getByText('Endpoint 119')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Show \d+ more$/ })).toBeNull()
+  })
+
   it('shows the server message when deleting an endpoint that still has mocks, then deletes a clean one', async () => {
     let attempts = 0
     server.use(

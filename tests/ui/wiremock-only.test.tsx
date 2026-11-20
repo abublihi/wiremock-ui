@@ -10,6 +10,8 @@ import { MocksPage, type MocksSearch } from '@/routes/_app/mocks.index'
 import { ImportPage } from '@/routes/_app/import'
 import { UsersPage } from '@/routes/_app/users'
 import { EditMockPage } from '@/ui/components/editor/EditMockPage'
+import { pageMocks } from '@/server/mocks/paging'
+import type { StubMapping } from '@/server/wiremock/types'
 import { UserMenu } from '@/ui/components/shell/UserMenu'
 import { APP_NAV, navFor } from '@/ui/components/shell/AppShell'
 import { ServerConfigProvider } from '@/ui/config'
@@ -42,6 +44,9 @@ function Mocks() {
   return <MocksPage search={search} onSearchChange={(next) => setSearch((s) => ({ ...s, ...next }))} />
 }
 
+// The mocks list asks for one page (`limit`); answer with the whole list as that page.
+const pageOf = (mocks: unknown[]) => pageMocks(mocks as StubMapping[], { limit: 50, offset: 0 })
+
 describe('WireMock-only mode (STORE_DRIVER=none)', () => {
   it('nav has no Users entry; with a store it does', () => {
     expect(navFor({ storeDriver: 'none', wiremockPublicUrl: 'http://localhost:8080' }).map((i) => i.to)).not.toContain('/users')
@@ -55,7 +60,7 @@ describe('WireMock-only mode (STORE_DRIVER=none)', () => {
       http.get(`${BASE}/api/integrations`, () => HttpResponse.json([])),
       http.get(`${BASE}/api/mocks`, ({ request }) => {
         seen.push(new URL(request.url))
-        return HttpResponse.json([outside])
+        return HttpResponse.json(pageOf([outside]))
       }),
     )
     await renderApp(none(<Mocks />))
@@ -68,7 +73,7 @@ describe('WireMock-only mode (STORE_DRIVER=none)', () => {
   it('a deleted mock gets no Undo (there is no history to restore from)', async () => {
     server.use(
       http.get(`${BASE}/api/integrations`, () => HttpResponse.json([])),
-      http.get(`${BASE}/api/mocks`, () => HttpResponse.json([outside])),
+      http.get(`${BASE}/api/mocks`, () => HttpResponse.json(pageOf([outside]))),
       http.delete(`${BASE}/api/mocks/:id`, () => new HttpResponse(null, { status: 204 })),
     )
     const user = userEvent.setup()

@@ -8,8 +8,8 @@ import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 
-/** `scenarios: 'only'`: only mocks that belong to a scenario (the "Scenario mocks" chip). */
-export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string; scenarios?: 'only' }
+/** `scenarios: 'only'`: only mocks that belong to a scenario (the "Scenario mocks" chip). `page`: the list page, from 1. */
+export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string; scenarios?: 'only'; page?: number }
 
 const ANY = '__any__'
 const STATUSES = ['200', '201', '204', '400', '401', '403', '404', '409', '422', '500', '502', '503']

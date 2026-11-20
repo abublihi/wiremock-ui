@@ -67,6 +67,18 @@ function WebhookMark() {
   )
 }
 
+/** An owner name, or the Baseline badge for mocks nobody owns. */
+function Owner({ owner }: { owner: string }) {
+  const t = useT()
+  return owner === 'baseline' ? (
+    <Badge variant="outline" className="border-hazard/40 bg-hazard/10 text-hazard-fg">
+      {t('mocks.baseline')}
+    </Badge>
+  ) : (
+    <span className="text-xs">{owner}</span>
+  )
+}
+
 function UpdatedAt({ iso }: { iso?: string }) {
   if (!iso || Number.isNaN(new Date(iso).getTime())) return <span className="text-muted-foreground">—</span>
   return (
@@ -83,12 +95,20 @@ function UpdatedAt({ iso }: { iso?: string }) {
 
 /**
  * The mock rows. A scenario's mocks (one per step) show as one collapsible row, placed where its first mock is; the
- * grouping works on the rows given, so a paged list groups each page on its own.
+ * grouping works on the rows given (the server keeps a scenario's mocks on one page). `expanded`: groups start open,
+ * so a filter's hits inside a scenario are visible; the user can still collapse each one.
  */
-export function MockTable({ mocks }: { mocks: StubMapping[] }) {
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
+export function MockTable({ mocks, expanded = false }: { mocks: StubMapping[]; expanded?: boolean }) {
+  // The groups the user flipped away from the default (open when `expanded`, closed otherwise).
+  const [flipped, setFlipped] = useState<ReadonlySet<string>>(new Set())
+  const [wasExpanded, setWasExpanded] = useState(expanded)
+  if (wasExpanded !== expanded) {
+    setWasExpanded(expanded)
+    setFlipped(new Set())
+  }
+  const isOpen = (name: string) => expanded !== flipped.has(name)
   const toggle = (name: string) =>
-    setOpen((all) => {
+    setFlipped((all) => {
       const next = new Set(all)
       if (!next.delete(name)) next.add(name)
       return next
@@ -100,7 +120,7 @@ export function MockTable({ mocks }: { mocks: StubMapping[] }) {
           row.kind === 'mock' ? (
             <MockRow key={row.stub.id} stub={row.stub} />
           ) : (
-            <ScenarioRows key={`scenario:${row.name}`} name={row.name} mocks={row.mocks} open={open.has(row.name)} onToggle={() => toggle(row.name)} />
+            <ScenarioRows key={`scenario:${row.name}`} name={row.name} mocks={row.mocks} open={isOpen(row.name)} onToggle={() => toggle(row.name)} />
           ),
         )}
       </TableBody>
@@ -142,13 +162,7 @@ function MockRow({ stub, step }: { stub: StubMapping; step?: string }) {
       </TableCell>
       <TableCell>{proxyUrl !== undefined ? <ProxyBadge url={proxyUrl} /> : <StatusBadge status={status} />}</TableCell>
       <TableCell className="hidden md:table-cell">
-        {owner === 'baseline' ? (
-          <Badge variant="outline" className="border-hazard/40 bg-hazard/10 text-hazard-fg">
-            {t('mocks.baseline')}
-          </Badge>
-        ) : (
-          <span className="text-xs">{owner}</span>
-        )}
+        <Owner owner={owner} />
       </TableCell>
       <TableCell className="hidden text-xs md:table-cell">
         <UpdatedAt iso={meta?.updatedAt} />
@@ -208,7 +222,13 @@ function ScenarioRows({ name, mocks, open, onToggle }: { name: string; mocks: St
             {statuses.length > 3 && <span className="text-xs text-muted-foreground">+{statuses.length - 3}</span>}
           </div>
         </TableCell>
-        <TableCell className="hidden text-xs md:table-cell">{owners.join(', ')}</TableCell>
+        <TableCell className="hidden md:table-cell">
+          <div className="flex flex-wrap items-center gap-1">
+            {owners.map((owner) => (
+              <Owner key={owner} owner={owner} />
+            ))}
+          </div>
+        </TableCell>
         <TableCell className="hidden text-xs md:table-cell">
           <UpdatedAt iso={latest} />
         </TableCell>

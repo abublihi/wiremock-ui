@@ -17,7 +17,10 @@ import { DeleteConfirm } from './DeleteConfirm'
 export const endpointUrl = (integration: Pick<Integration, 'prefix'>, endpoint: Pick<Endpoint, 'path'>) =>
   (integration.prefix === '/' ? '' : integration.prefix) + endpoint.path
 
-/** The endpoints of one integration, one row each, with New mock / Try it / Edit / Delete. */
+/** Endpoint cards rendered at first and per "Show more": a thousand cards with their buttons take a second to render. */
+export const ENDPOINTS_PER_STEP = 50
+
+/** The endpoints of one integration, one row each, with New mock / Try it / Edit / Delete; 50 at a time. */
 export function EndpointList({ integration, endpoints }: { integration: Integration; endpoints: Endpoint[] }) {
   const t = useT()
   const remove = useDeleteEndpoint()
@@ -25,10 +28,12 @@ export function EndpointList({ integration, endpoints }: { integration: Integrat
   const [trying, setTrying] = useState<Endpoint | null>(null)
   const [tryOpen, setTryOpen] = useState(false)
   const tried = trying ? draftFromEndpoint(integration, trying) : null
+  const [shown, setShown] = useState(ENDPOINTS_PER_STEP)
+  const left = endpoints.length - shown
   return (
     <>
       <ul className="stagger-children flex flex-col gap-3">
-        {endpoints.map((endpoint) => {
+        {endpoints.slice(0, shown).map((endpoint) => {
           const url = endpointUrl(integration, endpoint)
           return (
             <li key={endpoint.key} className="glow-border flex flex-col gap-3 rounded-md border border-line bg-surface p-4">
@@ -106,6 +111,14 @@ export function EndpointList({ integration, endpoints }: { integration: Integrat
           )
         })}
       </ul>
+      {left > 0 && (
+        <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
+          <span>{t('catalog.endpoints.showing', { shown: shown.toLocaleString('en'), total: endpoints.length.toLocaleString('en') })}</span>
+          <Button variant="outline" size="sm" onClick={() => setShown((n) => n + ENDPOINTS_PER_STEP)}>
+            {t('catalog.endpoints.showMore', { count: Math.min(left, ENDPOINTS_PER_STEP) })}
+          </Button>
+        </div>
+      )}
       {tried && (
         <TestPanel open={tryOpen} onOpenChange={setTryOpen} initial={tried.draft} pathIsPattern={tried.pathIsPattern} variant="endpoint" />
       )}

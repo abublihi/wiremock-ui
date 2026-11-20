@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -11,11 +11,16 @@ import { Toaster } from '@/ui/components/ui/sonner'
 import { TooltipProvider } from '@/ui/components/ui/tooltip'
 import { PrefsProvider } from '@/ui/i18n'
 import { MocksPage, MocksRoute, Route, type MocksSearch } from '@/routes/_app/mocks.index'
+import { pageMocks } from '@/server/mocks/paging'
+import type { StubMapping } from '@/server/wiremock/types'
 import { renderApp } from './helpers'
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
-afterEach(() => server.resetHandlers())
+afterEach(() => {
+  server.resetHandlers()
+  localStorage.removeItem('wmui.mocks.pageSize')
+})
 afterAll(() => server.close())
 
 const BASE = 'http://localhost:3000'
@@ -38,13 +43,21 @@ const stub = (id: string, over: { owner?: string; version?: number; method?: str
 })
 const integrations = [{ key: 'payments', name: 'Payments', prefix: '/pay', updatedAt: '', updatedBy: '' }]
 
+/** Like the server: with `limit`, one page of rows (a scenario is one row); without, the plain array. */
+function listOrPage(url: URL, mocks: unknown[]) {
+  const limit = url.searchParams.get('limit')
+  if (limit === null) return HttpResponse.json(mocks)
+  return HttpResponse.json(pageMocks(mocks as StubMapping[], { limit: Number(limit), offset: Number(url.searchParams.get('offset') ?? 0) }))
+}
+
 type Seen = { url: URL; method: string; body?: unknown }[]
 function mockApi(mocks: ReturnType<typeof stub>[], seen: Seen = []) {
   server.use(
     http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
     http.get(`${BASE}/api/mocks`, ({ request }) => {
-      seen.push({ url: new URL(request.url), method: 'GET' })
-      return HttpResponse.json(mocks)
+      const url = new URL(request.url)
+      seen.push({ url, method: 'GET' })
+      return listOrPage(url, mocks)
     }),
   )
   return seen
@@ -88,7 +101,7 @@ describe('mock list', () => {
     const step = (id: string, state: string) => ({ ...stub(id), scenarioName: 'refund', requiredScenarioState: state })
     const seen = mockApi([step('s1', 'Started'), step('s2', 'paid')] as ReturnType<typeof stub>[])
     await renderApp(<Harness />)
-    await screen.findByRole('button', { name: 'Scenario: refund · 2 steps' })
+    await screen.findByRole('button', { name: 'Scenario: refund · 2 mocks' })
     const chip = screen.getByRole('button', { name: 'Scenario mocks' })
     expect(chip.getAttribute('aria-pressed')).toBe('false')
     await userEvent.setup().click(chip)
@@ -142,6 +155,89 @@ describe('mock list', () => {
     expect(seen.every((s) => s.url.searchParams.get('q') === null)).toBe(true)
     await waitFor(() => expect(seen.at(-1)!.url.searchParams.get('q')).toBe('refund'))
     expect(lastSearch.q).toBe('refund')
+  })
+
+  it('pages 50 rows at a time: Showing 1–50 of 120, Next asks for the next offset', async () => {
+    const many = Array.from({ length: 120 }, (_, i) => stub(`m${i}`))
+    const seen = mockApi(many)
+    await renderApp(<Harness />)
+    await screen.findByText('Showing 1–50 of 120')
+    expect(seen[0]!.url.searchParams.get('limit')).toBe('50')
+    expect(seen[0]!.url.searchParams.get('offset')).toBe('0')
+    expect(screen.getByText('Mock m49')).toBeTruthy()
+    expect(screen.queryByText('Mock m50')).toBeNull()
+    expect(screen.getByText('// 120 mocks · 0 baseline')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Previous' }) as HTMLButtonElement).disabled).toBe(true)
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('button', { name: 'Next' }))
+    expect(lastSearch.page).toBe(2)
+    await screen.findByText('Showing 51–100 of 120')
+    expect(seen.at(-1)!.url.searchParams.get('offset')).toBe('50')
+    await ue.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByText('Showing 101–120 of 120')
+    expect(screen.getByText('Page 3 of 3')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Next' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('a scenario is one row, and the pager says so when rows and mocks differ', async () => {
+    const step = (id: string, state: string) => ({ ...stub(id), scenarioName: 'refund', requiredScenarioState: state })
+    mockApi([step('s1', 'Started'), stub('plain'), step('s2', 'paid'), step('s3', 'done')] as ReturnType<typeof stub>[])
+    await renderApp(<Harness />)
+    await screen.findByText('Showing 1–2 of 2 rows (4 mocks — a scenario is one row)')
+  })
+
+  it('a filter change goes back to page 1', async () => {
+    mockApi(Array.from({ length: 120 }, (_, i) => stub(`m${i}`)))
+    await renderApp(<Harness initial={{ page: 3 }} />)
+    await screen.findByText('Showing 101–120 of 120')
+    await userEvent.setup().click(screen.getByRole('radio', { name: 'All mocks' }))
+    expect(lastSearch).toMatchObject({ owner: 'all', page: undefined })
+    await screen.findByText('Showing 1–50 of 120')
+  })
+
+  it('a page past the end (old link, deleted mocks) moves to the last page', async () => {
+    mockApi(Array.from({ length: 60 }, (_, i) => stub(`m${i}`)))
+    await renderApp(<Harness initial={{ page: 9 }} />)
+    await screen.findByText('Showing 51–60 of 60')
+    expect(lastSearch.page).toBe(2)
+  })
+
+  it('remembers the page size per browser and starts again at page 1', async () => {
+    const seen = mockApi(Array.from({ length: 120 }, (_, i) => stub(`m${i}`)))
+    await renderApp(<Harness initial={{ page: 2 }} />)
+    await screen.findByText('Showing 51–100 of 120')
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('combobox', { name: 'Per page' }))
+    await ue.click(await screen.findByRole('option', { name: '25' }))
+    await screen.findByText('Showing 1–25 of 120')
+    expect(seen.at(-1)!.url.searchParams.get('limit')).toBe('25')
+    expect(localStorage.getItem('wmui.mocks.pageSize')).toBe('25')
+    cleanup()
+    await renderApp(<Harness />)
+    await screen.findByText('Showing 1–25 of 120')
+  })
+
+  it('with a search or filter set, scenario groups start open so a hit inside one shows', async () => {
+    const step = (id: string, state: string) => ({ ...stub(id), scenarioName: 'refund', requiredScenarioState: state })
+    mockApi([step('s1', 'Started'), step('s2', 'paid')] as ReturnType<typeof stub>[])
+    await renderApp(<Harness initial={{ q: 'paid' }} />)
+    const toggle = await screen.findByRole('button', { name: 'Scenario: refund · 2 mocks' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByText('Mock s2')).toBeTruthy()
+    // Still collapsible by hand.
+    await userEvent.setup().click(toggle)
+    expect(screen.queryByText('Mock s2')).toBeNull()
+  })
+
+  it('without a filter scenario groups start closed; a baseline group shows the Baseline badge', async () => {
+    const step = (id: string, state: string) => ({ ...stub(id, { owner: 'baseline' }), scenarioName: 'refund', requiredScenarioState: state })
+    mockApi([step('s1', 'Started'), step('s2', 'paid')] as ReturnType<typeof stub>[])
+    await renderApp(<Harness />)
+    const toggle = await screen.findByRole('button', { name: 'Scenario: refund · 2 mocks' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    const row = toggle.closest('tr')!
+    expect(within(row).getByText('Baseline')).toBeTruthy()
+    expect(within(row).queryByText('baseline')).toBeNull()
   })
 
   it('offers every action on every row, baseline included', async () => {
@@ -210,7 +306,7 @@ describe('mock list', () => {
         const url = new URL(request.url)
         seen.push(url)
         if (url.searchParams.get('owner') === 'me' && fail && seen.length > 1) return HttpResponse.json({ error: 'boom' }, { status: 500 })
-        return HttpResponse.json([stub('a')])
+        return listOrPage(url, [stub('a')])
       }),
     )
     await renderApp(<Harness initial={{ owner: 'all' }} />)
@@ -228,7 +324,7 @@ describe('mock list', () => {
   it('reset my mocks shows the count in the confirm and the result toast', async () => {
     server.use(
       http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
-      http.get(`${BASE}/api/mocks`, () => HttpResponse.json([stub('a'), stub('b'), stub('c')])),
+      http.get(`${BASE}/api/mocks`, ({ request }) => listOrPage(new URL(request.url), [stub('a'), stub('b'), stub('c')])),
       http.post(`${BASE}/api/mocks/reset-mine`, () => HttpResponse.json({ deleted: 3 })),
     )
     await renderApp(<Harness />)
@@ -244,7 +340,7 @@ describe('mock list', () => {
   it('reset my mocks uses the singular for one mock', async () => {
     server.use(
       http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
-      http.get(`${BASE}/api/mocks`, () => HttpResponse.json([stub('a')])),
+      http.get(`${BASE}/api/mocks`, ({ request }) => listOrPage(new URL(request.url), [stub('a')])),
       http.post(`${BASE}/api/mocks/reset-mine`, () => HttpResponse.json({ deleted: 1 })),
     )
     await renderApp(<Harness />)
@@ -267,7 +363,7 @@ describe('mock list', () => {
   it('empty state with an empty catalog starts with describing an endpoint', async () => {
     server.use(
       http.get(`${BASE}/api/integrations`, () => HttpResponse.json([])),
-      http.get(`${BASE}/api/mocks`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/mocks`, ({ request }) => listOrPage(new URL(request.url), [])),
     )
     await renderApp(<Harness />)
     await screen.findByText('Start by describing an endpoint')
@@ -303,6 +399,9 @@ describe('mocks route search', () => {
     expect(validate({ status: 404, q: 2024, integration: 123, owner: 'all' })).toEqual({ status: '404', q: '2024', integration: '123', owner: 'all' })
     expect(validate({ status: [404], q: { a: 1 }, integration: null, owner: true })).toEqual({})
     expect(validate({ status: Number.NaN, q: '' })).toEqual({})
+    expect(validate({ page: 3 })).toEqual({ page: 3 })
+    expect(validate({ page: '4' })).toEqual({ page: 4 })
+    for (const page of [1, 0, -2, 1.5, 'x', null]) expect(validate({ page })).toEqual({})
   })
 
   async function renderRoute(path: string) {
@@ -339,6 +438,19 @@ describe('mocks route search', () => {
     await userEvent.setup().click(screen.getByRole('radio', { name: 'All mocks' }))
     await waitFor(() => expect(router.state.location.search).toMatchObject({ owner: 'all', status: '404' }))
     await waitFor(() => expect(seen.some((s) => !s.url.searchParams.has('owner'))).toBe(true))
+  })
+
+  it('?page=2 asks for the second page; Next pushes a history entry so Back returns', async () => {
+    const seen = mockApi(Array.from({ length: 160 }, (_, i) => stub(`m${i}`)))
+    const router = await renderRoute('/mocks?page=2')
+    await screen.findByText('Showing 51–100 of 160')
+    expect(seen[0]!.url.searchParams.get('offset')).toBe('50')
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ page: 3 }))
+    await screen.findByText('Showing 101–150 of 160')
+    router.history.back()
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ page: 2 }))
+    await screen.findByText('Showing 51–100 of 160')
   })
 
   it('links to the editor routes', async () => {

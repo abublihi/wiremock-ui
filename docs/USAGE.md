@@ -267,6 +267,15 @@ To write a stub from scratch, choose **New mock** → **Start from blank JSON**.
 - **Reset my mocks** deletes every mock you own in one go, for a clean start before a test run. Baseline mocks and other people's mocks stay.
 - When two mocks match the same request with the same priority, a person's mock wins over a baseline mock.
 
+### Working with many mocks
+
+- The list shows 50 rows a page, newest change first; **Per page** switches to 25 or 100 and is remembered in this browser. **Previous** / **Next** page through, and the page is in the address (`?page=3`), so Back and shared links land on the same page. Changing a filter or the search goes back to page 1.
+- A scenario is one row however many mocks it has, so its mocks are never split across pages. When the list holds scenarios the pager says so: "Showing 1–50 of 980 rows (1,000 mocks — a scenario is one row)".
+- While a search or a status or integration filter is set, scenario rows start open, so a matching mock inside one is visible.
+- **Export** always exports everything the filter matches, not just the page.
+- The endpoint picker in the mock editor shows up to 50 endpoints; type to narrow the rest. Integrations without endpoints are left out of it.
+- The request log keeps the newest 500 requests; narrow it with filters to see older ones.
+
 ## Users and the audit log
 
 **Users** lists every account. **Add user** creates one with an initial password; the row menu resets a password, disables or enables an account, or deletes it. The last active account cannot be disabled or deleted. Deleting an account keeps its mocks.
@@ -419,6 +428,7 @@ curl -u $AUTH -X POST $UI/api/mocks -H "$JSON" \
   -d '{"request":{"method":"GET","urlPath":"/hello"},"response":{"status":200,"body":"hi"}}'
 curl -u $AUTH "$UI/api/mocks?owner=me"          # yours; no owner = all, owner=baseline = baseline
 curl -u $AUTH "$UI/api/mocks?scenario=order-flow" # one scenario's mocks; scenario=* every mock in a scenario
+curl -u $AUTH "$UI/api/mocks?limit=50&offset=50" # one page: {items,total,totalMocks,baseline,offset,limit}
 # update and delete need the current version (from the create or list response)
 curl -u $AUTH -X PUT $UI/api/mocks/<id> -H "$JSON" \
   -d '{"version":1,"stub":{"request":{"method":"GET","urlPath":"/hello"},"response":{"status":200,"body":"hello again"}}}'
@@ -482,4 +492,5 @@ curl -b jar -X POST $UI/api/mocks/reset-mine -H 'X-CSRF-Token: <token>'
 - **Proxy mocks** (`response.proxyBaseUrl`) need an http(s) base URL; `proxyUrlPrefixToRemove` starts with `/`. `removeProxyRequestHeaders` is stored lower-cased, because WireMock 3.13.1 only removes headers listed that way.
 - **Webhooks** (`serveEventListeners: [{ "name": "webhook", "parameters": { method, url, headers, body, delay } }]`) are sent by WireMock, from wherever WireMock runs, after it answers: a URL like `http://localhost:…` means WireMock's own machine. The method is any HTTP method (stored upper-case); the URL must start with `http://` or `https://` (the rest may be a template); `delay` is `{ "type": "fixed", "milliseconds" }`, `{ "type": "uniform", "lower", "upper" }` or `{ "type": "lognormal", "median", "sigma" }`, at most 600000 ms.
 - **Scenarios:** `GET /api/scenarios` lists every `scenarioName` used by a mock, its states and WireMock's live state. WireMock 3.13.1 cannot change the state of a scenario whose name contains spaces, `;` or other characters that need URL encoding, or starts with `.` (`settable: false`); only resetting all scenarios reaches those. A WireMock restart puts every scenario back to `Started`.
+- **Paging the mock list:** `GET /api/mocks` without `limit` returns a plain array of every matching mock, as before. With `limit` (1–200) and an optional `offset` (default 0) it returns `{ items, total, totalMocks, baseline, offset, limit }`. Paging counts **rows**: a mock is one row, and a scenario (all its matching mocks) is one row placed where its newest mock is. So `total` is the number of rows, `totalMocks` the number of matching mocks, `baseline` how many of those are baseline, and a page holds more than `limit` mocks when it holds a scenario. Rows are filtered first, then sorted newest change first (ties by id). An `offset` past the end gives `items: []`. A bad `limit` or `offset`, or `offset` without `limit`, is `400`.
 - **Sync:** the first sync after start-up, and any sync caused by WireMock losing its mocks (a restart or reset), are recorded in the audit log as `sync` by `system`.

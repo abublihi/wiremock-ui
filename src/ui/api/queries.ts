@@ -8,6 +8,7 @@ import type { AuditPage } from '@/server/audit/log'
 import type { ImportReport } from '@/server/bundle/importer'
 import type { PublicConfig } from '@/server/http/handlers/config'
 import type { Endpoint, Integration } from '@/server/catalog/types'
+import type { MockPage } from '@/server/mocks/paging'
 import type { PublicUser } from '@/server/users/types'
 import type { NearMissView, RequestSummary } from '@/server/requests/journal'
 import type { TestRequestInput, TestRequestResult } from '@/server/wiremock/relay'
@@ -26,12 +27,16 @@ export type RequestFilter = {
 /** `scenario`: one scenario's mocks, or `*` for every mock that belongs to a scenario. */
 export type MockFilter = { owner?: string; integration?: string; status?: string; q?: string; scenario?: string }
 
+/** One page of the mocks list: `limit` rows (a scenario is one row) from row `offset`. */
+export type MockPageArgs = { limit: number; offset: number }
+
 /** Single source for every query key. Later tasks add their resources here. */
 export const queryKeys = {
   session: SESSION_KEY,
   config: ['config'] as const,
   mocks: ['mocks'] as const,
   mockList: (filter: MockFilter) => ['mocks', 'list', filter] as const,
+  mockPage: (filter: MockFilter, page: MockPageArgs) => ['mocks', 'page', filter, page] as const,
   integrations: ['integrations'] as const,
   mock: (id: string) => ['mocks', 'detail', id] as const,
   endpoints: (integration: string) => ['integrations', integration, 'endpoints'] as const,
@@ -112,6 +117,18 @@ export function useMocks(filter: MockFilter, options: { enabled?: boolean } = {}
     queryFn: () => apiFetch<StubMapping[]>('/api/mocks', { query: filter }),
     placeholderData: keepPreviousData,
     enabled: options.enabled ?? true,
+  })
+}
+
+/**
+ * One page of mocks (`GET /api/mocks?limit=&offset=`) for the mocks list. Callers that need every matching mock (a
+ * scenario's steps, Reset my mocks) use `useMocks`, which asks without `limit` and gets the whole list.
+ */
+export function useMockPage(filter: MockFilter, page: MockPageArgs) {
+  return useQuery({
+    queryKey: queryKeys.mockPage(filter, page),
+    queryFn: () => apiFetch<MockPage>('/api/mocks', { query: { ...filter, ...page } }),
+    placeholderData: keepPreviousData,
   })
 }
 
