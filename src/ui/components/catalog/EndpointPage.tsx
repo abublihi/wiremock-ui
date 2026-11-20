@@ -31,6 +31,7 @@ import { Textarea } from '@/ui/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useT } from '@/ui/i18n'
 import { ExampleEditor } from './ExampleEditor'
+import { KEY_RE, slugify } from './IntegrationForm'
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'ANY'] as const
 const PATH_TYPES = ['exact', 'template', 'regex'] as const
@@ -105,6 +106,38 @@ export function endpointFieldOf(message: string): string | undefined {
     default:
       return undefined
   }
+}
+
+type Translate = (key: Parameters<ReturnType<typeof useT>>[0], values?: Record<string, string | number>) => string
+
+/**
+ * A server validation message as the form says it: by field, in the form's words and with how to fix it (server text
+ * like "lookup.expression must not be empty" names fields the reader never sees). Undefined for a field the form lacks.
+ */
+export function endpointMessage(field: string, form: Pick<Form, 'location' | 'contentType'>, prefix: string, t: Translate): string {
+  if (field === 'key') return t('catalog.endpoint.keyInvalid')
+  if (field === 'name') return t('catalog.endpoint.nameRequired')
+  if (field === 'path') return t('catalog.endpoint.pathFix', { prefix: prefix || '/' })
+  if (field === 'expression' && form.location === 'jsonPath') return t('catalog.endpoint.expressionFixJson')
+  if (field === 'expression' && form.location === 'xPath') return t('catalog.endpoint.expressionFixXml')
+  if (field === 'expression') return t('catalog.endpoint.expressionFix', { example: form.location === NO_LOOKUP ? 'id' : EXPRESSION_PLACEHOLDER[form.location] })
+  if (field === 'statuses') return t('catalog.endpoint.statusInvalid')
+  if (field === 'exampleRequest' || field.startsWith('example-')) return t('catalog.endpoint.exampleFix', { type: form.contentType.toUpperCase() })
+  if (field.startsWith('link-')) return t('catalog.endpoint.linkFix')
+  if (field === 'description') return t('catalog.endpoint.descriptionFix')
+  return t('catalog.endpoint.pickFix')
+}
+
+/** What the server would refuse, checked before sending. */
+export function endpointProblems(form: Form, adding: boolean, prefix: string, t: Translate): Record<string, string> {
+  const out: Record<string, string> = {}
+  const key = form.key.trim()
+  if (adding && key === '') out.key = t('catalog.endpoint.keyRequired')
+  else if (adding && !KEY_RE.test(key)) out.key = t('catalog.endpoint.keyInvalid')
+  if (form.name.trim() === '') out.name = t('catalog.endpoint.nameRequired')
+  if (!form.path.trim().startsWith('/')) out.path = t('catalog.endpoint.pathFix', { prefix: prefix || '/' })
+  if (form.location !== NO_LOOKUP && form.expression.trim() === '') out.expression = endpointMessage('expression', form, prefix, t)
+  return out
 }
 
 const prefixOf = (integration: Pick<Integration, 'prefix'>) => (integration.prefix === '/' ? '' : integration.prefix)
@@ -220,9 +253,19 @@ function EndpointEditor({
     withResolver: true,
   })
 
+  // A new endpoint's ID follows its name until the user types one.
+  const [keyTyped, setKeyTyped] = useState(Boolean(endpoint))
   const update = (patch: Partial<Form>, clears: string[] = []) => {
     setForm((f) => ({ ...f, ...patch }))
     if (clears.some((c) => errors[c])) setErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !clears.includes(k))))
+    setFormError(null)
+  }
+  const onText = (field: 'key' | 'name' | 'path' | 'expression', value: string) => {
+    if (field === 'key') setKeyTyped(true)
+    if (field === 'name' && !keyTyped) return update({ name: value, key: slugify(value) }, ['name', 'key'])
+    // A {variable} in an exact path means a template.
+    if (field === 'path' && form.pathType === 'exact' && /\{/.test(value)) return update({ path: value, pathType: 'template' }, ['path'])
+    update({ [field]: value }, [field])
   }
   const described = (field: string, hint?: boolean) =>
     [hint && id(`${field}-hint`), errors[field] && id(`${field}-error`)].filter(Boolean).join(' ') || undefined
@@ -249,6 +292,11 @@ function EndpointEditor({
     event.preventDefault()
     setErrors({})
     setFormError(null)
+    const problems = endpointProblems(form, !endpoint, prefix, t)
+    if (Object.keys(problems).length > 0) {
+      setErrors(problems)
+      return
+    }
     const key = form.key.trim()
     // Fast path; the server refuses (409) an add over an existing key either way, even before the list loads.
     if (!endpoint && existing.data?.some((e) => e.key === key)) {
@@ -295,7 +343,7 @@ function EndpointEditor({
         return
       }
       const field = error instanceof ApiError && error.status === 400 ? endpointFieldOf(message) : undefined
-      if (field) setErrors({ [field]: message })
+      if (field) setErrors({ [field]: endpointMessage(field, form, prefix, t) })
       else setFormError(message)
     }
   }
@@ -318,7 +366,7 @@ function EndpointEditor({
         value={form[field]}
         aria-invalid={Boolean(errors[field])}
         aria-describedby={described(field, Boolean(extra.hint))}
-        onChange={(e) => update({ [field]: e.target.value }, [field])}
+        onChange={(e) => onText(field, e.target.value)}
       />
       {extra.hint && (
         <FieldDescription id={id(`${field}-hint`)} className="text-xs">
