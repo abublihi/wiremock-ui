@@ -65,6 +65,12 @@ describe('safeNext', () => {
     expect(safeNext('/requests?x=1#a')).toBe('/requests?x=1#a')
     for (const bad of ['/login', '/login?next=%2Fmocks', '/login/', '/login#x', undefined, '', 'mocks', 'https://evil.example', '//evil.example', '/\\evil']) expect(safeNext(bad)).toBe('/mocks')
   })
+
+  it('rejects control characters, which browsers strip (a tab after the first slash would make it //evil.example)', () => {
+    for (const bad of ['/\t/evil.example', '/\n/evil.example', '/\r/evil.example', '/mocks\u0000', '/\u001f/x', '/x\u007f']) {
+      expect(safeNext(bad)).toBe('/mocks')
+    }
+  })
 })
 
 async function openMenu() {

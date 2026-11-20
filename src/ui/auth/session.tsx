@@ -46,9 +46,13 @@ export async function requireSession(
   }
 }
 
-/** Only same-origin absolute paths are followed after sign-in; anything else (open redirect, or /login itself) goes to /mocks. */
+/**
+ * Only same-origin absolute paths are followed after sign-in; anything else (open redirect, or /login itself) goes to /mocks.
+ * Control characters are refused too: browsers strip tabs and newlines, so "/\t/evil.example" would become "//evil.example".
+ */
 export function safeNext(next: unknown): string {
   if (typeof next !== 'string' || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return '/mocks'
+  if (/[\x00-\x1f\x7f]/.test(next)) return '/mocks'
   if (/^\/login\/?([?#]|$)/.test(next)) return '/mocks'
   return next
 }
