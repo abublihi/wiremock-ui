@@ -37,6 +37,9 @@ const MAX_SNAPSHOT_IDS = 1000
 const DELETE_BATCH = 20
 // Long enough for an accept of 1000 rows; the lock is released as soon as the work is done.
 const LIST_LOCK_TTL_MS = 120_000
+/** An accept stops taking rows this long after it got the lock, well before the lock can expire under it. */
+export const ACCEPT_BUDGET_MS = 100_000
+export const ACCEPT_OUT_OF_TIME = 'Not accepted: this accept ran out of time. Accept the remaining rows again.'
 export const BASELINE_PRUNED =
   'Baseline mocks accepted here would be deleted on the next restart because SEED_PRUNE is on. Accept them as your own mocks, or add them to the seed.'
 export const TOO_LARGE = 'This answer is over 1 MB, too large to review here, so it was not kept. Create this mock by hand or record a smaller response.'
@@ -192,6 +195,8 @@ function withoutBody(item: ReviewItem): ReviewItem {
 
 export class RecordingService {
   private readonly busy = new Set<string>()
+  /** See ACCEPT_BUDGET_MS; tests shorten it. */
+  acceptBudgetMs = ACCEPT_BUDGET_MS
   private readonly now: () => Date
   private readonly newId: () => string
 
@@ -398,7 +403,12 @@ export class RecordingService {
     const owner = input.owner === 'baseline' ? 'baseline' : actor.username
     const created: AcceptResult['created'] = []
     const failed: AcceptResult['failed'] = []
+    const deadline = Date.now() + this.acceptBudgetMs
     for (const choice of input.items) {
+      if (Date.now() > deadline) {
+        failed.push({ id: choice.id, error: ACCEPT_OUT_OF_TIME })
+        continue
+      }
       const item = byId.get(choice.id)
       if (!item) {
         failed.push({ id: choice.id, error: 'Not in this review list (accepted or discarded already)' })

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { RecordingService, TOO_LARGE } from '../../../src/server/recording/service'
+import { ACCEPT_OUT_OF_TIME, RecordingService, TOO_LARGE } from '../../../src/server/recording/service'
 import { MemoryRecordingStore } from '../../../src/server/recording/store'
 import type { LoggedEvent, StubMapping } from '../../../src/server/wiremock/types'
 
@@ -226,4 +226,15 @@ test('a review list that cannot be saved still takes its recorded stubs out of W
   }
   await expect(h.svc.snapshot({}, 'ann')).rejects.toThrow('disk full')
   expect(h.events.filter((e) => e.startsWith('delete')).length).toBe(2)
+})
+
+test('an accept that runs out of time stops taking rows (before the lock could expire); the rest stay in the list', async () => {
+  const h = setup({ stubs: Array.from({ length: 6 }, (_, i) => stub(i + 1)) })
+  const rec = (await h.svc.snapshot({}, 'ann')).recording!
+  h.svc.acceptBudgetMs = 12
+  const res = await h.svc.accept(rec.id, { items: rec.items.map((i) => ({ id: i.id })) }, { username: 'ann' } as never)
+  expect(res.created.length).toBeGreaterThan(0)
+  expect(res.created.length).toBeLessThan(6)
+  expect(res.failed.every((f) => f.error === ACCEPT_OUT_OF_TIME)).toBe(true)
+  expect(res.recording?.items).toHaveLength(6 - res.created.length)
 })
