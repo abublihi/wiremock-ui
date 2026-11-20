@@ -23,6 +23,7 @@ export function HelpPanel() {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button variant="ghost" size="sm" className="text-muted-foreground" aria-label={t('help.button')}
+          aria-description={t('help.buttonLabel', { title: section.title })}
           title={t('help.buttonLabel', { title: section.title })}>
           <CircleHelpIcon data-icon="inline-start" />
           <span className="hidden sm:inline">{t('help.button')}</span>
@@ -64,6 +65,8 @@ export function useGuideShortcut() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || isTyping(e.target)) return
+      // Not while a dialog or panel is open: it would close under the reader.
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
       e.preventDefault()
       void navigate({ to: '/guide' })
     }

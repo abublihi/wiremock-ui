@@ -22,7 +22,8 @@ export function GuidePage({ sections = GUIDE_SECTIONS }: { sections?: GuideSecti
   // A deep link (or a menu pick) scrolls its section or sub-heading into view and moves focus there.
   useEffect(() => {
     if (!hash) return
-    const target = document.getElementById(hash)
+    // A topic that is not a sub-heading here (a GitHub-style anchor) falls back to its section.
+    const target = document.getElementById(hash) ?? document.getElementById(hash.split('--')[0])
     if (!target) return
     target.scrollIntoView({ block: 'start' })
     const focusable = document.getElementById(`${hash}-title`) ?? target

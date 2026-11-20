@@ -90,7 +90,7 @@ describe('guide content (docs/guide/*.md)', () => {
     for (const s of GUIDE_SECTIONS) {
       for (const [, href] of s.body.matchAll(/\]\(([^)]+)\)/g)) {
         const target = guideHref(href)
-        if (target.kind === 'guide') expect(slugs.has(target.hash), `${s.slug} → ${href}`).toBe(true)
+        if (target.kind === 'guide') expect(slugs.has(target.hash.split('--')[0]), `${s.slug} → ${href}`).toBe(true)
         else if (target.kind === 'app') expect(target.to, `${s.slug} → ${href}`).toMatch(/^\/(integrations|mocks|mocks\/new|requests|scenarios|recording|import|users|audit)$/)
         else expect(href, `${s.slug} → ${href}`).toMatch(/^https:\/\//)
       }
@@ -133,7 +133,7 @@ describe('search and links', () => {
 
   it('maps links: guide files to /guide#section, app paths to the router, everything else outside', () => {
     expect(guideHref('scenarios.md')).toEqual({ kind: 'guide', hash: 'scenarios' })
-    expect(guideHref('./sync.md#marker')).toEqual({ kind: 'guide', hash: 'sync' })
+    expect(guideHref('./sync.md#marker')).toEqual({ kind: 'guide', hash: 'sync--marker' })
     expect(guideHref('/integrations')).toEqual({ kind: 'app', to: '/integrations' })
     expect(guideHref('//evil.example/x')).toEqual({ kind: 'external', href: '//evil.example/x' })
     expect(guideHref('https://wiremock.org')).toEqual({ kind: 'external', href: 'https://wiremock.org' })
@@ -311,11 +311,20 @@ describe('contextual help', () => {
   it('? opens the guide, but not while typing', async () => {
     function Shortcut() {
       useGuideShortcut()
-      return <input aria-label="field" />
+      return (
+        <>
+          <input aria-label="field" />
+          <div role="dialog" aria-label="open dialog" />
+        </>
+      )
     }
     const { router } = await renderApp(<Shortcut />)
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'field' }), { key: '?' })
     expect(router.state.location.pathname).toBe('/')
+    // Not while a dialog is open.
+    fireEvent.keyDown(document.body, { key: '?' })
+    expect(router.state.location.pathname).toBe('/')
+    act(() => screen.getByRole('dialog', { name: 'open dialog' }).remove())
     fireEvent.keyDown(document.body, { key: '?' })
     await waitFor(() => expect(router.state.location.pathname).toBe('/guide'))
   })

@@ -140,8 +140,9 @@ export function filterMenu(query: string, sections: GuideSection[] = GUIDE_SECTI
  * `javascript:` and friends never get here.
  */
 export function guideHref(href: string): { kind: 'guide'; hash: string } | { kind: 'app'; to: string; hash?: string } | { kind: 'external'; href: string } {
-  const md = /^(?:\.\/)?([a-z0-9-]+)\.md(?:#.*)?$/.exec(href)
-  if (md) return { kind: 'guide', hash: md[1] }
+  // `scenarios.md#build-a-scenario` → the topic inside that section (`scenarios--build-a-scenario`).
+  const md = /^(?:\.\/)?([a-z0-9-]+)\.md(?:#(.*))?$/.exec(href)
+  if (md) return { kind: 'guide', hash: md[2] ? `${md[1]}--${md[2]}` : md[1] }
   if (href.startsWith('#')) return { kind: 'guide', hash: href.slice(1) }
   if (href.startsWith('/') && !href.startsWith('//')) {
     const [path, hash] = href.split('#')
