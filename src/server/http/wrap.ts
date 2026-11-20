@@ -5,7 +5,7 @@ import { AppError, ValidationError } from '../errors'
 import { logger } from '../logger'
 import type { Runtime } from '../runtime'
 
-export type Params = { id?: string; key?: string; endpoint?: string }
+export type Params = { id?: string; key?: string; endpoint?: string; name?: string }
 export type Handler = (rt: Runtime, request: Request, params?: Params) => Promise<Response>
 export type AuthContext = { rt: Runtime; request: Request; params: Params; principal: Principal }
 

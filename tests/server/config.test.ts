@@ -53,3 +53,10 @@ test('parses TRUST_PROXY/SEED_PRUNE booleans and rejects "yes"', () => {
   expect(() => loadConfig({ ...base, SEED_PRUNE: 'yes' })).toThrow(/SEED_PRUNE/)
   expect(loadConfig({ ...base, PUBLIC_UI_URL: 'https://ui.example', SEED_PATH: '/seed' })).toMatchObject({ publicUiUrl: 'https://ui.example', seedPath: '/seed' })
 })
+test('WIREMOCK_PUBLIC_URL defaults to WIREMOCK_URL and must be an http(s) URL', () => {
+  expect(loadConfig(base).wiremockPublicUrl).toBe('http://localhost:8080')
+  expect(loadConfig({ ...base, WIREMOCK_URL: 'http://wiremock:8080/' }).wiremockPublicUrl).toBe('http://wiremock:8080')
+  expect(loadConfig({ ...base, WIREMOCK_PUBLIC_URL: 'https://mocks.test.example/' }).wiremockPublicUrl).toBe('https://mocks.test.example')
+  expect(() => loadConfig({ ...base, WIREMOCK_PUBLIC_URL: 'mocks.test.example' })).toThrow('WIREMOCK_PUBLIC_URL must be an http:// or https:// URL')
+  expect(() => loadConfig({ ...base, WIREMOCK_PUBLIC_URL: 'ftp://mocks.test.example' })).toThrow('WIREMOCK_PUBLIC_URL must be an http:// or https:// URL')
+})

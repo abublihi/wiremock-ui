@@ -104,6 +104,7 @@ Everything is set through environment variables. Empty values count as unset.
 | `ADMIN_PASSWORD` | required | Password of that first account (8–72 characters). Changing it later does nothing; see [Resetting a password](#resetting-a-password). |
 | `SESSION_SECRET` | required | Secret for browser sessions. Use a long random string, for example `openssl rand -hex 32`. |
 | `WIREMOCK_URL` | `http://localhost:8080` | Where the UI reaches WireMock. Compose sets it to `http://wiremock:8080`. |
+| `WIREMOCK_PUBLIC_URL` | `WIREMOCK_URL` | Where your applications and testers reach WireMock's stub port, for example `http://localhost:8080` when `WIREMOCK_URL` is a Compose-internal name. Only used to show curl commands; the UI never calls it. |
 | `WIREMOCK_ADMIN_USER` | (none) | WireMock admin API username. Set it together with the password. |
 | `WIREMOCK_ADMIN_PASSWORD` | (none) | WireMock admin API password. Compose passes both to WireMock's `--admin-api-basic-auth`, so they are required there. |
 | `STORE_DRIVER` | `redis` when `REDIS_URL` is set, otherwise `sqlite` | `sqlite`, `redis`, or `none` to work on WireMock's own stubs without storing anything (see [Run against an existing WireMock (no storage)](#run-against-an-existing-wiremock-no-storage)). `none` is never picked for you. |

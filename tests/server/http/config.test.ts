@@ -15,12 +15,12 @@ afterAll(async () => {
   await env?.stop()
 })
 
-test('GET /api/config tells a signed-in user which store driver runs; signed out is 401', async () => {
+test('GET /api/config tells a signed-in user which store driver runs and where clients reach WireMock; signed out is 401', async () => {
   expect((await getConfig(rt, req('/api/config', 'GET', undefined, {}))).status).toBe(401)
   const s = await login(rt, 'ui-admin', 'ui-admin-pass')
   const res = await getConfig(rt, req('/api/config', 'GET', undefined, { Cookie: s.cookie }))
   expect(res.status).toBe(200)
-  expect(await res.json()).toEqual({ storeDriver: TEST_DRIVER })
+  expect(await res.json()).toEqual({ storeDriver: TEST_DRIVER, wiremockPublicUrl: env.wm.url })
   const viaBasic = await getConfig(rt, req('/api/config', 'GET', undefined, { Authorization: basic('ui-admin', 'ui-admin-pass') }))
-  expect(await viaBasic.json()).toEqual({ storeDriver: TEST_DRIVER })
+  expect(await viaBasic.json()).toEqual({ storeDriver: TEST_DRIVER, wiremockPublicUrl: env.wm.url })
 })

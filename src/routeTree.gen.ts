@@ -23,7 +23,9 @@ import { Route as ApiImportRouteImport } from './routes/api/import'
 import { Route as ApiIntegrationsRouteImport } from './routes/api/integrations'
 import { Route as ApiMocksRouteImport } from './routes/api/mocks'
 import { Route as ApiRequestsRouteImport } from './routes/api/requests'
+import { Route as ApiScenariosRouteImport } from './routes/api/scenarios'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
+import { Route as ApiTestRequestRouteImport } from './routes/api/test-request'
 import { Route as ApiUsersRouteImport } from './routes/api/users'
 import { Route as AppCatalogIndexRouteImport } from './routes/_app/catalog.index'
 import { Route as AppCatalogKeyRouteImport } from './routes/_app/catalog.$key'
@@ -35,6 +37,7 @@ import { Route as ApiMocksIdRouteImport } from './routes/api/mocks.$id'
 import { Route as ApiMocksResetMineRouteImport } from './routes/api/mocks.reset-mine'
 import { Route as ApiRequestsIdRouteImport } from './routes/api/requests.$id'
 import { Route as ApiRequestsCountRouteImport } from './routes/api/requests.count'
+import { Route as ApiScenariosResetRouteImport } from './routes/api/scenarios.reset'
 import { Route as ApiSessionPasswordRouteImport } from './routes/api/session.password'
 import { Route as ApiUsersIdRouteImport } from './routes/api/users.$id'
 import { Route as ApiIntegrationsKeyEndpointsRouteImport } from './routes/api/integrations.$key.endpoints'
@@ -42,6 +45,7 @@ import { Route as ApiMocksIdDuplicateRouteImport } from './routes/api/mocks.$id.
 import { Route as ApiMocksIdHistoryRouteImport } from './routes/api/mocks.$id.history'
 import { Route as ApiMocksIdRestoreRouteImport } from './routes/api/mocks.$id.restore'
 import { Route as ApiRequestsIdNearMissesRouteImport } from './routes/api/requests.$id.near-misses'
+import { Route as ApiScenariosNameStateRouteImport } from './routes/api/scenarios.$name.state'
 import { Route as ApiIntegrationsKeyEndpointsEndpointRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint'
 import { Route as ApiIntegrationsKeyEndpointsEndpointMocksRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint.mocks'
 import { Route as ApiIntegrationsKeyEndpointsEndpointPreviewRouteImport } from './routes/api/integrations.$key.endpoints.$endpoint.preview'
@@ -115,9 +119,19 @@ const ApiRequestsRoute = ApiRequestsRouteImport.update({
   path: '/api/requests',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiScenariosRoute = ApiScenariosRouteImport.update({
+  id: '/api/scenarios',
+  path: '/api/scenarios',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSessionRoute = ApiSessionRouteImport.update({
   id: '/api/session',
   path: '/api/session',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTestRequestRoute = ApiTestRequestRouteImport.update({
+  id: '/api/test-request',
+  path: '/api/test-request',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiUsersRoute = ApiUsersRouteImport.update({
@@ -175,6 +189,11 @@ const ApiRequestsCountRoute = ApiRequestsCountRouteImport.update({
   path: '/count',
   getParentRoute: () => ApiRequestsRoute,
 } as any)
+const ApiScenariosResetRoute = ApiScenariosResetRouteImport.update({
+  id: '/reset',
+  path: '/reset',
+  getParentRoute: () => ApiScenariosRoute,
+} as any)
 const ApiSessionPasswordRoute = ApiSessionPasswordRouteImport.update({
   id: '/password',
   path: '/password',
@@ -211,6 +230,11 @@ const ApiRequestsIdNearMissesRoute = ApiRequestsIdNearMissesRouteImport.update({
   path: '/near-misses',
   getParentRoute: () => ApiRequestsIdRoute,
 } as any)
+const ApiScenariosNameStateRoute = ApiScenariosNameStateRouteImport.update({
+  id: '/$name/state',
+  path: '/$name/state',
+  getParentRoute: () => ApiScenariosRoute,
+} as any)
 const ApiIntegrationsKeyEndpointsEndpointRoute =
   ApiIntegrationsKeyEndpointsEndpointRouteImport.update({
     id: '/$endpoint',
@@ -244,7 +268,9 @@ export interface FileRoutesByFullPath {
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
   '/api/requests': typeof ApiRequestsRouteWithChildren
+  '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
+  '/api/test-request': typeof ApiTestRequestRoute
   '/api/users': typeof ApiUsersRouteWithChildren
   '/catalog/$key': typeof AppCatalogKeyRoute
   '/mocks/$id': typeof AppMocksIdRoute
@@ -254,6 +280,7 @@ export interface FileRoutesByFullPath {
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
   '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
+  '/api/scenarios/reset': typeof ApiScenariosResetRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
   '/catalog/': typeof AppCatalogIndexRoute
@@ -263,6 +290,7 @@ export interface FileRoutesByFullPath {
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
   '/api/requests/$id/near-misses': typeof ApiRequestsIdNearMissesRoute
+  '/api/scenarios/$name/state': typeof ApiScenariosNameStateRoute
   '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRouteWithChildren
   '/api/integrations/$key/endpoints/$endpoint/mocks': typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
   '/api/integrations/$key/endpoints/$endpoint/preview': typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
@@ -280,7 +308,9 @@ export interface FileRoutesByTo {
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
   '/api/requests': typeof ApiRequestsRouteWithChildren
+  '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
+  '/api/test-request': typeof ApiTestRequestRoute
   '/api/users': typeof ApiUsersRouteWithChildren
   '/': typeof AppIndexRoute
   '/catalog/$key': typeof AppCatalogKeyRoute
@@ -291,6 +321,7 @@ export interface FileRoutesByTo {
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
   '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
+  '/api/scenarios/reset': typeof ApiScenariosResetRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
   '/catalog': typeof AppCatalogIndexRoute
@@ -300,6 +331,7 @@ export interface FileRoutesByTo {
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
   '/api/requests/$id/near-misses': typeof ApiRequestsIdNearMissesRoute
+  '/api/scenarios/$name/state': typeof ApiScenariosNameStateRoute
   '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRouteWithChildren
   '/api/integrations/$key/endpoints/$endpoint/mocks': typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
   '/api/integrations/$key/endpoints/$endpoint/preview': typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
@@ -319,7 +351,9 @@ export interface FileRoutesById {
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
   '/api/requests': typeof ApiRequestsRouteWithChildren
+  '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
+  '/api/test-request': typeof ApiTestRequestRoute
   '/api/users': typeof ApiUsersRouteWithChildren
   '/_app/': typeof AppIndexRoute
   '/_app/catalog/$key': typeof AppCatalogKeyRoute
@@ -330,6 +364,7 @@ export interface FileRoutesById {
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
   '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
+  '/api/scenarios/reset': typeof ApiScenariosResetRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
   '/_app/catalog/': typeof AppCatalogIndexRoute
@@ -339,6 +374,7 @@ export interface FileRoutesById {
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
   '/api/mocks/$id/restore': typeof ApiMocksIdRestoreRoute
   '/api/requests/$id/near-misses': typeof ApiRequestsIdNearMissesRoute
+  '/api/scenarios/$name/state': typeof ApiScenariosNameStateRoute
   '/api/integrations/$key/endpoints/$endpoint': typeof ApiIntegrationsKeyEndpointsEndpointRouteWithChildren
   '/api/integrations/$key/endpoints/$endpoint/mocks': typeof ApiIntegrationsKeyEndpointsEndpointMocksRoute
   '/api/integrations/$key/endpoints/$endpoint/preview': typeof ApiIntegrationsKeyEndpointsEndpointPreviewRoute
@@ -359,7 +395,9 @@ export interface FileRouteTypes {
     | '/api/integrations'
     | '/api/mocks'
     | '/api/requests'
+    | '/api/scenarios'
     | '/api/session'
+    | '/api/test-request'
     | '/api/users'
     | '/catalog/$key'
     | '/mocks/$id'
@@ -369,6 +407,7 @@ export interface FileRouteTypes {
     | '/api/mocks/reset-mine'
     | '/api/requests/$id'
     | '/api/requests/count'
+    | '/api/scenarios/reset'
     | '/api/session/password'
     | '/api/users/$id'
     | '/catalog/'
@@ -378,6 +417,7 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
     | '/api/requests/$id/near-misses'
+    | '/api/scenarios/$name/state'
     | '/api/integrations/$key/endpoints/$endpoint'
     | '/api/integrations/$key/endpoints/$endpoint/mocks'
     | '/api/integrations/$key/endpoints/$endpoint/preview'
@@ -395,7 +435,9 @@ export interface FileRouteTypes {
     | '/api/integrations'
     | '/api/mocks'
     | '/api/requests'
+    | '/api/scenarios'
     | '/api/session'
+    | '/api/test-request'
     | '/api/users'
     | '/'
     | '/catalog/$key'
@@ -406,6 +448,7 @@ export interface FileRouteTypes {
     | '/api/mocks/reset-mine'
     | '/api/requests/$id'
     | '/api/requests/count'
+    | '/api/scenarios/reset'
     | '/api/session/password'
     | '/api/users/$id'
     | '/catalog'
@@ -415,6 +458,7 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
     | '/api/requests/$id/near-misses'
+    | '/api/scenarios/$name/state'
     | '/api/integrations/$key/endpoints/$endpoint'
     | '/api/integrations/$key/endpoints/$endpoint/mocks'
     | '/api/integrations/$key/endpoints/$endpoint/preview'
@@ -433,7 +477,9 @@ export interface FileRouteTypes {
     | '/api/integrations'
     | '/api/mocks'
     | '/api/requests'
+    | '/api/scenarios'
     | '/api/session'
+    | '/api/test-request'
     | '/api/users'
     | '/_app/'
     | '/_app/catalog/$key'
@@ -444,6 +490,7 @@ export interface FileRouteTypes {
     | '/api/mocks/reset-mine'
     | '/api/requests/$id'
     | '/api/requests/count'
+    | '/api/scenarios/reset'
     | '/api/session/password'
     | '/api/users/$id'
     | '/_app/catalog/'
@@ -453,6 +500,7 @@ export interface FileRouteTypes {
     | '/api/mocks/$id/history'
     | '/api/mocks/$id/restore'
     | '/api/requests/$id/near-misses'
+    | '/api/scenarios/$name/state'
     | '/api/integrations/$key/endpoints/$endpoint'
     | '/api/integrations/$key/endpoints/$endpoint/mocks'
     | '/api/integrations/$key/endpoints/$endpoint/preview'
@@ -468,7 +516,9 @@ export interface RootRouteChildren {
   ApiIntegrationsRoute: typeof ApiIntegrationsRouteWithChildren
   ApiMocksRoute: typeof ApiMocksRouteWithChildren
   ApiRequestsRoute: typeof ApiRequestsRouteWithChildren
+  ApiScenariosRoute: typeof ApiScenariosRouteWithChildren
   ApiSessionRoute: typeof ApiSessionRouteWithChildren
+  ApiTestRequestRoute: typeof ApiTestRequestRoute
   ApiUsersRoute: typeof ApiUsersRouteWithChildren
 }
 
@@ -572,11 +622,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/scenarios': {
+      id: '/api/scenarios'
+      path: '/api/scenarios'
+      fullPath: '/api/scenarios'
+      preLoaderRoute: typeof ApiScenariosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/session': {
       id: '/api/session'
       path: '/api/session'
       fullPath: '/api/session'
       preLoaderRoute: typeof ApiSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/test-request': {
+      id: '/api/test-request'
+      path: '/api/test-request'
+      fullPath: '/api/test-request'
+      preLoaderRoute: typeof ApiTestRequestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/users': {
@@ -656,6 +720,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRequestsCountRouteImport
       parentRoute: typeof ApiRequestsRoute
     }
+    '/api/scenarios/reset': {
+      id: '/api/scenarios/reset'
+      path: '/reset'
+      fullPath: '/api/scenarios/reset'
+      preLoaderRoute: typeof ApiScenariosResetRouteImport
+      parentRoute: typeof ApiScenariosRoute
+    }
     '/api/session/password': {
       id: '/api/session/password'
       path: '/password'
@@ -704,6 +775,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/requests/$id/near-misses'
       preLoaderRoute: typeof ApiRequestsIdNearMissesRouteImport
       parentRoute: typeof ApiRequestsIdRoute
+    }
+    '/api/scenarios/$name/state': {
+      id: '/api/scenarios/$name/state'
+      path: '/$name/state'
+      fullPath: '/api/scenarios/$name/state'
+      preLoaderRoute: typeof ApiScenariosNameStateRouteImport
+      parentRoute: typeof ApiScenariosRoute
     }
     '/api/integrations/$key/endpoints/$endpoint': {
       id: '/api/integrations/$key/endpoints/$endpoint'
@@ -870,6 +948,20 @@ const ApiRequestsRouteWithChildren = ApiRequestsRoute._addFileChildren(
   ApiRequestsRouteChildren,
 )
 
+interface ApiScenariosRouteChildren {
+  ApiScenariosResetRoute: typeof ApiScenariosResetRoute
+  ApiScenariosNameStateRoute: typeof ApiScenariosNameStateRoute
+}
+
+const ApiScenariosRouteChildren: ApiScenariosRouteChildren = {
+  ApiScenariosResetRoute: ApiScenariosResetRoute,
+  ApiScenariosNameStateRoute: ApiScenariosNameStateRoute,
+}
+
+const ApiScenariosRouteWithChildren = ApiScenariosRoute._addFileChildren(
+  ApiScenariosRouteChildren,
+)
+
 interface ApiSessionRouteChildren {
   ApiSessionPasswordRoute: typeof ApiSessionPasswordRoute
 }
@@ -904,7 +996,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIntegrationsRoute: ApiIntegrationsRouteWithChildren,
   ApiMocksRoute: ApiMocksRouteWithChildren,
   ApiRequestsRoute: ApiRequestsRouteWithChildren,
+  ApiScenariosRoute: ApiScenariosRouteWithChildren,
   ApiSessionRoute: ApiSessionRouteWithChildren,
+  ApiTestRequestRoute: ApiTestRequestRoute,
   ApiUsersRoute: ApiUsersRouteWithChildren,
 }
 export const routeTree = rootRouteImport

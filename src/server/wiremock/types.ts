@@ -46,3 +46,10 @@ export type NearMiss = {
   stubMapping: StubMapping
   matchResult: { distance: number; diffDescriptions?: unknown[] } & Record<string, unknown>
 }
+
+/** A scenario as WireMock's `GET /__admin/scenarios` reports it (3.13.1), without its mappings. */
+export type ScenarioState = {
+  name: string
+  state: string
+  possibleStates: string[]
+}

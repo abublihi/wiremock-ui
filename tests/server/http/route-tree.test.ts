@@ -40,3 +40,15 @@ test('/api/requests/count is not captured by /api/requests/$id', () => {
 test('audit route resolves', () => {
   expect(leaf('/api/audit')).toBe('/api/audit')
 })
+
+test('test-request and scenario routes resolve to their own files', () => {
+  expect(leaf('/api/test-request')).toBe('/api/test-request')
+  expect(leaf('/api/scenarios')).toBe('/api/scenarios')
+  expect(leaf('/api/scenarios/reset')).toBe('/api/scenarios/reset')
+  expect(leaf('/api/scenarios/order-flow/state')).toBe('/api/scenarios/$name/state')
+  expect(leaf('/api/scenarios/reset/state')).toBe('/api/scenarios/$name/state')
+})
+
+test('the scenario name reaches the handler decoded', () => {
+  expect(router.matchRoutes('/api/scenarios/order%20flow/state').at(-1)?.params).toMatchObject({ name: 'order flow' })
+})

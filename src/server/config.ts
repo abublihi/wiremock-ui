@@ -3,6 +3,8 @@ import { ConfigError } from './errors'
 
 export type Config = {
   wiremockUrl: string
+  /** Where clients reach WireMock's stub port (curl commands, docs). Never fetched by the server. */
+  wiremockPublicUrl: string
   wiremockAdminUser?: string
   wiremockAdminPassword?: string
   /** `none` = WireMock-only mode (spec A10): WireMock holds the mocks, everything else lives in memory. */
@@ -34,6 +36,7 @@ const boolean = (name: string) =>
 
 const schema = z.object({
   WIREMOCK_URL: z.string().min(1).default('http://localhost:8080'),
+  WIREMOCK_PUBLIC_URL: z.string().min(1).optional(),
   WIREMOCK_ADMIN_USER: z.string().min(1).optional(),
   WIREMOCK_ADMIN_PASSWORD: z.string().min(1).optional(),
   STORE_DRIVER: z.string().optional(),
@@ -57,6 +60,15 @@ const schema = z.object({
   SEED_PRUNE: boolean('SEED_PRUNE'),
 })
 
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.host !== ''
+  } catch {
+    return false
+  }
+}
+
 export function loadConfig(env: Record<string, string | undefined>): Config {
   // Treat empty strings as unset so `FOO=` in an env file behaves like absent.
   const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ''))
@@ -78,12 +90,16 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     problems.push('REDIS_URL is required when STORE_DRIVER=redis')
   }
 
+  const publicUrl = cleaned.WIREMOCK_PUBLIC_URL
+  if (publicUrl !== undefined && !isHttpUrl(publicUrl)) problems.push('WIREMOCK_PUBLIC_URL must be an http:// or https:// URL')
+
   if (problems.length > 0 || !data) {
     throw new ConfigError(`Invalid configuration: ${problems.join('; ')}`)
   }
 
   return {
     wiremockUrl: data.WIREMOCK_URL,
+    wiremockPublicUrl: (data.WIREMOCK_PUBLIC_URL ?? data.WIREMOCK_URL).replace(/\/+$/, ''),
     wiremockAdminUser: data.WIREMOCK_ADMIN_USER,
     wiremockAdminPassword: data.WIREMOCK_ADMIN_PASSWORD,
     storeDriver: driver as Config['storeDriver'],

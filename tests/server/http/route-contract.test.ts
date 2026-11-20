@@ -47,7 +47,7 @@ test('every /api route method answers 401 JSON { error } without credentials, ex
     const body = ['GET', 'HEAD', 'DELETE'].includes(method) ? undefined : '{}'
     const res = await handler({
       request: new Request(url, { method, headers: { 'Content-Type': 'application/json' }, body }),
-      params: { id: 'x-id', key: 'x-key', endpoint: 'x-endpoint' },
+      params: { id: 'x-id', key: 'x-key', endpoint: 'x-endpoint', name: 'x-name' },
     })
     expect(res.status, `${method} ${path}`).toBe(401)
     expect(res.headers.get('content-type'), `${method} ${path}`).toContain('application/json')

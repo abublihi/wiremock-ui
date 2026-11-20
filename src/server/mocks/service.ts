@@ -1,6 +1,7 @@
 import { safeRecord, type AuditLog } from '../audit/log'
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../errors'
 import { logger } from '../logger'
+import { assertPowerFields, normaliseProxyHeaders } from './power-fields'
 import type { MockStore } from '../store/types'
 import type { PublicUser } from '../users/types'
 import type { WireMockClient } from '../wiremock/client'
@@ -51,7 +52,8 @@ function comparable(stub: StubMapping): string {
   const { persistent: _p, ...rest } = stub
   const ui = { ...(stub.metadata?.wiremockUi ?? {}) } as Record<string, unknown>
   for (const k of IGNORED_META) delete ui[k]
-  return canonicalJson({ ...rest, metadata: { ...stub.metadata, wiremockUi: ui } })
+  // Saving lower-cases the proxy header removal list, so an import of the mixed-case original is unchanged.
+  return canonicalJson({ ...rest, response: normaliseProxyHeaders(stub.response), metadata: { ...stub.metadata, wiremockUi: ui } })
 }
 
 export function canonicalJson(value: unknown): string {
@@ -240,6 +242,7 @@ export class MockService {
     if ('bodyFileName' in input.response) {
       throw new ValidationError('bodyFileName is not supported; put the body inline')
     }
+    assertPowerFields(input as MockInput & Record<string, unknown>)
   }
 
   private async save(
@@ -265,6 +268,7 @@ export class MockService {
     const { id: _id, uuid: _uuid, ...body } = input as MockInput & { id?: unknown; uuid?: unknown }
     const stub: StubMapping = {
       ...body,
+      response: normaliseProxyHeaders(body.response),
       id,
       persistent: false,
       metadata: { ...input.metadata, wiremockUi },

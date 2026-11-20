@@ -233,6 +233,16 @@ curl -u $AUTH -X POST $UI/api/requests/count -H "$JSON" \
   -d '{"pattern":{"method":"POST","urlPath":"/nic/citizens/fetch"}}'
 # {"count":2}
 
+# Send a test request to WireMock through the UI (stub port only; /__admin and other hosts are refused)
+curl -u $AUTH -X POST $UI/api/test-request -H "$JSON" \
+  -d '{"method":"POST","path":"/nic/citizens/fetch","headers":{"Content-Type":"application/json"},"body":"{\"idNo\":\"1012345678\"}"}'
+# {"status":200,"headers":{…},"body":"…","bodyIsBase64":false,"bodyTruncated":false,"durationMs":12,"matchedStubId":"<mock id>"}
+
+# Scenarios: live state, move one to a state, reset one or all
+curl -u $AUTH $UI/api/scenarios
+curl -u $AUTH -X PUT $UI/api/scenarios/order-flow/state -H "$JSON" -d '{"state":"approved"}'
+curl -u $AUTH -X POST $UI/api/scenarios/reset -H "$JSON" -d '{"name":"order-flow"}'   # or {} for all
+
 # Clean up after a run
 curl -u $AUTH -X POST $UI/api/mocks/reset-mine      # {"deleted":4}
 curl -u $AUTH -X DELETE $UI/api/requests            # clear the request log
@@ -258,4 +268,8 @@ curl -b jar -X POST $UI/api/mocks/reset-mine -H 'X-CSRF-Token: <token>'
 - **Cookies** are `Secure` when `PUBLIC_UI_URL` is https, or when `TRUST_PROXY` is on and the proxy sends `X-Forwarded-Proto: https`.
 - **Catalog:** endpoints with `pathType: regex` are matched by WireMock, so the pattern uses Java's regex dialect; the UI only checks that it parses as a JavaScript regex. An endpoint cannot be deleted while mocks built from it exist, and an integration cannot be deleted while it has mocks (`409`).
 - **Imports** over 10 MB get `413`.
+- **Test requests** (`POST /api/test-request`) go only to `WIREMOCK_URL`'s stub port, without WireMock's admin credentials, and never follow redirects. Paths must start with `/`; absolute URLs, `/__admin`, `.`/`..` segments and encoded slashes are refused (`400`). `Host`, `Content-Length` and hop-by-hop headers are dropped; line breaks in headers are refused. Bodies are limited to 1 MB each way (a longer response comes back cut, with `bodyTruncated: true`); binary responses come back base64 (`bodyIsBase64: true`). The relay waits 30 s.
+- **Proxy mocks** (`response.proxyBaseUrl`) need an http(s) base URL; `proxyUrlPrefixToRemove` starts with `/`. `removeProxyRequestHeaders` is stored lower-cased, because WireMock 3.13.1 only removes headers listed that way.
+- **Webhooks** (`serveEventListeners: [{ "name": "webhook", "parameters": { method, url, headers, body, delay } }]`) are sent by WireMock, from wherever WireMock runs, after it answers: a URL like `http://localhost:…` means WireMock's own machine. Methods GET, POST, PUT, PATCH, DELETE; the URL must start with `http://` or `https://` (the rest may be a template); `delay` is `{ "type": "fixed", "milliseconds" }` or `{ "type": "uniform", "lower", "upper" }`, at most 60000 ms.
+- **Scenarios:** `GET /api/scenarios` lists every `scenarioName` used by a mock, its states and WireMock's live state. WireMock 3.13.1 cannot change the state of a scenario whose name contains spaces or other characters that need URL encoding (`settable: false`); only resetting all scenarios reaches those. A WireMock restart puts every scenario back to `Started`.
 - **Sync:** the first sync after start-up, and any sync caused by WireMock losing its mocks (a restart or reset), are recorded in the audit log as `sync` by `system`.
