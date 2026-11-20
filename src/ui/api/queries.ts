@@ -381,7 +381,6 @@ export function useNearMisses(id: string | undefined, options: { enabled?: boole
   })
 }
 
-/** Empties WireMock's request journal (for everyone). */
 /** One older page of the request log (`GET /api/requests?before=…`): filtered server-side, newest first. */
 export type OlderRequestsPage = { requests: RequestSummary[]; nextCursor: string | null; scanLimitReached?: boolean }
 
@@ -437,6 +436,7 @@ function mergeAll(a: RequestSummary[], b: RequestSummary[]): RequestSummary[] {
   return [...byId.values()].sort(newestFirst)
 }
 
+/** Empties WireMock's request journal (for everyone). */
 export function useClearRequests() {
   const queryClient = useQueryClient()
   return useMutation({
