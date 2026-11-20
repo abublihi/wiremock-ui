@@ -110,6 +110,15 @@ const SERVER_FIELD = new Map<string, FieldName>([
  * The form field a server validation message names, if any: "keyValue is required" → keyValue,
  * "webhook.delay.lower must …" → webhookDelay (the longest known dotted prefix).
  */
+/**
+ * A server message for a field, without the API's field path ("webhook.delay.lower must be …" → "This value must
+ * be …"): the field it belongs to is already marked, and the reader never sees those names.
+ */
+export function withoutFieldPath(message: string, t: ReturnType<typeof useT>): string {
+  const rest = /^[w.]+s+(.*)$/s.exec(message)?.[1]
+  return rest ? t('editor.fieldProblem', { problem: rest.replace(/.$/, '') }) : message
+}
+
 function fieldOf(message: string): FieldName | undefined {
   if (message === 'body must be an object') return undefined // about the request, not the response body
   const parts = (/^([\w.]+)/.exec(message)?.[1] ?? '').split('.')
@@ -227,6 +236,7 @@ export function SimpleEditor({
     }
   }
   if (form.scenario.enabled && attempted && form.scenario.name.trim() === '') clientErrors.scenarioName = t('editor.scenario.nameRequired')
+  if (!quick && attempted && !form.isDefault && endpoint.lookup && form.keyValue.trim() === '') clientErrors.keyValue = t('editor.keyRequired')
   if (quick) {
     Object.assign(clientErrors, quickRequestErrors(t, quick, attempted))
     if (!proxied && !broken && hasUnnamedRow(quick.responseHeaders)) clientErrors.headers = t('editor.headers.unnamed')
@@ -297,7 +307,7 @@ export function SimpleEditor({
     }
     const message = error instanceof Error && error.message ? error.message : t('error.generic')
     const field = error instanceof ApiError && error.status === 400 ? fieldOf(message) : undefined
-    if (field) setServerErrors({ [field]: message })
+    if (field) setServerErrors({ [field]: field === 'keyValue' && /required/.test(message) ? t('editor.keyRequired') : withoutFieldPath(message, t) })
     else setFormError({ title, message })
   }
   const args = (): PreviewArgs =>

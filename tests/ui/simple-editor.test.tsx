@@ -189,7 +189,7 @@ describe('new mock — Simple form', () => {
     }
   })
 
-  it('puts a server 400 about keyValue next to the key field', async () => {
+  it('asks for the key value next to the key field before saving, in plain words', async () => {
     mockCatalog([endpoint()])
     server.use(http.post(`${CATALOG}/get-citizen-info/mocks`, () => HttpResponse.json({ error: 'keyValue is required' }, { status: 400 })))
     await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'get-citizen-info' }} />)
@@ -197,7 +197,7 @@ describe('new mock — Simple form', () => {
     await ue.click(await screen.findByRole('button', { name: 'Save mock' }))
     const key = screen.getByLabelText('Value of $.idNo in the request body')
     await waitFor(() => expect(key.getAttribute('aria-invalid')).toBe('true'))
-    const errorId = key.getAttribute('aria-describedby')!.split(' ').find((id) => document.getElementById(id)?.textContent === 'keyValue is required')
+    const errorId = key.getAttribute('aria-describedby')!.split(' ').find((id) => document.getElementById(id)?.textContent === 'Enter the value this mock answers (for example 42), or turn on Default answer.')
     expect(errorId).toBeTruthy()
     expect(screen.queryByText('Could not save the mock')).toBeNull()
   })

@@ -547,6 +547,8 @@ export const en = {
   'editor.scenario.joins': 'Joins a scenario {count} mocks already use.',
   'editor.scenario.joinsOne': 'Joins a scenario 1 mock already uses.',
   'editor.scenario.nameRequired': 'Enter a scenario name, or turn this off.',
+  'editor.keyRequired': 'Enter the value this mock answers (for example 42), or turn on Default answer.',
+  'editor.fieldProblem': 'This value {problem}.',
   'editor.scenario.unsettable':
     "WireMock can't set the state of a name with spaces or symbols like / or %, so the Scenarios page can only reset it with Reset all. Use letters, digits and - _ . to control it there.",
   'editor.scenario.existing': 'Existing',
