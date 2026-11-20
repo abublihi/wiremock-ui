@@ -65,8 +65,6 @@ Other ways to run it (with Redis, from source, Kubernetes, or against a WireMock
 | ![Postman import](docs/screenshots/postman-import-dark.png) **Import a Postman collection** with a preview. | ![Export](docs/screenshots/export-dark.png) **Export** a bundle or WireMock mappings. |
 | ![Users](docs/screenshots/users-dark.png) **Users**. | ![Audit](docs/screenshots/audit-dark.png) **Audit log**. |
 | ![Guide](docs/screenshots/guide-dark.png) **The guide**, in the app. | ![Help panel](docs/screenshots/help-panel-dark.png) **How this works** on every page. |
-| ![Sign in, dark](docs/screenshots/login-dark.png) **Sign in** (dark). | ![Sign in, light](docs/screenshots/login-light.png) **Sign in** (light). |
-| ![Phone](docs/screenshots/shell-dark-mobile.png) **On a phone**. | |
 
 ## Architecture
 
