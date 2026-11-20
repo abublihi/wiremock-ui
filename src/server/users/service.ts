@@ -67,6 +67,16 @@ export class UserService {
     return user
   }
 
+  /**
+   * Accounts whose names became reserved after they were made (`baseline`, `system`, `wiremock` are owner names
+   * of mocks nobody signed in made): their mocks cannot be told apart from those. Logged at boot.
+   */
+  async reservedAccounts(): Promise<string[]> {
+    const found: string[] = []
+    for (const name of RESERVED) if (await this.users.getUserByName(name)) found.push(name)
+    return found
+  }
+
   async ensureFirstAdmin(username: string, password: string): Promise<'created' | 'exists'> {
     if ((await this.users.countUsers()) > 0) return 'exists'
     let name: string

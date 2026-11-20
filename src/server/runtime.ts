@@ -106,6 +106,13 @@ export async function bootRuntime(
     const wiremockOnly = config.storeDriver === 'none'
     const users = new UserService({ users: stores.users, audit, fixedAccounts: wiremockOnly })
     await users.ensureFirstAdmin(config.adminUser, config.adminPassword)
+    const reserved = await users.reservedAccounts().catch(() => [])
+    if (reserved.length > 0) {
+      logger.warn(
+        { accounts: reserved },
+        'accounts with reserved names exist (baseline, system and wiremock own mocks no person made): create another account for that person and disable this one',
+      )
+    }
     const mocks = new MockService({ wiremock, store, audit, storeIsWireMock: wiremockOnly })
     const catalog = new CatalogService({ catalog: stores.catalog, audit, mocks: store })
     const requests = new RequestJournal({ wiremock, catalog, audit })

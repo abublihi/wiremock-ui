@@ -143,4 +143,12 @@ describe.each(drivers)('UserService on %s', (_driver, start) => {
     const login = await svc.login('bob', 'bobpass12', '1.1.1.1', config)
     for (const v of [created, updated, login, await svc.list()]) expect(JSON.stringify(v)).not.toContain('passwordHash')
   })
+
+  test('reservedAccounts lists accounts made before their names were reserved', async () => {
+    await admin()
+    expect(await svc.reservedAccounts()).toEqual([])
+    const ts = new Date().toISOString()
+    await store.createUser({ id: 'old-wm', username: 'wiremock', displayName: 'wm', role: 'admin', passwordHash: 'x', disabled: false, createdAt: ts, updatedAt: ts })
+    expect(await svc.reservedAccounts()).toEqual(['wiremock'])
+  })
 })
