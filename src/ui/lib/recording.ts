@@ -1,8 +1,6 @@
 import { longestPrefixMatch } from '@/server/catalog/prefix'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { ReviewItem } from '@/server/recording/types'
-import type { StubMapping } from '@/server/wiremock/types'
-import { fromEditable, linkOf, toEditable } from './editor-sync'
 
 /** The endpoint select's value for "create an endpoint from this request". */
 export const NEW_ENDPOINT = '__new__'
@@ -82,13 +80,6 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
-/** A created mock without its scenario fields (the stub an update sends), for "Keep only the first answer". */
-export function withoutScenario(stub: StubMapping): Omit<StubMapping, 'id'> {
-  const { scenarioName: _s, requiredScenarioState: _r, newScenarioState: _n, ...editable } = toEditable(stub)
-  // As the Advanced editor saves it: the catalog link stays, the server's own fields are left out.
-  return fromEditable(editable, linkOf(stub))
 }
 
 /** Review rows as the list shows them: a plain row alone, or every row of one recorded scenario together. */

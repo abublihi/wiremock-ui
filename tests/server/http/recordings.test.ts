@@ -287,6 +287,60 @@ test('two recordings of one endpoint become two scenarios when accepted; each re
   expect([await (await fetch(`${W()}/shop/seq`)).text(), await (await fetch(`${W()}/shop/seq`)).text()]).toEqual(['one', 'two'])
 })
 
+/** Three calls to an upstream that answers one, two, three: a recorded scenario of three rows. */
+async function recordThree(path: string) {
+  const up = pair.upstream.url
+  for (const [n, body] of ['one', 'two', 'three'].entries()) {
+    await fetch(`${up}/__admin/mappings`, {
+      method: 'POST',
+      body: JSON.stringify({
+        scenarioName: path,
+        requiredScenarioState: n === 0 ? 'Started' : `s${n}`,
+        newScenarioState: `s${n + 1}`,
+        request: { method: 'GET', urlPath: path },
+        response: { status: 200, body },
+      }),
+    })
+  }
+  await fetch(`${up}/__admin/scenarios/reset`, { method: 'POST' })
+  await start({ targetUrl: pair.upstreamInternalUrl, urlPathPattern: path })
+  for (let i = 0; i < 3; i++) await fetch(`${W()}${path}`)
+  const rec = (await stop()).body.recording as Recording
+  expect(rec.items).toHaveLength(3)
+  const first = rec.items.find((i) => i.stub.requiredScenarioState === 'Started')!
+  return { rec, first, rest: rec.items.filter((i) => i !== first) }
+}
+const threeTimes = async (path: string) => {
+  const out: string[] = []
+  for (let i = 0; i < 3; i++) out.push(await (await fetch(`${W()}${path}`)).text())
+  return out
+}
+
+test('keep only the first answer: discarding the later answers saves the first as a plain row, so a reload keeps it plain', async () => {
+  const { rec, first, rest } = await recordThree('/shop/keep-first')
+  await call(discardRecordingItems, req(`/api/recordings/${rec.id}/discard`, 'POST', { ids: rest.map((i) => i.id) }), rec.id)
+  // A reload reads the list again: the lone first answer is no longer a scenario step.
+  const reloaded = (await call(getRecording, req(`/api/recordings/${rec.id}`), rec.id)).body as Recording
+  expect(reloaded.items).toHaveLength(1)
+  expect(reloaded.items[0].stub).not.toHaveProperty('scenarioName')
+  expect(reloaded.items[0].stub).not.toHaveProperty('requiredScenarioState')
+  expect((await accept(rec.id, { items: [{ id: first.id }] })).body.failed).toEqual([])
+  const [made] = await mocks()
+  expect(made).not.toHaveProperty('scenarioName')
+  // Answers every time, not once and then 404.
+  expect(await threeTimes('/shop/keep-first')).toEqual(['one', 'one', 'one'])
+})
+
+test('accept with dropScenario makes a row a plain mock in the same call', async () => {
+  const { rec, first } = await recordThree('/shop/drop-flag')
+  const result = await accept(rec.id, { items: [{ id: first.id, dropScenario: true }] })
+  expect(result.body.failed).toEqual([])
+  const [made] = await mocks()
+  expect(made).not.toHaveProperty('scenarioName')
+  expect(await threeTimes('/shop/drop-flag')).toEqual(['one', 'one', 'one'])
+  expect((await accept(rec.id, { items: [{ id: first.id, dropScenario: 'yes' }] })).status).toBe(400)
+})
+
 test.skipIf(STORELESS)('SEED_PRUNE on: accepting as baseline is refused (a restart would delete them); as my own works; /api/config says so', async () => {
   await start({ targetUrl: pair.upstreamInternalUrl })
   await fetch(`${W()}/shop/items/1`)

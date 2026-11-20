@@ -85,21 +85,6 @@ describe('groupReviewItems', () => {
   })
 })
 
-describe('withoutScenario', () => {
-  it('drops the scenario fields and the server-owned ones, keeping the catalog link', async () => {
-    const { withoutScenario } = await import('@/ui/lib/recording')
-    const stub = {
-      id: 'm1', uuid: 'm1', name: 'GET /a', request: { method: 'GET', urlPath: '/a' }, response: { status: 200 },
-      scenarioName: 's', requiredScenarioState: 'Started', newScenarioState: 's-2',
-      metadata: { wiremockUi: { integration: 'shop', endpoint: 'get-a', owner: 'sara', version: 1 } },
-    }
-    expect(withoutScenario(stub as never)).toEqual({
-      name: 'GET /a', request: { method: 'GET', urlPath: '/a' }, response: { status: 200 },
-      metadata: { wiremockUi: { integration: 'shop', endpoint: 'get-a' } },
-    })
-  })
-})
-
 describe('empty recording message', () => {
   it('lists the paths that went through, to compare with the filters', async () => {
     const { emptyMessage, filtersText } = await import('@/ui/components/recording/RecordForms')

@@ -96,6 +96,8 @@ export const acceptSchema = z.strictObject(
           endpoint: keyField.optional(),
           /** Create this endpoint from the recorded request first. */
           newEndpoint: z.strictObject({ key: keyField, name: z.string().min(1, 'newEndpoint.name must not be empty') }).optional(),
+          /** Accept a recorded scenario's row as a plain mock ("Keep only the first answer"): no scenario fields. */
+          dropScenario: z.boolean({ error: 'items.dropScenario must be true or false' }).optional(),
         }),
         { error: 'items must be a list' },
       )
@@ -385,7 +387,7 @@ export class RecordingService {
   private async discardLocked(id: string, ids: string[] | undefined, actor: string): Promise<Recording | null> {
     const recording = await this.get(id)
     const drop = ids ? new Set(ids) : null
-    const left = drop ? recording.items.filter((i) => !drop.has(i.id)) : []
+    const left = withLoneStepsPlain(recording.items, drop ? recording.items.filter((i) => !drop.has(i.id)) : [])
     const discarded = recording.items.length - left.length
     const result = await this.save({ ...recording, items: left })
     await safeRecord(this.deps.audit, { actor, action: 'recording.discard', target: id, details: { discarded } })
@@ -422,7 +424,7 @@ export class RecordingService {
         continue
       }
       try {
-        const stub = await this.stubFor(item, choice, actor.username)
+        const stub = await this.stubFor(choice.dropScenario ? withoutScenario(item) : item, choice, actor.username)
         const mock = await this.deps.mocks.createRecorded(stub, owner, actor)
         created.push({ id: item.id, mockId: mock.id })
         byId.delete(item.id)
@@ -596,4 +598,31 @@ export class RecordingService {
     await this.deps.store.put(recording)
     return recording
   }
+}
+
+/** A review row without its scenario fields: accepted, it answers every time instead of as one step of a chain. */
+export function withoutScenario(item: ReviewItem): ReviewItem {
+  const { scenarioName: _n, requiredScenarioState: _r, newScenarioState: _s, ...stub } = item.stub
+  return { ...item, stub: stub as ReviewItem['stub'] }
+}
+
+/**
+ * After a discard: a recorded scenario left with only its first row ("Keep only the first answer", or the later
+ * answers discarded one by one) becomes a plain row, saved so in the review list. (A later row left alone stays a step:
+ * the rows before it may have been accepted already.) Accepted as a step it would answer once
+ * and then never again (its next state has no answer); a reload must not bring that back.
+ */
+export function withLoneStepsPlain(before: ReviewItem[], after: ReviewItem[]): ReviewItem[] {
+  const count = (items: ReviewItem[]) => {
+    const n = new Map<string, number>()
+    for (const i of items) if (typeof i.stub.scenarioName === 'string') n.set(i.stub.scenarioName, (n.get(i.stub.scenarioName) ?? 0) + 1)
+    return n
+  }
+  const was = count(before)
+  const now = count(after)
+  return after.map((i) => {
+    const name = i.stub.scenarioName
+    const first = i.stub.requiredScenarioState === 'Started'
+    return typeof name === 'string' && first && now.get(name) === 1 && (was.get(name) ?? 0) > 1 ? withoutScenario(i) : i
+  })
 }

@@ -1344,7 +1344,6 @@ export const en = {
   'recording.groupHint': 'Each call got the next answer. Accepted together they become scenario {name}, which replays them in this order.',
   'recording.keepFirst': 'Keep only the first answer',
   'recording.keptFirst': 'Kept the first answer as a plain mock',
-  'recording.plainFailed': 'The mock was created, but still answers only once as a scenario step: open it and turn its scenario off',
   'recording.plain': 'Plain mock: gives this answer every time',
   'recording.noBody': 'No body',
   'recording.showBody': 'Show recorded answer ({size})',
