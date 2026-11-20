@@ -1,0 +1,138 @@
+name: CI
+
+# Every push and pull request is type-checked, built and tested (unit, real-WireMock container tests on
+# Redis, SQLite and WireMock-only, and end-to-end in Chromium). The Docker image is built every time and
+# published to GitHub Container Registry only for version tags (v1.2.3) once every test job passed.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The Docker image runs Node 22 (Dockerfile); test on the same major.
+  NODE_VERSION: '22'
+  LOG_LEVEL: silent
+  # Testcontainers: GitHub's hosted runners have Docker; the reaper is fine there.
+  TESTCONTAINERS_RYUK_DISABLED: 'false'
+
+jobs:
+  check:
+    name: Type-check and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # No install scripts: the project has no native modules (pure-JS dependencies only).
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run build
+
+  test:
+    name: Unit and container tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # Pull the images the container tests use once, up front, so test timeouts don't include downloads.
+      - name: Pull test images
+        run: |
+          docker pull wiremock/wiremock:3.13.1
+          docker pull redis:7.4-alpine
+      - name: Vitest (server on Redis, SQLite and WireMock-only; UI)
+        run: npx vitest run --reporter=default --reporter=junit --outputFile.junit=reports/vitest.xml
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-report
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e:
+    name: End-to-end (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - run: docker pull wiremock/wiremock:3.13.1
+      - name: Playwright
+        env:
+          CI: 'true'
+        run: npm run test:e2e
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [check, test, e2e]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      - name: Sign in to GitHub Container Registry
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build (and push for version tags)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test the image
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          docker buildx build --load -t wiremock-ui:ci .
+          docker run --rm --entrypoint node wiremock-ui:ci --version
