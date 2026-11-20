@@ -105,3 +105,21 @@ test('MemoryCatalogStore: upsert, create-only insert, sorted lists, cascade dele
   expect(await c.getEndpoint('a', 'y')).toBeNull()
   expect((await c.listEndpoints('b')).map((x) => x.key)).toEqual(['y'])
 })
+
+test('memory stores hand out copies: changing what was read or written does not change the store', async () => {
+  const { MemoryCatalogStore, MemoryUserStore } = await import('../../../src/server/store/memory')
+  const catalog = new MemoryCatalogStore()
+  const integration = { key: 'pay', name: 'Pay', prefix: '/pay' } as never as Parameters<typeof catalog.putIntegration>[0]
+  await catalog.putIntegration(integration)
+  ;(integration as { name: string }).name = 'changed after put'
+  const read = (await catalog.getIntegration('pay'))!
+  read.name = 'changed after get'
+  expect((await catalog.getIntegration('pay'))!.name).toBe('Pay')
+
+  const users = new MemoryUserStore()
+  const ts = new Date().toISOString()
+  await users.createUser({ id: 'u1', username: 'ann', displayName: 'Ann', role: 'admin', passwordHash: 'h', disabled: false, createdAt: ts, updatedAt: ts })
+  const ann = (await users.getUser('u1'))!
+  ann.disabled = true
+  expect((await users.getUser('u1'))!.disabled).toBe(false)
+})

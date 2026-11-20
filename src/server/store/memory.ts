@@ -9,6 +9,9 @@ import type { Session, User, UserStore } from '../users/types'
 export const NO_USER_MANAGEMENT = 'User management is not available in WireMock-only mode'
 
 const token = () => randomBytes(32).toString('base64url')
+/** Callers may change what they read or wrote; like the stored drivers, the store keeps its own copy. */
+const copy = <T>(value: T): T => structuredClone(value)
+const copyOrNull = <T>(value: T | undefined): T | null => (value === undefined ? null : copy(value))
 
 /** Holds the bootstrap account only (ADMIN_USER / ADMIN_PASSWORD); sessions and the login rate limit live in memory. */
 export class MemoryUserStore implements UserStore {
@@ -17,16 +20,16 @@ export class MemoryUserStore implements UserStore {
   private limits = new Map<string, { count: number; expiresAt: number | null }>()
 
   async getUser(id: string): Promise<User | null> {
-    return this.users.get(id) ?? null
+    return copyOrNull(this.users.get(id))
   }
 
   async getUserByName(username: string): Promise<User | null> {
     const lower = username.toLowerCase()
-    return [...this.users.values()].find((u) => u.username.toLowerCase() === lower) ?? null
+    return copyOrNull([...this.users.values()].find((u) => u.username.toLowerCase() === lower))
   }
 
   async listUsers(): Promise<User[]> {
-    return [...this.users.values()].sort((a, b) => a.username.localeCompare(b.username, 'en', { sensitivity: 'base' }))
+    return [...this.users.values()].map(copy).sort((a, b) => a.username.localeCompare(b.username, 'en', { sensitivity: 'base' }))
   }
 
   /** Only the first account (the bootstrap one) can be created. */
@@ -35,7 +38,7 @@ export class MemoryUserStore implements UserStore {
       if (await this.getUserByName(user.username)) throw new ConflictError('Username already exists')
       throw new ValidationError(NO_USER_MANAGEMENT)
     }
-    this.users.set(user.id, user)
+    this.users.set(user.id, copy(user))
   }
 
   async updateUser(_user: User): Promise<void> {
@@ -64,13 +67,13 @@ export class MemoryUserStore implements UserStore {
       createdAt: new Date(now).toISOString(),
       expiresAt: new Date(now + ttlSeconds * 1000).toISOString(),
     }
-    this.sessions.set(session.id, session)
+    this.sessions.set(session.id, copy(session))
     return session
   }
 
   async getSession(id: string): Promise<Session | null> {
     const s = this.sessions.get(id)
-    return s && Date.parse(s.expiresAt) > Date.now() ? s : null
+    return s && Date.parse(s.expiresAt) > Date.now() ? copy(s) : null
   }
 
   async deleteSession(id: string): Promise<void> {
@@ -119,7 +122,7 @@ export class MemoryAuditLog implements AuditLog {
 
   async record(entry: Omit<AuditEntry, 'at'>): Promise<void> {
     const ms = Date.now()
-    this.entries.push({ seq: formatAuditSeq(++this.seq), ms, entry: { at: new Date(ms).toISOString(), ...entry } })
+    this.entries.push({ seq: formatAuditSeq(++this.seq), ms, entry: copy({ at: new Date(ms).toISOString(), ...entry }) })
     if (this.entries.length > MEMORY_AUDIT_MAX) this.entries.splice(0, this.entries.length - MEMORY_AUDIT_MAX)
   }
 
@@ -131,7 +134,7 @@ export class MemoryAuditLog implements AuditLog {
     const page = older.slice(0, limit)
     const last = page.at(-1)
     return {
-      entries: page.map((e) => e.entry),
+      entries: page.map((e) => copy(e.entry)),
       nextCursor: older.length > limit && last ? encodeAuditCursor(last.ms, last.seq) : null,
     }
   }
@@ -145,20 +148,20 @@ export class MemoryCatalogStore implements CatalogStore {
   private endpoints = new Map<string, Endpoint>()
 
   async getIntegration(key: string): Promise<Integration | null> {
-    return this.integrations.get(key) ?? null
+    return copyOrNull(this.integrations.get(key))
   }
 
   async listIntegrations(): Promise<Integration[]> {
-    return [...this.integrations.values()].sort(byKey)
+    return [...this.integrations.values()].map(copy).sort(byKey)
   }
 
   async putIntegration(i: Integration): Promise<void> {
-    this.integrations.set(i.key, i)
+    this.integrations.set(i.key, copy(i))
   }
 
   async insertIntegration(i: Integration): Promise<boolean> {
     if (this.integrations.has(i.key)) return false
-    this.integrations.set(i.key, i)
+    this.integrations.set(i.key, copy(i))
     return true
   }
 
@@ -168,20 +171,20 @@ export class MemoryCatalogStore implements CatalogStore {
   }
 
   async getEndpoint(integration: string, key: string): Promise<Endpoint | null> {
-    return this.endpoints.get(endpointId(integration, key)) ?? null
+    return copyOrNull(this.endpoints.get(endpointId(integration, key)))
   }
 
   async listEndpoints(integration: string): Promise<Endpoint[]> {
-    return [...this.endpoints.values()].filter((e) => e.integration === integration).sort(byKey)
+    return [...this.endpoints.values()].filter((e) => e.integration === integration).map(copy).sort(byKey)
   }
 
   async putEndpoint(e: Endpoint): Promise<void> {
-    this.endpoints.set(endpointId(e.integration, e.key), e)
+    this.endpoints.set(endpointId(e.integration, e.key), copy(e))
   }
 
   async insertEndpoint(e: Endpoint): Promise<boolean> {
     if (this.endpoints.has(endpointId(e.integration, e.key))) return false
-    this.endpoints.set(endpointId(e.integration, e.key), e)
+    this.endpoints.set(endpointId(e.integration, e.key), copy(e))
     return true
   }
 
