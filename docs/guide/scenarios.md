@@ -46,7 +46,7 @@ The first step of the Orders example:
 
 **Edit or delete.** **Edit scenario** on a scenario's card (or in the Mocks list, or **Edit the whole scenario** in the editor of one of its mocks) opens the same page over its mocks: rename, change answers, add, remove or reorder steps. **Save scenario** writes only the differences, all or nothing. **Delete scenario** removes its mocks after you confirm.
 
-**Watch and control.** The Scenarios page draws each scenario as a small state machine with WireMock's **live state** (refreshed every 2 seconds). **Set as current** moves a scenario to a state; **Reset** puts one back to `Started`; **Reset all** resets every scenario.
+**Watch and control.** The Scenarios page draws each scenario as a small state machine with WireMock's **live state** (refreshed every 2 seconds). **Set as current** moves a scenario to a state; **Reset** puts one back to `Started`; **Reset all** resets every scenario. Each card (and the edit page) says which request the scenario answers ("Answers GET /payments/p-9"): **Copy as curl** copies a command that calls it, **Try** sends it from the app so you can watch the state move.
 
 **Find one.** **Search scenarios** looks at scenario names, state names, and the names and paths of their mocks (case does not matter). The page shows 20 scenarios at a time; the search and the page are in the URL, so a link or the browser's back button brings you to the same view. **Reset all** still resets every scenario, not only the ones shown.
 

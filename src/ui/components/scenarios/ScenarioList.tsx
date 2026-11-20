@@ -25,6 +25,7 @@ import { Skeleton } from '@/ui/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/components/ui/tooltip'
 import { useT } from '@/ui/i18n'
 import { nextStateName } from '@/ui/lib/scenario-builder'
+import { ScenarioRequest, scenarioRequests } from './ScenarioRequest'
 import { StateMachine } from './StateMachine'
 
 /** One card per scenario: its name, live state, Edit, Add a mock, Reset, Delete, and the state diagram. */
@@ -55,6 +56,9 @@ function ScenarioCard({ scenario, focused, live, stale }: { scenario: Scenario; 
   // A new step comes after the scenario's last state (the end of its transition order) and answers in a new state.
   const lastState = scenario.possibleStates.at(-1) ?? 'Started'
   const nextState = nextStateName(scenario.possibleStates)
+  // The request the scenario answers (each one, if its mocks match different requests), first step first.
+  const at = (state?: string) => (state === undefined ? scenario.possibleStates.length : scenario.possibleStates.indexOf(state))
+  const requests = scenarioRequests([...scenario.mocks].sort((a, b) => at(a.requiredState) - at(b.requiredState))).slice(0, 3)
 
   const onSetState = async (state: string) => {
     try {
@@ -133,6 +137,13 @@ function ScenarioCard({ scenario, focused, live, stale }: { scenario: Scenario; 
           <DeleteScenarioButton scenario={scenario} />
         </div>
       </header>
+      {requests.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {requests.map((line) => (
+            <ScenarioRequest key={line.mockId} line={line} />
+          ))}
+        </div>
+      )}
       <StateMachine scenario={scenario} busy={busy} live={live} onSetState={(state) => void onSetState(state)} />
     </article>
   )

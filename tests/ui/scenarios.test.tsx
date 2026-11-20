@@ -10,6 +10,7 @@ import type { Scenario } from '@/server/scenarios/service'
 import { ScenariosPage } from '@/routes/_app/scenarios.index'
 import { NewMockPage, type NewMockSearch } from '@/ui/components/editor/NewMockPage'
 import { layoutScenario } from '@/ui/components/scenarios/StateMachine'
+import { ServerConfigProvider } from '@/ui/config'
 import { renderApp } from './helpers'
 
 const server = setupServer()
@@ -103,6 +104,29 @@ describe('Scenarios page', () => {
     expect(within(card).queryByRole('button', { name: 'Set approved as current' })).toBeNull()
     expect(within(card).getByRole('button', { name: 'Set Started as current' })).toBeTruthy()
     expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 1 scenario · stateful mocks that answer by state')).toBeTruthy()
+  })
+
+  it('says which request the scenario answers, with Copy as curl and Try', async () => {
+    mockScenarios([[loan()]])
+    server.use(
+      http.get(`${BASE}/api/mocks/m1`, () =>
+        HttpResponse.json({ id: 'm1', request: { method: 'GET', urlPath: '/nic/loan/status' }, response: { status: 200 }, scenarioName: 'loan-approval' }),
+      ),
+    )
+    await renderApp(
+      <ServerConfigProvider config={{ storeDriver: 'sqlite', wiremockPublicUrl: 'http://wm:8080', recordingAllowed: true, seedPrune: false }}>
+        <ScenariosPage />
+      </ServerConfigProvider>,
+    )
+    const card = await screen.findByRole('article', { name: 'loan-approval' })
+    expect(within(card).getByText((_, el) => el?.tagName === 'P' && el.textContent === 'AnswersGET/nic/loan/status')).toBeTruthy()
+    const ue = userEvent.setup()
+    await ue.click(within(card).getByRole('button', { name: 'Copy as curl: GET /nic/loan/status' }))
+    expect(await screen.findByText('Copied curl command')).toBeTruthy()
+    expect(await navigator.clipboard.readText()).toContain('http://wm:8080/nic/loan/status')
+    await ue.click(within(card).getByRole('button', { name: 'Try GET /nic/loan/status' }))
+    const panel = await screen.findByRole('dialog', { name: 'Try this endpoint' })
+    expect((within(panel).getByRole('textbox', { name: 'Path' }) as HTMLInputElement).value).toBe('/nic/loan/status')
   })
 
   it('Set as current and Reset call the API and say what happened', async () => {

@@ -85,6 +85,7 @@ import { CodeEditor } from '@/ui/components/editor/CodeEditor'
 import { EditorShell, Eyebrow, backLinkClass } from '@/ui/components/editor/EditorShell'
 import { EndpointPicker, keyLabel } from '@/ui/components/editor/EndpointPicker'
 import { HeaderRows } from '@/ui/components/editor/HeaderRows'
+import { ScenarioRequest } from './ScenarioRequest'
 import { StateMachine } from './StateMachine'
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
@@ -559,6 +560,9 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
                   </span>
                 </span>
               </div>
+            )}
+            {edit.sameRequest && edit.steps[0]?.source && (
+              <ScenarioRequest line={{ method: firstRequest.method, url: firstRequest.url, mockId: edit.steps[0].source.id }} stub={edit.steps[0].source} toolsOnly />
             )}
           </Section>
         ) : (
@@ -1068,6 +1072,13 @@ function StepCard({
   )
 }
 
+/** The order-status example: each step's state, its answer and the state it moves to. */
+const EXAMPLE_STEPS = [
+  { in: STARTED, answers: 'pending', moves: 'shipped' },
+  { in: 'shipped', answers: 'shipped', moves: 'delivered' },
+  { in: 'delivered', answers: 'delivered', moves: undefined },
+]
+
 /** The plain-words "what is a scenario" strip, with the order-status example as two calls. */
 function Explainer({ editing = false }: { editing?: boolean }) {
   const t = useT()
@@ -1083,23 +1094,16 @@ function Explainer({ editing = false }: { editing?: boolean }) {
         <p className="text-xs leading-relaxed text-muted-foreground">{editing ? t('builder.editExplainMore') : t('builder.explainMore')}</p>
       </div>
       <ol aria-hidden className="flex shrink-0 flex-col gap-1.5 font-mono text-xs">
-        <li className="flex items-center gap-2 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
-          <span className="text-muted-foreground">#1</span>
-          <span className="text-signal-fg">{STARTED}</span>
-          <span>→ pending</span>
-          <span className="text-muted-foreground">⇢ shipped</span>
-        </li>
-        <li className="flex items-center gap-2 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
-          <span className="text-muted-foreground">#2</span>
-          <span className="text-signal-fg">shipped</span>
-          <span>→ shipped</span>
-          <span className="text-muted-foreground">⇢ delivered</span>
-        </li>
-        <li className="flex items-center gap-2 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
-          <span className="text-muted-foreground">#3</span>
-          <span className="text-signal-fg">delivered</span>
-          <span>→ delivered</span>
-        </li>
+        {EXAMPLE_STEPS.map((step, i) => (
+          <li key={step.in} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
+            <span className="text-muted-foreground">#{i + 1}</span>
+            <span>
+              {t('builder.chip.in')} <span className="text-signal-fg">{step.in}</span>
+            </span>
+            <span>→ {t('builder.chip.answers', { body: step.answers })}</span>
+            {step.moves && <span className="text-muted-foreground">→ {t('builder.chip.moves', { state: step.moves })}</span>}
+          </li>
+        ))}
       </ol>
     </section>
   )
