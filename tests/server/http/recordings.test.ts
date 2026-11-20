@@ -149,7 +149,7 @@ test('accept into a new endpoint builds the Simple editor\'s default mock; an un
 })
 
 test('start validates the target: http(s) only, never WireMock itself or this app; one recording at a time', async () => {
-  expect(await start({ targetUrl: 'ftp://x.example' })).toEqual({ status: 400, body: { error: 'Target URL must start with http:// or https://' } })
+  expect(await start({ targetUrl: 'ftp://x.example' })).toEqual({ status: 400, body: { error: 'Target URL must start with http:// or https://', field: 'targetUrl' } })
   expect((await start({ targetUrl: W() })).body.error).toMatch(/^Target URL is WireMock itself/)
   expect((await start({ targetUrl: 'http://ui.test/x' })).body.error).toMatch(/^Target URL is this app/)
   // WireMock connects to the target: a loopback host on its own port is WireMock itself.
@@ -204,8 +204,8 @@ test('snapshot from the request log: picked ids, duplicate of an existing mock, 
   expect((await snapshot({ method: 'POST' })).body).toEqual({ recording: null, empty: { reason: 'filtered', requests: expect.any(Number), filters: { method: 'POST' }, paths: expect.arrayContaining(['/hello', '/missing']) } })
   // Paths to record is a wildcard: /hel* takes the logged GET /hello.
   expect((await snapshot({ urlPathPattern: '/hel*' })).body.recording.items.map((i: { url: string }) => i.url)).toEqual(['/hello'])
-  expect((await snapshot({ urlPathPattern: 'hello?x=1', urlPathMode: 'regex' })).body).toEqual({ error: 'urlPathPattern matches the path only, without the query string. To record /hello?x=1 use /hello.*' })
-  expect((await snapshot({ ids: [] })).body).toEqual({ error: 'ids must not be empty' })
+  expect((await snapshot({ urlPathPattern: 'hello?x=1', urlPathMode: 'regex' })).body).toEqual({ error: 'urlPathPattern matches the path only, without the query string. To record /hello?x=1 use /hello.*', field: 'urlPathPattern' })
+  expect((await snapshot({ ids: [] })).body).toEqual({ error: 'ids must not be empty', field: 'ids' })
   expect((await rt.audit.list({ limit: 10 })).entries.map((e) => e.action)).toEqual(expect.arrayContaining(['recording.snapshot', 'recording.discard']))
 })
 

@@ -73,7 +73,7 @@ test('the review list is saved before the stubs leave WireMock; deletes go in ba
   const stubs = Array.from({ length: 45 }, (_, i) => stub(i + 1))
   const h = setup({ stubs })
   const rec = (await h.svc.snapshot({}, 'ann')).recording
-  expect(h.events[0]).toBe('put:45')
+  expect(h.events.filter((e) => !e.startsWith('journal'))[0]).toBe('put:45')
   expect(h.events.filter((e) => e.startsWith('delete')).length).toBe(45)
   expect(h.maxInFlight()).toBeLessThanOrEqual(20)
   expect(rec?.leftInWireMock).toBeUndefined()

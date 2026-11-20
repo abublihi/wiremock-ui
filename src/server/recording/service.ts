@@ -297,7 +297,10 @@ export class RecordingService {
   async snapshot(input: SnapshotInput, actor: string): Promise<RecordResult> {
     this.assertAllowed()
     const spec = recordSpec(input)
-    const filters = { ...(spec.filters as Record<string, unknown> | undefined), allowNonProxied: true, ...(input.ids ? { ids: input.ids } : {}) }
+    // "The whole log" is its newest MAX_SNAPSHOT_IDS requests: WireMock would otherwise turn every request it holds
+    // (thousands) into stubs, of which a review list keeps 1000 anyway.
+    const ids = input.ids ?? (await this.journal()).map((e) => e.id).slice(0, MAX_SNAPSHOT_IDS)
+    const filters = { ...(spec.filters as Record<string, unknown> | undefined), allowNonProxied: true, ...(ids.length > 0 ? { ids } : {}) }
     const stubs = await this.deps.wiremock.snapshotRecording({ ...spec, filters })
     const recording = await this.keepAndRemove('snapshot', stubs, actor)
     await safeRecord(this.deps.audit, {

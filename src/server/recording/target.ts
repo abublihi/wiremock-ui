@@ -34,6 +34,7 @@ export function isLoopbackHost(url: URL): boolean {
   return false
 }
 
+const FIELD = 'targetUrl'
 const LOOP =
   'Target URL is WireMock itself, so every request would loop back to WireMock. Enter the real service you want to record.'
 const APP = 'Target URL is this app. Enter the real service you want to record.'
@@ -47,21 +48,21 @@ const APP = 'Target URL is this app. Enter the real service you want to record.'
  */
 export function validateTarget(raw: string, refused: { wiremock: string[]; app: string[] }): string {
   const value = raw.trim()
-  if (value === '') throw new ValidationError('Enter the target URL, like https://api.example.com')
+  if (value === '') throw new ValidationError('Enter the target URL, like https://api.example.com', FIELD)
   const url = parse(value)
   if (!url || (url.protocol !== 'http:' && url.protocol !== 'https:') || url.host === '') {
-    throw new ValidationError('Target URL must start with http:// or https://')
+    throw new ValidationError('Target URL must start with http:// or https://', FIELD)
   }
-  if (url.username !== '' || url.password !== '') throw new ValidationError('Target URL must not contain a user name or password')
-  if (url.search !== '' || url.hash !== '' || /[?#]/.test(value)) throw new ValidationError('Target URL must not contain a query string or #fragment')
-  if (/(^|\/)__admin(\/|$)/i.test(url.pathname)) throw new ValidationError('Target URL must not point at a WireMock admin API (/__admin)')
+  if (url.username !== '' || url.password !== '') throw new ValidationError('Target URL must not contain a user name or password', FIELD)
+  if (url.search !== '' || url.hash !== '' || /[?#]/.test(value)) throw new ValidationError('Target URL must not contain a query string or #fragment', FIELD)
+  if (/(^|\/)__admin(\/|$)/i.test(url.pathname)) throw new ValidationError('Target URL must not point at a WireMock admin API (/__admin)', FIELD)
 
   const port = portOf(url)
   const loopback = isLoopbackHost(url)
   const urls = (list: string[]) => list.map(parse).filter((u): u is URL => u !== null)
   const hits = (list: URL[]) =>
     list.some((u) => portOf(u) === port && (loopback || (hostOf(u) === hostOf(url)) || (isLoopbackHost(u) && loopback)))
-  if (hits(urls(refused.wiremock))) throw new ValidationError(LOOP)
-  if (hits(urls(refused.app))) throw new ValidationError(APP)
+  if (hits(urls(refused.wiremock))) throw new ValidationError(LOOP, FIELD)
+  if (hits(urls(refused.app))) throw new ValidationError(APP, FIELD)
   return `${url.protocol}//${url.host}${trimTrailingSlashes(url.pathname)}`
 }
