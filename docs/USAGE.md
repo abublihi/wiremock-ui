@@ -269,6 +269,24 @@ Tick **Remove baseline mocks that aren't in this import** to also prune baseline
 
 ![Import](screenshots/import-dark.png)
 
+## Import a Postman collection
+
+Export a collection from Postman (**Export → Collection v2.1**; v2.0 works too) and pick the file on **Import**: on its own, in a folder or inside a zip. The page recognises it by its schema and shows a Postman preview instead of the file list. A collection is imported on its own: if you picked other files too, remove them from the list first.
+
+What it becomes:
+
+- **The collection → one integration.** Key, name and prefix start from the collection name (`Shop API` → `shop-api`, prefix `/shop-api`); edit them. When every request starts with the same path segment, **Use /api — every request starts with it** makes that the prefix, so the mocks answer at the same paths as the real service. Type the key of an integration you already have to add the endpoints to it; its name and prefix stay as they are.
+- **Each request → an endpoint.** The key comes from the request name; the path drops the host and `{{baseUrl}}`; `:id` path variables (and `{{id}}` segments with no value) become `{id}` template parameters. The content type comes from the examples, the saved examples become the endpoint's example responses, and the statuses they use become its allowed statuses. No key lookup is set: add one later on the endpoint page if you need it.
+- **Each saved example → a mock.** Pick the **Default answer** per endpoint (the first 2xx example to start with): it becomes the endpoint's default mock and opens in Simple mode. Every other example becomes a mock that answers only the request it was saved with: a different JSON body (`equalToJson`, extra fields ignored), form fields, query parameters or path variables. Those open in Advanced mode. Examples whose saved request is the same as the default's, or that have no saved request, are listed under **Examples not imported**.
+
+Each row says **New**, or **Key exists** when the integration already has an endpoint with that key; choose **Create new** (imported as `key-2`), **Overwrite** (replaces that endpoint; its other mocks stay) or **Skip**. Importing never deletes anything, and importing the same collection again leaves its mocks unchanged.
+
+Left out, and listed under **Left out of the import**: auth helpers (the mocks answer without checking credentials), pre-request and test scripts, GraphQL and file bodies (those mocks answer any body), requests with a method the catalog has no place for, and path variables with no value.
+
+In WireMock-only mode the mocks go straight into WireMock; the integration and endpoints are kept in memory and are lost when the UI restarts.
+
+![Postman import](screenshots/postman-import-dark.png)
+
 ## Export
 
 **Export** on the **Mocks** list downloads what the list is showing:

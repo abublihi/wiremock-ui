@@ -1,6 +1,7 @@
 import { unzipSync } from 'fflate'
 import { byPath, emptyBundle, mergeInto, parseBundle, type Bundle } from '@/server/bundle/shape'
 import type { MessageKey } from '@/ui/i18n'
+import { isPostmanCollection, parsePostman, type PostmanCollection } from './postman'
 
 /** The server's import limit (POST /api/import); also the limit for a zip and for what it unpacks to. */
 export const MAX_IMPORT_BYTES = 10 * 1024 * 1024
@@ -14,7 +15,8 @@ export type FileMessage = { key: MessageKey; params: Record<string, string | num
 export type SourceFile = { path: string; text: string }
 
 export type FileResult =
-  | { path: string; ok: true; bundle: Bundle; summary: ImportSummary }
+  /** A Postman collection carries an empty bundle: the Postman preview builds its own. */
+  | { path: string; ok: true; bundle: Bundle; summary: ImportSummary; postman?: PostmanCollection }
   | { path: string; ok: false; error: FileMessage }
 
 /** A whole-input problem (a zip over the limits, a file that is not a zip…). */
@@ -94,6 +96,11 @@ export function parseSourceFile(file: SourceFile): FileResult {
     json = JSON.parse(file.text)
   } catch (error) {
     return { path: file.path, ok: false, error: { key: 'import.invalidJson', params: { name: file.path, message: error instanceof Error ? error.message : '' } } }
+  }
+  if (isPostmanCollection(json)) {
+    const postman = parsePostman(json)
+    const bundle = emptyBundle()
+    return { path: file.path, ok: true, bundle, summary: summaryOf(bundle), postman }
   }
   try {
     const bundle = parseBundle(json, file.path)

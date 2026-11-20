@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { AlertCircleIcon, CheckCircle2Icon, FileJsonIcon, FolderOpenIcon, UploadIcon, XIcon } from 'lucide-react'
 import type { ImportReport } from '@/server/bundle/importer'
 import { useImport } from '@/ui/api/queries'
@@ -18,7 +19,9 @@ import {
   type ImportSummary,
   type PickedFile,
 } from '@/ui/lib/import-files'
+import type { IntegrationFields } from '@/ui/lib/postman'
 import { cn } from '@/ui/lib/utils'
+import { PostmanPreview } from './PostmanPreview'
 
 type Loaded = { label: string; results: FileResult[]; skipped: string[] }
 
@@ -34,6 +37,8 @@ export function ImportPanel() {
   const [reading, setReading] = useState(false)
   const [prune, setPrune] = useState(false)
   const [report, setReport] = useState<ImportReport | null>(null)
+  /** The integration a Postman import went into (for the report's link). */
+  const [postmanTarget, setPostmanTarget] = useState<IntegrationFields | null>(null)
   const [dragging, setDragging] = useState(false)
 
   // React has no prop for it: the folder picker needs the (non-standard, widely supported) webkitdirectory attribute.
@@ -48,6 +53,7 @@ export function ImportPanel() {
   const reset = () => {
     setLoaded(null)
     setReport(null)
+    setPostmanTarget(null)
     setPrune(false)
     run.reset()
     clearInputs()
@@ -81,11 +87,16 @@ export function ImportPanel() {
 
   const merged = useMemo(() => (loaded ? mergeResults(loaded.results) : null), [loaded])
   const failed = loaded?.results.filter((r) => !r.ok).length ?? 0
+  // A Postman collection has its own preview; it is imported on its own, not merged with other files.
+  const postmanCount = loaded?.results.filter((r) => r.ok && r.postman).length ?? 0
+  const single = loaded?.results.length === 1 ? loaded.results[0] : undefined
+  const postman = single?.ok ? single.postman : undefined
+  const mixedPostman = postmanCount > 0 && !postman
   const tooBig = merged !== null && merged.bytes > MAX_IMPORT_BYTES
   const empty = loaded !== null && failed === 0 && loaded.results.length === 0
 
   const submit = async () => {
-    if (!merged || failed > 0 || tooBig) return
+    if (!merged || failed > 0 || tooBig || mixedPostman) return
     try {
       setReport(await run.mutateAsync({ bundle: merged.bundle, prune }))
     } catch {
@@ -93,10 +104,10 @@ export function ImportPanel() {
     }
   }
 
-  if (report) return <ReportCard report={report} name={loaded?.label} onAgain={reset} />
+  if (report) return <ReportCard report={report} name={loaded?.label} integration={postmanTarget ?? undefined} onAgain={reset} />
 
   return (
-    <div className="flex max-w-2xl flex-col gap-4">
+    <div className={cn('flex flex-col gap-4', postman ? 'max-w-6xl' : 'max-w-2xl')}>
       <div
         onDragOver={(e) => {
           e.preventDefault()
@@ -153,7 +164,20 @@ export function ImportPanel() {
         )}
       </div>
 
-      {loaded && merged && (
+      {loaded && postman && single && (
+        <PostmanPreview
+          key={single.path}
+          collection={postman}
+          fileName={single.path}
+          onCancel={reset}
+          onImported={(r, integration) => {
+            setPostmanTarget(integration)
+            setReport(r)
+          }}
+        />
+      )}
+
+      {loaded && merged && !postman && (
         <section aria-labelledby={`${inputId}-summary`} className="glow-border flex flex-col gap-4 rounded-md border border-line bg-surface p-4">
           <h2 id={`${inputId}-summary`} className="font-mono text-xs break-all text-muted-foreground">
             {t('import.summaryTitle', { name: loaded.label })}
@@ -175,7 +199,9 @@ export function ImportPanel() {
                 )}
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span data-path dir="ltr" className="font-mono break-all">{r.path}</span>
-                  {r.ok ? (
+                  {r.ok && r.postman ? (
+                    <span className="text-muted-foreground">{t('import.postmanRow', { count: r.postman.requests.length })}</span>
+                  ) : r.ok ? (
                     <span className="text-muted-foreground">{countsText(t, r.summary)}</span>
                   ) : (
                     <span className="break-words text-mismatch">{t(r.error.key, r.error.params)}</span>
@@ -197,6 +223,12 @@ export function ImportPanel() {
             <Alert variant="destructive" role="alert">
               <AlertCircleIcon />
               <AlertDescription>{t('import.fixErrors')}</AlertDescription>
+            </Alert>
+          )}
+          {mixedPostman && (
+            <Alert variant="destructive" role="alert">
+              <AlertCircleIcon />
+              <AlertDescription>{t('import.postmanAlone')}</AlertDescription>
             </Alert>
           )}
           {failed === 0 && tooBig && (
@@ -235,7 +267,7 @@ export function ImportPanel() {
             </Alert>
           )}
           <div>
-            <Button onClick={() => void submit()} disabled={run.isPending || failed > 0 || tooBig || empty}>
+            <Button onClick={() => void submit()} disabled={run.isPending || failed > 0 || tooBig || empty || mixedPostman}>
               {run.isPending ? <Spinner data-icon="inline-start" /> : <UploadIcon data-icon="inline-start" />}
               {t(run.isPending ? 'import.running' : 'import.run')}
             </Button>
@@ -263,7 +295,7 @@ function Stat({ label, value }: { label: string; value: number }) {
   )
 }
 
-function ReportCard({ report, name, onAgain }: { report: ImportReport; name?: string; onAgain: () => void }) {
+function ReportCard({ report, name, integration, onAgain }: { report: ImportReport; name?: string; integration?: IntegrationFields; onAgain: () => void }) {
   const t = useT()
   return (
     <section aria-label={t('import.reportTitle')} className="glow-border flex max-w-2xl flex-col gap-4 rounded-md border border-line bg-surface p-4">
@@ -294,7 +326,14 @@ function ReportCard({ report, name, onAgain }: { report: ImportReport; name?: st
           </ul>
         </div>
       )}
-      <div>
+      <div className="flex flex-wrap gap-2">
+        {integration && (
+          <Button asChild>
+            <Link to="/catalog/$key" params={{ key: integration.key }}>
+              {t('import.reportOpenIntegration', { name: integration.name })}
+            </Link>
+          </Button>
+        )}
         <Button variant="outline" onClick={onAgain}>
           {t('import.reportAgain')}
         </Button>

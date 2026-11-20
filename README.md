@@ -11,6 +11,7 @@ A web console for [WireMock](https://wiremock.org) built for testers. Describe t
 - **Request log** updates live and stamps unmatched requests **No match**, with the closest mocks and the fields that differed.
 - **History and restore** for every mock, conflict detection when two people edit the same one, an **audit log** of every change.
 - **Import** bundles or WireMock exports, and seed baseline mocks on start.
+- **Import a Postman collection** (v2.0/v2.1): each request becomes an endpoint and each saved example a mock, with a preview to pick the default answer and settle key clashes.
 - **Durable:** mocks live in the UI's store (a SQLite file, or Redis) and are put back into WireMock after it restarts.
 - A REST API with Basic auth for scripts and CI.
 
@@ -32,7 +33,7 @@ Other ways to run it: with Redis, from source, or **against a WireMock you alrea
 ## Documentation
 
 - [Installing](docs/INSTALL.md): the ways to run it (Compose without Redis, Compose with Redis, from source, or against an existing WireMock with no storage), every setting, Kubernetes, backups, upgrades and troubleshooting.
-- [Using it](docs/USAGE.md): the concepts (integration → endpoint → mock), a walkthrough from the catalog to the request log, testing and curl, proxies, webhooks, scenarios, WireMock-only mode, Advanced mode and history, users and audit, import from files and export, seeding, and the API for scripts and CI.
+- [Using it](docs/USAGE.md): the concepts (integration → endpoint → mock), a walkthrough from the catalog to the request log, testing and curl, proxies, webhooks, scenarios, WireMock-only mode, Advanced mode and history, users and audit, import from files and Postman collections, export, seeding, and the API for scripts and CI.
 
 ## Development
 

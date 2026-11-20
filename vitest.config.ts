@@ -25,11 +25,11 @@ export default defineConfig({
         },
       },
       {
-        // The mocks, session, catalog, config, scenarios, test-request, export and binary-body HTTP tests again, in WireMock-only mode (STORE_DRIVER=none, spec A10).
+        // The mocks, session, catalog, config, scenarios, test-request, export, binary-body and postman HTTP tests again, in WireMock-only mode (STORE_DRIVER=none, spec A10).
         extends: true,
         test: {
           name: 'server-none',
-          include: ['tests/server/http/{mocks,session,catalog,config,scenarios,test-request,export,binary-body}.test.ts'],
+          include: ['tests/server/http/{mocks,session,catalog,config,scenarios,test-request,export,binary-body,postman}.test.ts'],
           environment: 'node',
           env: { TEST_STORE_DRIVER: 'none' },
         },

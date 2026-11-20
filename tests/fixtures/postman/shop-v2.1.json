@@ -1,0 +1,191 @@
+{
+  "info": {
+    "_postman_id": "0f6b1c1e-1111-4222-8333-944445555666",
+    "name": "Shop API",
+    "description": "Orders and customers",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+  "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.environment.set('t', Date.now())"] } }],
+  "variable": [{ "key": "baseUrl", "value": "https://shop.example.com" }],
+  "item": [
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Get order",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/:orderId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", ":orderId"],
+              "variable": [{ "key": "orderId", "value": "1" }]
+            },
+            "description": "One order by id"
+          },
+          "response": [
+            {
+              "name": "Order found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/orders/:orderId", "host": ["{{baseUrl}}"], "path": ["api", "orders", ":orderId"], "variable": [{ "key": "orderId", "value": "1" }] }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\"id\": 1, \"status\": \"pending\"}"
+            },
+            {
+              "name": "Order missing",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/orders/:orderId", "host": ["{{baseUrl}}"], "path": ["api", "orders", ":orderId"], "variable": [{ "key": "orderId", "value": "999" }] }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\"error\": \"order not found\"}"
+            }
+          ]
+        },
+        {
+          "name": "Search orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders?status=pending",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"],
+              "query": [{ "key": "status", "value": "pending" }, { "key": "debug", "value": "1", "disabled": true }]
+            }
+          },
+          "response": [
+            {
+              "name": "Pending orders",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/orders?status=pending", "host": ["{{baseUrl}}"], "path": ["api", "orders"], "query": [{ "key": "status", "value": "pending" }] }
+              },
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[{\"id\": 1}]"
+            },
+            {
+              "name": "Shipped orders",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/orders?status=shipped", "host": ["{{baseUrl}}"], "path": ["api", "orders"], "query": [{ "key": "status", "value": "shipped" }] }
+              },
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[{\"id\": 2}]"
+            },
+            {
+              "name": "Pending again",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/api/orders?status=pending", "host": ["{{baseUrl}}"], "path": ["api", "orders"], "query": [{ "key": "status", "value": "pending" }] }
+              },
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[{\"id\": 3}]"
+            }
+          ]
+        },
+        {
+          "name": "Create order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"sku\": \"A-1\", \"qty\": 1}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/api/orders", "host": ["{{baseUrl}}"], "path": ["api", "orders"] }
+          },
+          "response": [
+            {
+              "name": "Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": { "mode": "raw", "raw": "{\"sku\": \"A-1\", \"qty\": 1}", "options": { "raw": { "language": "json" } } },
+                "url": { "raw": "{{baseUrl}}/api/orders", "host": ["{{baseUrl}}"], "path": ["api", "orders"] }
+              },
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\"id\": 10, \"status\": \"pending\"}"
+            },
+            {
+              "name": "Out of stock",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": { "mode": "raw", "raw": "{\"sku\": \"Z-9\", \"qty\": 1}", "options": { "raw": { "language": "json" } } },
+                "url": { "raw": "{{baseUrl}}/api/orders", "host": ["{{baseUrl}}"], "path": ["api", "orders"] }
+              },
+              "code": 409,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\"error\": \"out of stock\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "item": [
+        {
+          "name": "Sign in",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "urlencoded", "urlencoded": [{ "key": "user", "value": "sara" }, { "key": "password", "value": "secret" }] },
+            "url": { "raw": "{{baseUrl}}/api/login", "host": ["{{baseUrl}}"], "path": ["api", "login"] }
+          },
+          "response": [
+            {
+              "name": "Signed in",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": { "mode": "urlencoded", "urlencoded": [{ "key": "user", "value": "sara" }, { "key": "password", "value": "secret" }] },
+                "url": { "raw": "{{baseUrl}}/api/login", "host": ["{{baseUrl}}"], "path": ["api", "login"] }
+              },
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\"token\": \"abc\"}"
+            },
+            {
+              "name": "Wrong password",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": { "mode": "urlencoded", "urlencoded": [{ "key": "user", "value": "sara" }, { "key": "password", "value": "wrong" }] },
+                "url": { "raw": "{{baseUrl}}/api/login", "host": ["{{baseUrl}}"], "path": ["api", "login"] }
+              },
+              "code": 401,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\"error\": \"bad credentials\"}"
+            }
+          ]
+        },
+        {
+          "name": "Customer graph",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "graphql", "graphql": { "query": "{ customer(id: 1) { name } }" } },
+            "url": { "raw": "{{baseUrl}}/api/graphql", "host": ["{{baseUrl}}"], "path": ["api", "graphql"] }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
