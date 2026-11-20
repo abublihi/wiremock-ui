@@ -100,7 +100,7 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button asChild size="sm">
+          <Button asChild size="sm" variant="outline">
             <Link to="/scenarios/$name/edit" params={{ name: scenario.name }}>
               <PencilIcon data-icon="inline-start" />
               {t('scenarios.edit')}

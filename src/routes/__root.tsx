@@ -55,7 +55,8 @@ function RootComponent() {
       <PrefsProvider prefs={prefs} onThemeChange={setTheme}>
         <TooltipProvider>
           <Outlet />
-          <Toaster />
+          {/* Above the editors' sticky Save bar. */}
+          <Toaster offset={{ bottom: 80 }} mobileOffset={{ bottom: 80 }} />
         </TooltipProvider>
       </PrefsProvider>
       <Scripts />

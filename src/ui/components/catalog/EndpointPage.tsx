@@ -487,7 +487,7 @@ function EndpointEditor({
                 value={form.location}
                 onValueChange={(v) => update({ location: v as Form['location'], ...(v === NO_LOOKUP ? { expression: '' } : {}) }, ['location', 'expression'])}
               >
-                <SelectTrigger id={id('location')} className="w-full sm:w-80" aria-invalid={Boolean(errors.location)} aria-describedby={described('location', true)}>
+                <SelectTrigger id={id('location')} className="w-full sm:w-96" aria-invalid={Boolean(errors.location)} aria-describedby={described('location', true)}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

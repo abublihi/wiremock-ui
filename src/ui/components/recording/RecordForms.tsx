@@ -326,7 +326,10 @@ export function RecordPanel({ state }: { state: RecordingState | undefined }) {
           <li className="break-words">{t('recording.how2', { url: publicUrl })}</li>
           <li>{t('recording.how3')}</li>
         </ol>
-        <p className="text-xs text-muted-foreground">{t('recording.howPriority')}</p>
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none hover:text-foreground">{t('recording.priorityTitle')}</summary>
+          <p className="mt-1">{t('recording.howPriority')}</p>
+        </details>
       </aside>
     </div>
   )

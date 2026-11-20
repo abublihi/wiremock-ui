@@ -122,7 +122,8 @@ export function MocksPage({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <ExportMenu scope={scopeFromFilter({ owner, integration: search.integration, wiremockOnly })} />
-          {!wiremockOnly && <ResetMineButton />}
+          {/* Nothing of yours to reset (known on My mocks only). */}
+          {!wiremockOnly && <ResetMineButton disabled={mine && mocks.data !== undefined && count === 0} />}
           <NewMockButton />
         </div>
       </header>

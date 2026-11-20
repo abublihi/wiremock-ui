@@ -1237,6 +1237,8 @@ export const en = {
   'recording.ownerBaselineSeedPrune': 'Baseline is off because SEED_PRUNE is on: baseline mocks that are not in the seed are deleted on the next restart. Accept them as your own mocks, or add them to the seed.',
   'recording.accept': 'Accept {count} selected',
   'recording.accepted': '{count} mocks created',
+  'recording.viewMocks': 'View them',
+  'recording.priorityTitle': 'Which mocks still answer while recording?',
   'recording.acceptedOne': 'Mock created',
   'recording.acceptFailed': '{count} could not be created: see the rows marked in red',
   'recording.acceptError': 'Could not accept the mocks',

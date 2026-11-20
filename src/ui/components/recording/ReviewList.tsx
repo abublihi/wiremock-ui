@@ -117,7 +117,9 @@ export function ReviewList({ recording }: { recording: Recording }) {
       const result = await accept.mutateAsync({ id: recording.id, items: payload, owner })
       setErrors(Object.fromEntries(result.failed.map((f) => [f.id, f.error])))
       if (result.created.length > 0) {
-        toast.success(result.created.length === 1 ? t('recording.acceptedOne') : t('recording.accepted', { count: result.created.length }))
+        toast.success(result.created.length === 1 ? t('recording.acceptedOne') : t('recording.accepted', { count: result.created.length }), {
+          action: { label: t('recording.viewMocks'), onClick: () => void navigate({ to: '/mocks', search: { owner: owner === 'baseline' ? 'all' : 'me' } as never }) },
+        })
       }
       if (result.failed.length > 0) toast.error(t('recording.acceptFailed', { count: result.failed.length }))
       // One mock: open it (in Simple where the editor can show it). Several: stay on what is left.

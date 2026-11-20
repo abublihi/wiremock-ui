@@ -149,7 +149,7 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
 }
 
 /** "Reset my mocks": confirms with the live count of the user's own mocks, then deletes them all. */
-export function ResetMineButton() {
+export function ResetMineButton({ disabled = false }: { disabled?: boolean } = {}) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const mine = useMocks({ owner: 'me' }, { enabled: open })
@@ -158,7 +158,7 @@ export function ResetMineButton() {
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
+      <Button variant="outline" disabled={disabled} onClick={() => setOpen(true)}>
         <Trash2Icon data-icon="inline-start" />
         {t('mocks.resetMine')}
       </Button>

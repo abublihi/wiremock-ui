@@ -61,5 +61,5 @@ Saving a mock checks it, pushes it into WireMock, then stores it; WireMock refus
 - The list shows 50 rows a page (**Per page**: 25, 50 or 100, remembered in this browser); the page number is in the address, so links and Back keep it.
 - The endpoint picker shows up to 50 endpoints; type to narrow. Integrations without endpoints show "No endpoints yet".
 - WireMock's `bodyFileName` (a file in WireMock's own folder) is refused: put the body inline or use **Upload body from file**.
-- A deleted mock can be restored through the API for 7 days (not in WireMock-only mode, which keeps no history).
+- Deleted a mock by mistake? **Undo** in the toast brings it back. Its saved versions are kept for 7 days after that (not in WireMock-only mode, which keeps no history).
 - More: [Testing and Copy as curl](testing.md), [Proxy](proxy.md), [Webhooks](webhooks.md), [Scenarios](scenarios.md).
