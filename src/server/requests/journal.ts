@@ -1,7 +1,7 @@
 import { safeRecord, type AuditLog } from '../audit/log'
 import { longestPrefixMatch } from '../catalog/prefix'
 import type { CatalogService } from '../catalog/service'
-import { NotFoundError } from '../errors'
+import { NotFoundError, ValidationError } from '../errors'
 import { MARKER_ID } from '../sync/marker'
 import type { WireMockClient } from '../wiremock/client'
 import type { LoggedEvent } from '../wiremock/types'
@@ -35,7 +35,19 @@ export type RequestFilter = {
   q?: string
 }
 
+/** A page of older requests: `nextCursor` continues below the last row (null when nothing older matches). */
+export type RequestPage = {
+  requests: RequestSummary[]
+  nextCursor: string | null
+  /** The search stopped at the newest MAX_SCAN requests of the log; older ones are not reachable from here. */
+  scanLimitReached?: boolean
+}
+
 const DEFAULT_LIMIT = 200
+/** The unmatched-request count is read from WireMock at most this often (shared by every poller). */
+export const UNMATCHED_CACHE_MS = 3000
+/** "Load older" reads at most this many of the newest requests to fill a page (WireMock's log has no offset). */
+export const MAX_SCAN = 10_000
 const MAX_LIMIT = 1000
 const NEAR_MISS_LIMIT = 3
 const MARKER_PATH = '/__wiremock-ui/marker'
@@ -56,24 +68,65 @@ export class RequestJournal {
    */
   async list(filter: RequestFilter = {}): Promise<RequestSummary[]> {
     const limit = Math.min(Math.max(filter.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
-    const [events, integrations] = await Promise.all([
-      this.deps.wiremock.listRequests({ limit, since: filter.since }),
-      this.deps.catalog.listIntegrations(),
-    ])
-    const prefixes = integrations.map((i) => ({ key: i.key, prefix: i.prefix }))
-    const q = filter.q?.toLowerCase()
+    const [events, keep] = await Promise.all([this.deps.wiremock.listRequests({ limit, since: filter.since }), this.matcher(filter)])
     const out: RequestSummary[] = []
     for (const e of events) {
-      if (isMarker(e)) continue
-      const summary = summarize(e, longestPrefixMatch([e.request.url], prefixes) ?? null)
-      if (filter.matched !== undefined && summary.matched !== filter.matched) continue
-      if (filter.integration !== undefined && summary.integration !== filter.integration) continue
-      if (filter.status !== undefined && summary.status !== filter.status) continue
-      // Body text only: bodyAsBase64 can be large and binary.
-      if (q && !e.request.url.toLowerCase().includes(q) && !(e.request.body ?? '').toLowerCase().includes(q)) continue
-      out.push(summary)
+      const summary = keep(e)
+      if (summary) out.push(summary)
     }
     return out
+  }
+
+  /**
+   * "Load older": up to `limit` requests logged before `before` (`<loggedAt>|<id>` of the last row shown) that pass
+   * the filters, newest first. WireMock's log only pages by count from the newest, so this reads the newest N
+   * requests (doubling N until the page fills, up to MAX_SCAN), finds the cursor row and filters below it, so a
+   * filtered view still fills its pages.
+   */
+  async listBefore(filter: RequestFilter, before: string): Promise<RequestPage> {
+    const cursor = parseRequestCursor(before)
+    const limit = Math.min(Math.max(filter.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
+    const keep = await this.matcher(filter)
+    for (let scan = Math.min(MAX_SCAN, Math.max(1000, 2 * limit)); ; scan = Math.min(MAX_SCAN, scan * 2)) {
+      const events = await this.deps.wiremock.listRequests({ limit: scan, since: filter.since })
+      const full = events.length >= scan
+      const found = events.findIndex((e) => e.id === cursor.id)
+      // The cursor row itself, or (if it left the log) the first row logged before it.
+      const start = found !== -1 ? found + 1 : events.findIndex((e) => loggedMs(e) < cursor.at)
+      if (start === -1) {
+        if (full && scan < MAX_SCAN) continue
+        return { requests: [], nextCursor: null, ...(full ? { scanLimitReached: true } : {}) }
+      }
+      const out: RequestSummary[] = []
+      let i = start
+      for (; i < events.length && out.length < limit; i++) {
+        const summary = keep(events[i])
+        if (summary) out.push(summary)
+      }
+      if (out.length === limit) {
+        const more = i < events.length || full
+        return { requests: out, nextCursor: more ? requestCursor(out[out.length - 1]) : null }
+      }
+      if (full && scan < MAX_SCAN) continue
+      return { requests: out, nextCursor: null, ...(full ? { scanLimitReached: true } : {}) }
+    }
+  }
+
+  /** The filter as a function: the row's summary when it passes, else null (the marker's requests never do). */
+  private async matcher(filter: RequestFilter): Promise<(e: LoggedEvent) => RequestSummary | null> {
+    const integrations = await this.deps.catalog.listIntegrations()
+    const prefixes = integrations.map((i) => ({ key: i.key, prefix: i.prefix }))
+    const q = filter.q?.toLowerCase()
+    return (e) => {
+      if (isMarker(e)) return null
+      const summary = summarize(e, longestPrefixMatch([e.request.url], prefixes) ?? null)
+      if (filter.matched !== undefined && summary.matched !== filter.matched) return null
+      if (filter.integration !== undefined && summary.integration !== filter.integration) return null
+      if (filter.status !== undefined && summary.status !== filter.status) return null
+      // Body text only: bodyAsBase64 can be large and binary.
+      if (q && !e.request.url.toLowerCase().includes(q) && !(e.request.body ?? '').toLowerCase().includes(q)) return null
+      return summary
+    }
   }
 
   async get(id: string): Promise<LoggedEvent> {
@@ -108,6 +161,7 @@ export class RequestJournal {
 
   async clear(actor: string): Promise<void> {
     await this.deps.wiremock.clearRequests()
+    this.unmatchedCache = null
     await safeRecord(this.deps.audit, { actor, action: 'requests.clear' })
   }
 
@@ -116,20 +170,60 @@ export class RequestJournal {
    * unmatched requests first, so heavy matched traffic cannot push them out of a limited page.
    */
   async countUnmatchedSince(since: number, cap: number): Promise<{ count: number; capped: boolean }> {
-    const requests = await this.deps.wiremock.listUnmatchedRequests()
+    const requests = await this.unmatched()
     let count = 0
     for (const r of requests) {
-      const at = typeof r.loggedDate === 'number' ? r.loggedDate : Date.parse(r.loggedDateString ?? '')
-      if (!(at >= since) || pathOf(r.url) === MARKER_PATH) continue
+      // Newest first: once one is older than the window, the rest are too.
+      if (r.at < since) break
+      if (Number.isNaN(r.at) || r.marker) continue
       if (++count > cap) return { count: cap, capped: true }
     }
     return { count, capped: false }
+  }
+
+  private unmatchedCache: { until: number; rows: Promise<{ at: number; marker: boolean }[]> } | null = null
+
+  /**
+   * WireMock's unmatched requests (time and whether it is the marker's), read at most once every
+   * UNMATCHED_CACHE_MS for every tab and user polling the count: WireMock filters its whole log for each read.
+   */
+  private unmatched(): Promise<{ at: number; marker: boolean }[]> {
+    const now = Date.now()
+    if (this.unmatchedCache && this.unmatchedCache.until > now) return this.unmatchedCache.rows
+    const rows = this.deps.wiremock.listUnmatchedRequests().then((requests) =>
+      requests.map((r) => ({
+        at: typeof r.loggedDate === 'number' ? r.loggedDate : Date.parse(r.loggedDateString ?? ''),
+        marker: pathOf(r.url) === MARKER_PATH,
+      })),
+    )
+    this.unmatchedCache = { until: now + UNMATCHED_CACHE_MS, rows }
+    // A failed read is not cached.
+    rows.catch(() => {
+      if (this.unmatchedCache?.rows === rows) this.unmatchedCache = null
+    })
+    return rows
   }
 
   count(pattern: Record<string, unknown>): Promise<number> {
     return this.deps.wiremock.countRequests(pattern)
   }
 }
+
+/** `<loggedAt ISO>|<id>`: the row a "Load older" page starts below. */
+export const requestCursor = (row: Pick<RequestSummary, 'loggedAt' | 'id'>) => `${row.loggedAt}|${row.id}`
+
+export function parseRequestCursor(raw: string): { at: number; id: string } {
+  const bar = raw.lastIndexOf('|')
+  const at = bar === -1 ? Number.NaN : Date.parse(raw.slice(0, bar))
+  const id = raw.slice(bar + 1)
+  if (bar === -1 || Number.isNaN(at) || !/^\d{4}-\d{2}-\d{2}T/.test(raw) || id === '' || id.length > 64) {
+    throw new ValidationError('before must be a request cursor: <loggedAt>|<id> of the last row shown', 'before')
+  }
+  return { at, id }
+}
+
+const loggedMs = (e: LoggedEvent) =>
+  typeof e.request.loggedDate === 'number' ? e.request.loggedDate : Date.parse(e.request.loggedDateString ?? '')
 
 function summarize(e: LoggedEvent, integration: string | null): RequestSummary {
   const logged = e.request.loggedDate

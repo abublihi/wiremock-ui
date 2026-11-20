@@ -28,9 +28,17 @@ function parseFilter(q: URLSearchParams): RequestFilter {
   }
 }
 
-export const listRequests = withAuth('requests.read', async ({ rt, request }) =>
-  json(await rt.requests.list(parseFilter(new URL(request.url).searchParams))),
-)
+/**
+ * GET /api/requests?limit&since&matched&integration&status&q → RequestSummary[] (newest first; filters applied to the
+ * newest `limit`). With `before=<loggedAt>|<id>` (the last row shown) → { requests, nextCursor, scanLimitReached? }:
+ * the next `limit` older rows that pass the filters ("Load older"); `nextCursor` goes in the next `before`.
+ */
+export const listRequests = withAuth('requests.read', async ({ rt, request }) => {
+  const q = new URL(request.url).searchParams
+  const filter = parseFilter(q)
+  const before = q.get('before')
+  return json(before ? await rt.requests.listBefore(filter, before) : await rt.requests.list(filter))
+})
 
 export const getRequest = withAuth('requests.read', async ({ rt, params }) => json(await rt.requests.get(idOf(params))))
 
