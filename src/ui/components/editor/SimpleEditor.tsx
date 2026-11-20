@@ -96,6 +96,7 @@ const SERVER_FIELD = new Map<string, FieldName>([
   ['proxy.baseUrl', 'proxyBaseUrl'],
   ['proxy.stripPrefix', 'proxyStripPrefix'],
   ['proxy.addHeaders', 'proxyHeaders'],
+  ['proxy.removeHeaders', 'proxyHeaders'],
   ['webhook.method', 'webhookMethod'],
   ['webhook.url', 'webhookUrl'],
   ['webhook.headers', 'webhookHeaders'],

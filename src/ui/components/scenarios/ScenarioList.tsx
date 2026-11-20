@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
@@ -28,19 +28,20 @@ import { nextStateName } from '@/ui/lib/scenario-builder'
 import { StateMachine } from './StateMachine'
 
 /** One card per scenario: its name, live state, Edit, Add a mock, Reset, Delete, and the state diagram. */
-export function ScenarioList({ scenarios, focus }: { scenarios: Scenario[]; focus?: string }) {
+/** `live`: states are being refreshed (tab visible, last poll fine); `stale`: the last refresh failed. */
+export function ScenarioList({ scenarios, focus, live = true, stale = false }: { scenarios: Scenario[]; focus?: string; live?: boolean; stale?: boolean }) {
   return (
     <ul className="flex flex-col gap-4">
       {scenarios.map((scenario) => (
         <li key={scenario.name}>
-          <ScenarioCard scenario={scenario} focused={scenario.name === focus} />
+          <ScenarioCard scenario={scenario} focused={scenario.name === focus} live={live} stale={stale} />
         </li>
       ))}
     </ul>
   )
 }
 
-function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: boolean }) {
+function ScenarioCard({ scenario, focused, live, stale }: { scenario: Scenario; focused: boolean; live: boolean; stale: boolean }) {
   const t = useT()
   const ref = useRef<HTMLElement>(null)
   // Scroll the focused card into view once (not on every poll).
@@ -50,7 +51,7 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
   const setState = useSetScenarioState()
   const reset = useResetScenarios()
   const busy = setState.isPending || reset.isPending
-  const titleId = `scenario-${encodeURIComponent(scenario.name)}`
+  const titleId = useId()
   // A new step comes after the scenario's last state (the end of its transition order) and answers in a new state.
   const lastState = scenario.possibleStates.at(-1) ?? 'Started'
   const nextState = nextStateName(scenario.possibleStates)
@@ -96,7 +97,7 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
           </h2>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {t('scenarios.nowIn')}
-            <LiveDot label={scenario.state} className="normal-case tracking-normal" />
+            <LiveDot active={live} label={stale ? t('scenarios.stale', { state: scenario.state }) : scenario.state} className="normal-case tracking-normal" />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -132,7 +133,7 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
           <DeleteScenarioButton scenario={scenario} />
         </div>
       </header>
-      <StateMachine scenario={scenario} busy={busy} onSetState={(state) => void onSetState(state)} />
+      <StateMachine scenario={scenario} busy={busy} live={live} onSetState={(state) => void onSetState(state)} />
     </article>
   )
 }

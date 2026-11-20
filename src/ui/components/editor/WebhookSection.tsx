@@ -42,7 +42,7 @@ export function WebhookSection({
   return (
     <div className="flex flex-col gap-5">
       <Field orientation="horizontal">
-        <Switch id={id('on')} checked={webhook.enabled} aria-controls={webhook.enabled ? id('fields') : undefined} onCheckedChange={(enabled) => onChange({ enabled })} />
+        <Switch id={id('on')} checked={webhook.enabled} aria-controls={webhook.enabled ? id('fields') : undefined} aria-expanded={webhook.enabled} onCheckedChange={(enabled) => onChange({ enabled })} />
         <div className="flex flex-col gap-0.5">
           <FieldLabel htmlFor={id('on')}>{t('editor.webhook.toggle')}</FieldLabel>
           <FieldDescription className="text-xs">{t('editor.webhook.toggleHint')}</FieldDescription>

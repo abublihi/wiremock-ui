@@ -479,3 +479,11 @@ describe('new mock — proxy and webhook', () => {
     expect(screen.getByText('webhook.url must be an http:// or https:// URL')).toBeTruthy()
   })
 })
+
+describe('header rows', () => {
+  it('warns when a header name is listed twice (names ignore case)', async () => {
+    const { HeaderRows } = await import('@/ui/components/editor/HeaderRows')
+    await renderApp(<HeaderRows label="Headers" rows={[{ name: 'X-Id', value: '1' }, { name: 'x-id', value: '2' }]} onChange={() => {}} />)
+    expect(screen.getByText('X-Id is listed more than once: only one value is kept.')).toBeTruthy()
+  })
+})

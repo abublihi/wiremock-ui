@@ -194,7 +194,7 @@ export function ScenariosPage({ focus: focusProp }: { focus?: string } = {}) {
             </Empty>
           ) : (
             <>
-              <ScenarioList scenarios={shown} focus={focus} />
+              <ScenarioList scenarios={shown} focus={focus} live={visible && !scenarios.isError} stale={scenarios.isError} />
               {matches.length > SCENARIOS_PAGE_SIZE && (
                 <MockPager
                   page={Math.min(page, pages)}

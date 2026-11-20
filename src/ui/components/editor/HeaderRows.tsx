@@ -23,6 +23,9 @@ export function HeaderRows({
 }) {
   const t = useT()
   const update = (i: number, patch: Partial<HeaderRow>) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  // Header names ignore case; a stub keeps one value per name, so a repeated name loses all but one.
+  const names = rows.map((r) => r.name.trim().toLowerCase()).filter(Boolean)
+  const repeated = rows.find((r) => r.name.trim() !== '' && names.indexOf(r.name.trim().toLowerCase()) !== names.lastIndexOf(r.name.trim().toLowerCase()))
   return (
     <div className="flex flex-col gap-1.5">
       {rows.length > 0 && (
@@ -64,6 +67,11 @@ export function HeaderRows({
             </li>
           ))}
         </ul>
+      )}
+      {repeated && (
+        <p role="note" className="text-xs text-hazard-fg">
+          {t('editor.headers.duplicate', { name: repeated.name.trim() })}
+        </p>
       )}
       <Button
         type="button"

@@ -232,7 +232,11 @@ export function useCreateCatalogMock() {
       apiFetch<StubMapping>(`${catalogMockPath(args)}/mocks`, { method: 'POST', body: args.input }),
     onSuccess: async (stub) => {
       queryClient.setQueryData(queryKeys.mock(stub.id), stub)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' }),
+        // A mock can join, leave or change a scenario.
+        queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
+      ])
     },
   })
 }
@@ -244,7 +248,11 @@ export function useUpdateMock() {
       apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(id)}`, { method: 'PUT', body: { stub, version } }),
     onSuccess: async (stub) => {
       queryClient.setQueryData(queryKeys.mock(stub.id), stub)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' }),
+        // A mock can join, leave or change a scenario.
+        queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
+      ])
     },
   })
 }
@@ -274,7 +282,11 @@ export function useCreateMock() {
     mutationFn: (stub: BuiltStub) => apiFetch<StubMapping>('/api/mocks', { method: 'POST', body: stub }),
     onSuccess: async (stub) => {
       queryClient.setQueryData(queryKeys.mock(stub.id), stub)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' }),
+        // A mock can join, leave or change a scenario.
+        queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
+      ])
     },
   })
 }

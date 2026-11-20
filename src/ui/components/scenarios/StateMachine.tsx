@@ -46,10 +46,13 @@ export function layoutScenario(scenario: Pick<Scenario, 'possibleStates' | 'mock
 export function StateMachine({
   scenario,
   busy,
+  live = true,
   onSetState,
 }: {
   scenario: Scenario
   busy?: boolean
+  /** The live state is being refreshed (false: the "current" chip goes still). */
+  live?: boolean
   onSetState?: (state: string) => void
 }) {
   const t = useT()
@@ -67,6 +70,7 @@ export function StateMachine({
             <StateBox
               state={state}
               current={state === scenario.state}
+              live={live}
               loops={layout.loops.get(state) ?? []}
               settable={scenario.settable}
               busy={busy ?? false}
@@ -113,10 +117,12 @@ function StateBox({
   loops,
   settable,
   busy,
+  live,
   onSet,
 }: {
   state: string
   current: boolean
+  live: boolean
   loops: ScenarioMock[]
   settable: boolean
   busy: boolean
@@ -144,7 +150,7 @@ function StateBox({
         <span dir="ltr" className={cn('truncate font-mono text-sm font-semibold', current && 'text-signal-fg')} title={state}>
           {state}
         </span>
-        {current && <LiveDot label={t('scenarios.current')} className="shrink-0" />}
+        {current && <LiveDot active={live} label={t('scenarios.current')} className="shrink-0" />}
       </div>
       {loops.length > 0 && (
         <ul aria-label={t('scenarios.staysLabel', { state })} className="flex flex-col gap-1.5 border-t border-line/70 pt-2">
