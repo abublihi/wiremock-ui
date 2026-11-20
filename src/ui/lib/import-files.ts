@@ -71,9 +71,8 @@ export function readZip(bytes: Uint8Array, zipName: string): { files: SourceFile
     if (error instanceof ImportFileError) throw error
     throw new ImportFileError('import.zipUnreadable', { name: zipName })
   }
-  // The sizes above come from the archive's own headers; count what was really unpacked too.
-  const actual = Object.values(raw).reduce((sum, data) => sum + data.length, 0)
-  if (actual > MAX_IMPORT_BYTES) throw tooLarge()
+  // The limit above uses the sizes the archive declares. fflate never unpacks an entry beyond its declared size, so
+  // a header that understates it cannot get past the limit: that entry comes out cut short and fails to parse.
   const decoder = new TextDecoder()
   const files = Object.entries(raw)
     .map(([name, data]) => ({ path: `${zipName}/${name}`, text: decoder.decode(data) }))
@@ -212,6 +211,13 @@ export async function loadPicked(
       continue
     }
     results.push(parseSourceFile({ path: p.path, text }))
+  }
+  // The path names a row (and its Remove button): two dropped files called "a.json" must not share one.
+  const seen = new Map<string, number>()
+  for (const r of results) {
+    const n = (seen.get(r.path) ?? 0) + 1
+    seen.set(r.path, n)
+    if (n > 1) r.path = `${r.path} (${n})`
   }
   results.sort((a, b) => byPath(a.path, b.path))
   return { results, skipped }

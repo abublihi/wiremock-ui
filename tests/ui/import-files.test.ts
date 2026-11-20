@@ -6,6 +6,7 @@ import {
   MAX_ZIP_ENTRIES,
   isFolderJson,
   isSafeEntryPath,
+  loadPicked,
   mergeResults,
   parseSourceFile,
   readZip,
@@ -58,6 +59,24 @@ describe('zip entries', () => {
     expect(() => readZip(zip, 'bomb.zip')).toThrow(expect.objectContaining({ key: 'import.zipTooLarge' }))
   })
 
+  it('a header that understates an entry\'s size cannot slip past the limit: the entry is cut short and fails to parse', () => {
+    const text = JSON.stringify({ ...stub('/x'), pad: 'y'.repeat(5000) })
+    const zip = zipSync({ 'a.json': strToU8(text) }, { level: 6 })
+    const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength)
+    // Uncompressed size: offset 22 in the local header, 24 in the central directory entry.
+    for (let i = 0; i + 4 <= zip.length; i++) {
+      const sig = view.getUint32(i, true)
+      if (sig === 0x04034b50) view.setUint32(i + 22, 10, true)
+      if (sig === 0x02014b50) view.setUint32(i + 24, 10, true)
+    }
+    const { files } = readZip(zip, 'liar.zip')
+    expect(files).toHaveLength(1)
+    expect(files[0].text.length).toBe(10)
+    const result = parseSourceFile(files[0])
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.error).toMatchObject({ key: 'import.invalidJson', params: { name: 'liar.zip/a.json' } })
+  })
+
   it('names a file that is not a zip', () => {
     expect(() => readZip(strToU8('not a zip'), 'x.zip')).toThrow(expect.objectContaining({ key: 'import.zipUnreadable' }))
   })
@@ -102,5 +121,17 @@ describe('parsing and merging', () => {
     const { bundle, bytes } = mergeResults(results)
     expect(bundle.mocks.map((m) => m.request.urlPath)).toEqual(['/m/a.json', '/m/b.json', '/m/sub/c.json'])
     expect(bytes).toBe(new TextEncoder().encode(JSON.stringify(bundle)).length)
+  })
+})
+
+describe('picked files', () => {
+  it('two loose files with the same name get distinct paths, so each can be removed on its own', async () => {
+    const file = (urlPath: string) => new File([JSON.stringify(stub(urlPath))], 'a.json', { type: 'application/json' })
+    const { results } = await loadPicked(
+      [{ path: 'a.json', file: file('/one') }, { path: 'a.json', file: file('/two') }, { path: 'a.json', file: file('/three') }],
+      { folder: () => false },
+    )
+    expect(results.map((r) => r.path)).toEqual(['a.json', 'a.json (2)', 'a.json (3)'])
+    expect(mergeResults(results).bundle.mocks.map((m) => m.request.urlPath)).toEqual(['/one', '/two', '/three'])
   })
 })

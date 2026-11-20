@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { createCatalogMock } from '../../../src/server/http/handlers/catalog'
+import { runImport } from '../../../src/server/http/handlers/imports'
 import { createMock, getMock } from '../../../src/server/http/handlers/mocks'
 import { login, req, startTestRuntime } from '../../helpers/http'
 
@@ -61,4 +62,38 @@ test('invalid base64 is 400 and nothing reaches WireMock; bodyFileName stays ref
   expect((await served('/raw/bad')).status).toBe(404)
   const file = await createMock(env.rt, req('/api/mocks', 'POST', { request: { method: 'GET', urlPath: '/raw/f' }, response: { status: 200, bodyFileName: 'a.png' } }, as()))
   expect(file.status).toBe(400)
+})
+
+// A 5 MB file (the upload limit) is about 6.7 MB of base64: the check must not overflow the regex stack.
+const BIG = Buffer.alloc(5 * 1024 * 1024, 0)
+for (let i = 0; i < BIG.length; i++) BIG[i] = (i * 31 + 7) & 0xff
+const BIG_B64 = BIG.toString('base64')
+
+test('a 5 MB binary body saves through Advanced, Simple and import, and WireMock serves it', async () => {
+  const advanced = await createMock(env.rt, req('/api/mocks', 'POST', { request: { method: 'GET', urlPath: '/big/advanced' }, response: { status: 200, headers: { 'Content-Type': 'application/octet-stream' }, base64Body: BIG_B64 } }, as()))
+  expect(advanced.status).toBe(201)
+  expect((await served('/big/advanced')).bytes.equals(BIG)).toBe(true)
+
+  await env.rt.catalog.upsertEndpoint(
+    { integration: 'img', key: 'big', name: 'Big', method: 'GET', path: '/big', pathType: 'exact', contentType: 'json', exampleResponses: {}, allowedStatuses: [] },
+    'ui-admin',
+  )
+  const simple = await createCatalogMock(env.rt, req('/api/integrations/img/endpoints/big/mocks', 'POST', { isDefault: true, status: 200, base64Body: BIG_B64 }, as()), { key: 'img', endpoint: 'big' })
+  expect(simple.status).toBe(201)
+  expect((await served('/img/big')).bytes.equals(BIG)).toBe(true)
+
+  const imported = await runImport(env.rt, req('/api/import', 'POST', { mocks: [{ id: '0b9c7f3e-5d1a-4f7e-9a51-2f4c8d6e1b99', request: { method: 'GET', urlPath: '/big/imported' }, response: { status: 200, base64Body: BIG_B64 } }] }, as()))
+  expect(imported.status).toBe(200)
+  expect((await served('/big/imported')).bytes.equals(BIG)).toBe(true)
+})
+
+test('a large invalid base64 body is a 400 on every route, not a 500', async () => {
+  const bad = `${BIG_B64.slice(0, 4000)}=${BIG_B64.slice(4001)}`
+  const advanced = await createMock(env.rt, req('/api/mocks', 'POST', { request: { method: 'GET', urlPath: '/big/bad' }, response: { status: 200, base64Body: bad } }, as()))
+  expect(advanced.status).toBe(400)
+  const simple = await createCatalogMock(env.rt, req('/api/integrations/img/endpoints/logo/mocks', 'POST', { isDefault: true, status: 200, base64Body: bad }, as()), { key: 'img', endpoint: 'logo' })
+  expect(simple.status).toBe(400)
+  const imported = await runImport(env.rt, req('/api/import', 'POST', { mocks: [{ request: { method: 'GET', urlPath: '/big/bad' }, response: { status: 200, base64Body: bad } }] }, as()))
+  expect(imported.status).toBe(400)
+  expect(await imported.json()).toEqual({ error: expect.stringMatching(/base64Body must be valid base64/) })
 })

@@ -301,6 +301,18 @@ describe('import page', () => {
     expect(sent.mocks.map((m) => m.request.urlPath)).toEqual(['/a1', '/a2', '/b', '/z1'])
   })
 
+  it('two files with the same name are listed and removed separately', async () => {
+    mockImport()
+    await renderApp(<ImportPage />)
+    const ue = userEvent.setup({ applyAccept: false })
+    await ue.upload(screen.getByLabelText('Choose files'), [file(bundle, 'same.json'), file(JSON.stringify({ mappings: [{}] }), 'same.json')])
+    const list = await screen.findByRole('list', { name: 'Files' })
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2)
+    await ue.click(screen.getByRole('button', { name: 'Remove same.json (2)' }))
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(list).getByText('same.json')).toBeTruthy()
+  })
+
   it('reads a chosen folder: .json files only, hidden ones skipped', async () => {
     const calls = mockImport()
     await renderApp(<ImportPage />)

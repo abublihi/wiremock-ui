@@ -98,10 +98,12 @@ function scenario(stub: Record<string, unknown>): void {
   }
 }
 
-const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+// One character class, no per-group repetition: a grouped pattern overflows V8's regex stack on bodies of a few MB.
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
 
-/** Standard base64 with padding, as WireMock decodes base64Body (an uploaded binary body). */
-export const isBase64 = (value: unknown): value is string => typeof value === 'string' && BASE64.test(value)
+/** Standard base64 with padding, as WireMock decodes base64Body (an uploaded binary body). `=` only at the end. */
+export const isBase64 = (value: unknown): value is string =>
+  typeof value === 'string' && value.length % 4 === 0 && BASE64.test(value)
 
 export function assertBase64Body(value: unknown, field: string): void {
   if (value !== undefined && !isBase64(value)) throw new ValidationError(`${field} must be valid base64`)

@@ -68,6 +68,8 @@ const invalid: [string, MockInput, RegExp][] = [
   ['base64Body not a string', { request: { method: 'GET', urlPath: '/b' }, response: { status: 200, base64Body: 42 } } as MockInput, /response\.base64Body must be valid base64/],
   ['base64Body not base64', { request: { method: 'GET', urlPath: '/b' }, response: { status: 200, base64Body: 'not base64!' } } as MockInput, /response\.base64Body must be valid base64/],
   ['base64Body bad padding', { request: { method: 'GET', urlPath: '/b' }, response: { status: 200, base64Body: 'abc' } } as MockInput, /response\.base64Body must be valid base64/],
+  ['base64Body with = inside', { request: { method: 'GET', urlPath: '/b' }, response: { status: 200, base64Body: 'A=AA' } } as MockInput, /response\.base64Body must be valid base64/],
+  ['base64Body all padding', { request: { method: 'GET', urlPath: '/b' }, response: { status: 200, base64Body: '====' } } as MockInput, /response\.base64Body must be valid base64/],
   ['bodyFileName', { request: { method: 'GET', urlPath: '/b' }, response: { status: 200, bodyFileName: 'a.png' } } as MockInput, /bodyFileName is not supported/],
   ['scenarioName empty', { request: { method: 'GET', urlPath: '/s' }, response: { status: 200 }, scenarioName: '' } as MockInput, /scenarioName must be a non-empty string/],
   ['requiredScenarioState without a scenario', { request: { method: 'GET', urlPath: '/s' }, response: { status: 200 }, requiredScenarioState: 'x' } as MockInput, /requiredScenarioState needs scenarioName/],
