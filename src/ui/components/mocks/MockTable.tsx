@@ -38,7 +38,7 @@ function ProxyBadge({ url }: { url: string }) {
       <TooltipTrigger asChild>
         <span
           tabIndex={0}
-          className="inline-flex h-5 shrink-0 cursor-default items-center rounded-sm border border-dashed border-signal/45 px-1.5 font-mono text-[10px] font-semibold tracking-wider text-signal-fg uppercase"
+          className="inline-flex h-5 shrink-0 cursor-default items-center rounded-sm border border-dashed border-signal/45 px-1.5 font-mono text-[11px] font-semibold tracking-wider text-signal-fg uppercase"
         >
           {t('mocks.proxy')}
         </span>
@@ -115,7 +115,7 @@ export function MockTable({ mocks, expanded = false }: { mocks: StubMapping[]; e
     })
   return (
     <TableShell>
-      <TableBody className="stagger-children">
+      <TableBody className="stagger-children max-sm:block">
         {groupMocks(mocks).map((row) =>
           row.kind === 'mock' ? (
             <MockRow key={row.stub.id} stub={row.stub} />
@@ -128,6 +128,14 @@ export function MockTable({ mocks, expanded = false }: { mocks: StubMapping[]; e
   )
 }
 
+// Below 640 px a row is a card: name and menu on top, then method + the whole path, then the status.
+const ROW_CARD = 'max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:items-start max-sm:gap-x-2 max-sm:gap-y-1.5 max-sm:py-2'
+const NAME_CELL = 'max-w-28 whitespace-normal [overflow-wrap:break-word] md:max-w-64 max-sm:col-start-1 max-sm:row-start-1 max-sm:max-w-none max-sm:py-0'
+const REQUEST_CELL = 'max-w-36 md:max-w-80 max-sm:col-span-2 max-sm:max-w-none max-sm:py-0'
+const PATH = 'truncate font-mono text-xs max-sm:overflow-visible max-sm:whitespace-normal max-sm:[overflow-wrap:anywhere]'
+const STATUS_CELL = 'max-sm:col-span-2 max-sm:py-0'
+const ACTIONS_CELL = 'text-end max-sm:col-start-2 max-sm:row-start-1 max-sm:py-0'
+
 function MockRow({ stub, step }: { stub: StubMapping; step?: string }) {
   const t = useT()
   const meta = stub.metadata?.wiremockUi
@@ -136,38 +144,38 @@ function MockRow({ stub, step }: { stub: StubMapping; step?: string }) {
   const proxyUrl = typeof stub.response.proxyBaseUrl === 'string' ? stub.response.proxyBaseUrl : undefined
   const owner = meta?.owner ?? 'baseline'
   return (
-    <TableRow data-step={step !== undefined || undefined} className="hover:bg-surface-2 data-step:bg-surface-2/40">
-      <TableCell className={cn('max-w-28 whitespace-normal md:max-w-64', step !== undefined && 'border-s-2 border-signal/40 ps-6')}>
+    <TableRow data-step={step !== undefined || undefined} className={cn('hover:bg-surface-2 data-step:bg-surface-2/40', ROW_CARD)}>
+      <TableCell className={cn(NAME_CELL, step !== undefined && 'border-s-2 border-signal/40 ps-6')}>
         <Link to="/mocks/$id" params={{ id: stub.id }} className="font-medium hover:text-signal-fg hover:underline">
           {stub.name || t('mocks.unnamed')}
         </Link>
         {hasWebhook(stub) && <WebhookMark />}
         {step !== undefined ? (
-          <p dir="ltr" className="truncate font-mono text-[11px] text-muted-foreground">
+          <p dir="ltr" className="truncate font-mono text-xs text-muted-foreground">
             {step}
           </p>
         ) : (
           (meta?.integration || meta?.endpoint) && (
-            <p className="truncate text-[11px] text-muted-foreground">{[meta.integration, meta.endpoint].filter(Boolean).join(' · ')}</p>
+            <p className="truncate text-xs text-muted-foreground">{[meta.integration, meta.endpoint].filter(Boolean).join(' · ')}</p>
           )
         )}
       </TableCell>
-      <TableCell className="max-w-36 md:max-w-80">
-        <div className="flex items-center gap-2">
+      <TableCell className={REQUEST_CELL}>
+        <div className="flex items-center gap-2 max-sm:items-start">
           <MethodBadge method={method} />
-          <span dir="ltr" className="truncate font-mono text-xs" title={requestUrl(stub)}>
+          <span dir="ltr" className={PATH} title={requestUrl(stub)}>
             {requestUrl(stub)}
           </span>
         </div>
       </TableCell>
-      <TableCell>{proxyUrl !== undefined ? <ProxyBadge url={proxyUrl} /> : <StatusBadge status={status} />}</TableCell>
+      <TableCell className={STATUS_CELL}>{proxyUrl !== undefined ? <ProxyBadge url={proxyUrl} /> : <StatusBadge status={status} />}</TableCell>
       <TableCell className="hidden md:table-cell">
         <Owner owner={owner} />
       </TableCell>
       <TableCell className="hidden text-xs md:table-cell">
         <UpdatedAt iso={meta?.updatedAt} />
       </TableCell>
-      <TableCell className="text-end">
+      <TableCell className={ACTIONS_CELL}>
         <MockRowActions stub={stub} />
       </TableCell>
     </TableRow>
@@ -189,8 +197,8 @@ function ScenarioRows({ name, mocks, open, onToggle }: { name: string; mocks: St
   }
   return (
     <>
-      <TableRow data-scenario={name} className="hover:bg-surface-2">
-        <TableCell className="max-w-28 whitespace-normal md:max-w-64">
+      <TableRow data-scenario={name} className={cn('hover:bg-surface-2', ROW_CARD)}>
+        <TableCell className={NAME_CELL}>
           <button
             type="button"
             aria-expanded={open}
@@ -199,14 +207,14 @@ function ScenarioRows({ name, mocks, open, onToggle }: { name: string; mocks: St
           >
             <ChevronRightIcon aria-hidden className={cn('mt-0.5 size-3.5 shrink-0 transition-transform motion-reduce:transition-none', open && 'rotate-90')} />
             <WorkflowIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-signal-fg" />
-            <span className="[overflow-wrap:anywhere]">{label}</span>
+            <span className="[overflow-wrap:break-word]">{label}</span>
           </button>
         </TableCell>
-        <TableCell className="max-w-36 md:max-w-80">
+        <TableCell className={REQUEST_CELL}>
           {method ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 max-sm:items-start">
               <MethodBadge method={method} />
-              <span dir="ltr" className="truncate font-mono text-xs" title={url}>
+              <span dir="ltr" className={PATH} title={url}>
                 {url}
               </span>
             </div>
@@ -214,7 +222,7 @@ function ScenarioRows({ name, mocks, open, onToggle }: { name: string; mocks: St
             <span className="text-xs text-muted-foreground">{t('mocks.scenarioRequests', { count: requests.length })}</span>
           )}
         </TableCell>
-        <TableCell>
+        <TableCell className={STATUS_CELL}>
           <div className="flex flex-wrap gap-1">
             {statuses.slice(0, 3).map((status) => (
               <StatusBadge key={status} status={status} />
@@ -232,7 +240,7 @@ function ScenarioRows({ name, mocks, open, onToggle }: { name: string; mocks: St
         <TableCell className="hidden text-xs md:table-cell">
           <UpdatedAt iso={latest} />
         </TableCell>
-        <TableCell className="text-end">
+        <TableCell className={ACTIONS_CELL}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" aria-label={t('mocks.scenarioActionsFor', { name })}>
@@ -283,11 +291,11 @@ function TableShell({ children }: { children: React.ReactNode }) {
   const t = useT()
   return (
     <div className="overflow-x-auto rounded-md border border-line bg-surface">
-      <Table>
-        <TableHeader>
+      <Table className="max-sm:block">
+        <TableHeader className="max-sm:hidden">
           <TableRow className="hover:bg-transparent">
             {(['Name', 'Request', 'Status', 'Owner', 'Updated'] as const).map((col) => (
-              <TableHead key={col} className={cn('text-[10px] tracking-[0.14em] text-muted-foreground uppercase', (col === 'Owner' || col === 'Updated') && 'hidden md:table-cell')}>
+              <TableHead key={col} className={cn('text-[11px] tracking-[0.14em] text-muted-foreground uppercase', (col === 'Owner' || col === 'Updated') && 'hidden md:table-cell')}>
                 {t(`mocks.col${col}`)}
               </TableHead>
             ))}
