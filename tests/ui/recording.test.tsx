@@ -139,7 +139,7 @@ describe('Record tab', () => {
     const ue = userEvent.setup()
     await renderApp(withConfig(<RecordingPage search={{}} />))
     await ue.type(screen.getByLabelText('Paths to record'), '/api/.*')
-    expect(screen.getByText(/\(regular expression\)/)).toBeTruthy()
+    expect(screen.getByText(/\(Java dialect, as WireMock reads it\)/)).toBeTruthy()
     await ue.clear(screen.getByLabelText('Paths to record'))
     // Without regex syntax, auto reads it as a wildcard: pick Regular expression to send it as is.
     await ue.click(screen.getByRole('combobox', { name: 'Read as' }))
