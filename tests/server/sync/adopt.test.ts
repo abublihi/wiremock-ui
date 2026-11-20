@@ -224,7 +224,7 @@ test('adoption takes the sync lock: of two concurrent adoptions one adopts, the 
     // Held by someone else (another instance adopting or syncing): skip, say so, and leave the flag set.
     const token = await store.acquireLock(SYNC_LOCK, 60_000)
     expect(await adoptMissing(deps)).toBe(0)
-    expect(info.mock.calls.some(([msg]) => String(msg).includes('another instance holds the sync lock'))).toBe(true)
+    expect(info.mock.calls.some(([msg]) => String(msg).includes('adoption deferred: the sync lock is held'))).toBe(true)
     expect(await store.getFlag(ADOPTION_PENDING)).toBe(true)
     await store.releaseLock(SYNC_LOCK, token!)
 
@@ -292,6 +292,34 @@ test('a full sync while adoption is pending deletes no live stub', async () => {
     await stores.mocks.setFlag(ADOPTION_PENDING, false)
     expect(await reconciler.fullSync()).toBe('synced')
     expect(await rig.client.listStubIds()).toEqual([MARKER_ID])
+  } finally {
+    await stores.close()
+    await rig.stop()
+  }
+})
+
+test('a full sync retries a pending adoption (one that failed or was left by a dead instance) before syncing', async () => {
+  const rig = await sqliteRig()
+  const stores = rig.open()
+  try {
+    await rig.client.importStubs([existing(51, '/r1'), existing(52, '/r2')], { deleteAllNotInImport: false })
+    await stores.mocks.setFlag(ADOPTION_PENDING, true)
+    const catalog = new CatalogService({ catalog: stores.catalog, audit: stores.audit, mocks: stores.mocks })
+    let tries = 0
+    const adopt = async () => {
+      if (++tries === 1) throw new Error('store hiccup')
+      return adoptMissing({ wiremock: rig.client, store: stores.mocks, catalog, audit: stores.audit })
+    }
+    const reconciler = new Reconciler({ wiremock: rig.client, store: stores.mocks, intervalMs: 60_000, adopt })
+    // The first try fails: the sync still runs and deletes nothing.
+    expect(await reconciler.fullSync()).toBe('synced')
+    expect((await rig.client.listStubIds()).sort()).toEqual([uid(51), uid(52), MARKER_ID].sort())
+    expect(await stores.mocks.getFlag(ADOPTION_PENDING)).toBe(true)
+    // The next sync adopts them; they stay.
+    expect(await reconciler.fullSync()).toBe('synced')
+    expect(await stores.mocks.getFlag(ADOPTION_PENDING)).toBe(false)
+    expect((await stores.mocks.listAll()).map((m) => m.id).sort()).toEqual([uid(51), uid(52)])
+    expect((await rig.client.listStubIds()).sort()).toEqual([uid(51), uid(52), MARKER_ID].sort())
   } finally {
     await stores.close()
     await rig.stop()

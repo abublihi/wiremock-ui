@@ -120,7 +120,7 @@ export async function bootRuntime(
     const recordings = new RecordingService({ wiremock, store: stores.recordings, locks: store, mocks, catalog, audit, config })
     const reconciler = wiremockOnly
       ? null
-      : new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000 })
+      : new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000, adopt: () => adoptMissing({ wiremock, store, catalog, audit }) })
     // Decided (and recorded durably) before the seed writes anything: an empty store takes over what WireMock
     // already serves, and a boot that stops part-way leaves the decision for the next one.
     const adoptionPending = reconciler ? await markAdoptionIfDue(wiremock, store) : false

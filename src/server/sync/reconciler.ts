@@ -19,6 +19,11 @@ type Deps = {
   safetyNetMs?: number
   batchSize?: number
   audit?: AuditLog
+  /**
+   * Adopts WireMock's stubs while the adoption flag is set (adoptMissing). A boot whose adoption failed, or that
+   * left it to an instance that then died, retries it on every full sync instead of waiting for a restart.
+   */
+  adopt?: () => Promise<number>
 }
 
 const versionOf = (s: StubMapping) => s.metadata?.wiremockUi?.version
@@ -45,6 +50,7 @@ export class Reconciler {
   private readonly safetyNetMs: number
   private readonly batchSize: number
   private readonly audit?: AuditLog
+  private readonly adopt?: () => Promise<number>
   private timers: NodeJS.Timeout[] = []
   private busy = false
 
@@ -55,6 +61,7 @@ export class Reconciler {
     this.safetyNetMs = deps.safetyNetMs ?? 600_000
     this.batchSize = deps.batchSize ?? 500
     this.audit = deps.audit
+    this.adopt = deps.adopt
   }
 
   get lastSyncAt(): Date | null {
@@ -73,6 +80,10 @@ export class Reconciler {
 
   /** `audit` records a `sync` entry on success; only startup and marker-triggered syncs ask for it. */
   async fullSync(opts: { audit?: boolean } = {}): Promise<'synced' | 'skipped'> {
+    // Before taking the sync lock: adoption takes it itself.
+    if (this.adopt && (await this.store.getFlag(ADOPTION_PENDING))) {
+      await this.adopt().catch((err) => logger.warn({ err }, 'adopting WireMock stubs failed; retried on the next full sync'))
+    }
     const token = await this.store.acquireLock(SYNC_LOCK, SYNC_LOCK_TTL_MS)
     if (token === null) return 'skipped'
     try {
@@ -154,7 +165,9 @@ export class Reconciler {
 
   /**
    * Re-adds every person-owned mock so it sits above baseline mocks added after it (import, seed).
-   * Each mock is briefly absent from WireMock while it is moved.
+   * Each mock is briefly absent from WireMock while it is moved. During a recording the moved mocks also end up
+   * newer than the recording's catch-all proxy stub, so they keep answering their requests instead of the proxy
+   * (as mocks saved during a recording do); not skipped, since the order would then stay wrong after it.
    */
   async repositionPersonMocks(): Promise<void> {
     await this.readd(precedenceOrder((await this.store.listAll()).filter((s) => !isBaseline(s))))

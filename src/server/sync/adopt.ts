@@ -44,7 +44,7 @@ export async function adoptMissing(deps: Deps): Promise<number> {
   const { store } = deps
   const token = await store.acquireLock(SYNC_LOCK, SYNC_LOCK_TTL_MS)
   if (token === null) {
-    logger.info('adoption skipped: another instance holds the sync lock and adopts')
+    logger.info('adoption deferred: the sync lock is held (another instance is syncing or adopting); a later full sync retries it')
     return 0
   }
   try {
