@@ -180,7 +180,7 @@ describe('integration page', () => {
     await screen.findByText('Fetch citizen')
     expect(screen.getByText('POST')).toBeTruthy()
     expect(screen.getByText('/nic/citizens')).toBeTruthy()
-    expect(screen.getByText('jsonPath · $.idNo')).toBeTruthy()
+    expect(screen.getByText('JSON body (JSONPath) · $.idNo')).toBeTruthy()
     expect(screen.getByText('404')).toBeTruthy()
     const link = screen.getByRole('link', { name: 'New mock for Fetch citizen' })
     const href = new URL(link.getAttribute('href')!, BASE)

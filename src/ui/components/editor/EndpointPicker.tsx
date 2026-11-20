@@ -286,7 +286,7 @@ export function EndpointInfo({ integration, endpoint }: { integration: Integrati
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
         <dt className="text-muted-foreground">{t('editor.lookup')}</dt>
         <dd dir="ltr" className="font-mono break-all">
-          {endpoint.lookup ? `${endpoint.lookup.location}: ${endpoint.lookup.expression}` : t('editor.lookupNone')}
+          {endpoint.lookup ? `${t(`catalog.endpoint.lookup.${endpoint.lookup.location}`)}: ${endpoint.lookup.expression}` : t('editor.lookupNone')}
         </dd>
         <dt className="text-muted-foreground">{t('editor.contentType')}</dt>
         <dd className="font-mono">{endpoint.contentType}</dd>

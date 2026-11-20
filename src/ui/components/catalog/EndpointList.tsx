@@ -96,7 +96,7 @@ export function EndpointList({ integration, endpoints }: { integration: Integrat
               <dl className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-[auto_1fr]">
                 <dt className="text-muted-foreground">{t('catalog.endpoints.lookup')}</dt>
                 <dd dir="ltr" className="font-mono">
-                  {endpoint.lookup ? `${endpoint.lookup.location} · ${endpoint.lookup.expression}` : <span className="text-muted-foreground">{t('catalog.endpoints.noLookup')}</span>}
+                  {endpoint.lookup ? `${t(`catalog.endpoint.lookup.${endpoint.lookup.location}`)} · ${endpoint.lookup.expression}` : <span className="text-muted-foreground">{t('catalog.endpoints.noLookup')}</span>}
                 </dd>
                 <dt className="text-muted-foreground">{t('catalog.endpoints.statuses')}</dt>
                 <dd className="flex flex-wrap items-center gap-1">
