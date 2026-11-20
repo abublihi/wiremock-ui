@@ -13,7 +13,7 @@ import type { PublicUser } from '@/server/users/types'
 import type { NearMissView, RequestSummary } from '@/server/requests/journal'
 import type { TestRequestInput, TestRequestResult } from '@/server/wiremock/relay'
 import type { Scenario } from '@/server/scenarios/service'
-import type { AcceptResult, RecordingState, SnapshotInput, StartInput } from '@/server/recording/service'
+import type { AcceptResult, RecordingState, SnapshotInput, StartInput, RecordResult } from '@/server/recording/service'
 import type { Recording, RecordingSummary } from '@/server/recording/types'
 import type { AcceptItem } from '@/ui/lib/recording'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
@@ -597,7 +597,7 @@ export function useStartRecording() {
 export function useStopRecording() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => apiFetch<{ recording: Recording | null }>('/api/recordings/stop', { method: 'POST' }),
+    mutationFn: () => apiFetch<RecordResult>('/api/recordings/stop', { method: 'POST' }),
     onSettled: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.recordingState }),
@@ -609,7 +609,7 @@ export function useStopRecording() {
 export function useSnapshot() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: SnapshotInput) => apiFetch<{ recording: Recording | null }>('/api/recordings/snapshot', { method: 'POST', body: input }),
+    mutationFn: (input: SnapshotInput) => apiFetch<RecordResult>('/api/recordings/snapshot', { method: 'POST', body: input }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
   })
 }

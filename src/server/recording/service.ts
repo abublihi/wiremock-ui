@@ -11,6 +11,7 @@ import type { PublicUser } from '../users/types'
 import type { WireMockClient } from '../wiremock/client'
 import type { StubMapping } from '../wiremock/types'
 import { reviewItem } from './normalise'
+import { PATH_MODES, regexProblemMessage, resolvePathFilter } from './path-pattern'
 import { isRecordingProxy } from './proxy'
 import { validateTarget } from './target'
 import {
@@ -19,6 +20,7 @@ import {
   RECORDING_TTL_MS,
   summaryOf,
   type Recording,
+  type RecordingFilters,
   type RecordingStore,
   type RecordingSummary,
   type ReviewItem,
@@ -42,8 +44,13 @@ const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 const filterFields = {
   /** Only requests with this method become mocks (all methods when left out). */
   method: z.enum(METHODS, { error: `method must be one of ${METHODS.join(', ')}` }).optional(),
-  /** Only requests whose path matches this regular expression become mocks. */
+  /**
+   * Only requests whose path matches this become mocks: a wildcard pattern (`/api/*`; `*` is anything, a typed
+   * `?query` is left out) or a regular expression over the whole path. `urlPathMode` says which; `auto` (the
+   * default) reads it as a regex when it uses regex-only syntax (`.*`, `^`, `(`…), else as a wildcard.
+   */
   urlPathPattern: z.string({ error: 'urlPathPattern must be a string' }).optional(),
+  urlPathMode: z.enum(PATH_MODES, { error: `urlPathMode must be one of ${PATH_MODES.join(', ')}` }).optional(),
   /** Request headers to match on (exactly as sent), besides method, URL and body. */
   captureHeaders: z
     .array(z.string({ error: 'captureHeaders must be header names' }).regex(HEADER_NAME, 'captureHeaders must be header names'), {
@@ -102,6 +109,16 @@ export type StartInput = z.infer<typeof startSchema>
 export type SnapshotInput = z.infer<typeof snapshotSchema>
 export type AcceptInput = z.infer<typeof acceptSchema>
 
+/**
+ * Why a stop or snapshot produced no review list. `filtered`: requests went through (the recording proxy, or the
+ * request log for a snapshot) but none passed the filters. `noTraffic`: nothing reached WireMock.
+ */
+export type EmptyResult =
+  | { reason: 'filtered'; requests: number; filters: RecordingFilters }
+  | { reason: 'noTraffic'; wiremockUrl: string }
+
+export type RecordResult = { recording: Recording | null; empty?: EmptyResult }
+
 /** What the banner and the Recording page show. `target` is known even for a recording started outside the UI. */
 export type RecordingState =
   | { status: 'recording'; target: string | null; startedBy: string | null; startedAt: string | null }
@@ -136,12 +153,16 @@ function recordSpec(input: Omit<SnapshotInput, 'ids'>): Record<string, unknown> 
   if (input.method) filters.method = input.method
   const pattern = input.urlPathPattern?.trim()
   if (pattern) {
-    try {
-      new RegExp(pattern)
-    } catch {
-      throw new ValidationError('urlPathPattern is not a valid regular expression')
+    const path = resolvePathFilter(pattern, input.urlPathMode)
+    if (path.kind === 'regex') {
+      try {
+        new RegExp(path.regex)
+      } catch {
+        throw new ValidationError('urlPathPattern is not a valid regular expression')
+      }
+      if (path.problem) throw new ValidationError(regexProblemMessage(path.problem, pattern))
     }
-    filters.urlPathPattern = pattern
+    filters.urlPathPattern = path.regex
   }
   return {
     persist: false,
@@ -204,21 +225,24 @@ export class RecordingService {
       wiremock: [config.wiremockUrl, config.wiremockPublicUrl],
       app: [...appUrls, ...(config.publicUiUrl ? [config.publicUiUrl] : [])],
     })
+    const spec = recordSpec(input)
     if ((await this.deps.wiremock.recordingStatus()) === 'Recording') {
       throw new ConflictError('A recording is already running. Stop it before starting another one.')
     }
-    await this.deps.wiremock.startRecording({ targetBaseUrl: target, ...recordSpec(input) })
-    const active = { target, startedBy: actor, startedAt: this.now().toISOString() }
+    await this.deps.wiremock.startRecording({ targetBaseUrl: target, ...spec })
+    const filters = (spec.filters ?? {}) as RecordingFilters
+    const active = { target, startedBy: actor, startedAt: this.now().toISOString(), filters }
     await this.deps.store.setActive(active)
     await safeRecord(this.deps.audit, { actor, action: 'recording.start', details: { target } })
-    return { status: 'recording', ...active }
+    return { status: 'recording', target, startedBy: actor, startedAt: active.startedAt }
   }
 
   /** Stops recording; the stubs go into a new review list (null when nothing was recorded). */
-  async stop(actor: string): Promise<Recording | null> {
+  async stop(actor: string): Promise<RecordResult> {
     this.assertAllowed()
     const current = await this.state()
     const target = (current.status === 'recording' ? current.target : null) ?? undefined
+    const active = await this.deps.store.getActive()
     const stubs = await this.deps.wiremock.stopRecording()
     await this.deps.store.setActive(null)
     if (stubs === null) throw new ConflictError('No recording is running')
@@ -229,11 +253,30 @@ export class RecordingService {
       target: recording?.id,
       details: { target, recorded: stubs.length, ...(recording?.leftInWireMock ? { leftInWireMock: recording.leftInWireMock } : {}) },
     })
-    return recording
+    if (recording) return { recording }
+    // Nothing recorded: did requests go through the recording proxy (filters too narrow), or did none arrive?
+    const proxied = (await this.journalSince(active?.startedAt)).filter((e) => e.stubMapping && isRecordingProxy(e.stubMapping)).length
+    return { recording: null, empty: this.emptyResult(proxied, active?.filters ?? {}) }
+  }
+
+  private emptyResult(requests: number, filters: RecordingFilters): EmptyResult {
+    return requests > 0
+      ? { reason: 'filtered', requests, filters }
+      : { reason: 'noTraffic', wiremockUrl: this.deps.config.wiremockPublicUrl ?? this.deps.config.wiremockUrl }
+  }
+
+  /** The request log since `since` (the whole log, up to its newest 1000, without it); a failure counts as empty. */
+  private async journalSince(since: string | undefined) {
+    try {
+      return await this.deps.wiremock.listRequests({ limit: 1000, ...(since ? { since } : {}) })
+    } catch (err) {
+      logger.warn({ err }, 'could not read the request log to explain an empty recording')
+      return []
+    }
   }
 
   /** Turns request log entries into a review list (null when none matched). */
-  async snapshot(input: SnapshotInput, actor: string): Promise<Recording | null> {
+  async snapshot(input: SnapshotInput, actor: string): Promise<RecordResult> {
     this.assertAllowed()
     const spec = recordSpec(input)
     const filters = { ...(spec.filters as Record<string, unknown> | undefined), allowNonProxied: true, ...(input.ids ? { ids: input.ids } : {}) }
@@ -245,7 +288,12 @@ export class RecordingService {
       target: recording?.id,
       details: { recorded: stubs.length, ...(recording?.leftInWireMock ? { leftInWireMock: recording.leftInWireMock } : {}) },
     })
-    return recording
+    if (recording) return { recording }
+    // Nothing taken: was the request log empty (or the picked requests gone), or did the filters leave everything out?
+    const journal = await this.journalSince(undefined)
+    const picked = input.ids ? new Set(input.ids) : null
+    const requests = journal.filter((e) => !picked || picked.has(e.id)).length
+    return { recording: null, empty: this.emptyResult(requests, (spec.filters ?? {}) as RecordingFilters) }
   }
 
   /**

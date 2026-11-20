@@ -1,8 +1,9 @@
 import { useId, useState, type FormEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { CircleDotIcon, FileStackIcon, ShieldAlertIcon, SquareIcon } from 'lucide-react'
+import { CircleDotIcon, FileStackIcon, ShieldAlertIcon, SquareIcon, TriangleAlertIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import type { RecordingState, SnapshotInput } from '@/server/recording/service'
+import { PATH_MODES, resolvePathFilter, typedAsPath, type PathMode } from '@/server/recording/path-pattern'
+import type { EmptyResult, RecordingState, SnapshotInput } from '@/server/recording/service'
 import { useSnapshot, useStartRecording, useStopRecording } from '@/ui/api/queries'
 import { Button } from '@/ui/components/ui/button'
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/ui/components/ui/field'
@@ -11,14 +12,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@/ui/components/ui/spinner'
 import { Switch } from '@/ui/components/ui/switch'
 import { useWiremockPublicUrl } from '@/ui/config'
-import { useT } from '@/ui/i18n'
+import { translate, useT } from '@/ui/i18n'
 import { relativeTime } from '@/ui/lib/time'
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
 const ALL = 'all'
 
-type Filters = { method: string; urlPathPattern: string; captureHeaders: string; repeatsAsScenarios: boolean }
-const EMPTY: Filters = { method: ALL, urlPathPattern: '', captureHeaders: '', repeatsAsScenarios: true }
+type Filters = { method: string; urlPathPattern: string; urlPathMode: PathMode; captureHeaders: string; repeatsAsScenarios: boolean }
+const EMPTY: Filters = { method: ALL, urlPathPattern: '', urlPathMode: 'auto', captureHeaders: '', repeatsAsScenarios: true }
+
+/**
+ * Why a stop or snapshot gave no review list, in words: the filters left out the requests that went through (and
+ * which filters), or no request reached WireMock at all.
+ */
+export function emptyMessage(empty: EmptyResult | undefined, kind: 'recording' | 'snapshot'): string {
+  const t = translate
+  if (!empty) return t(kind === 'recording' ? 'recording.stoppedEmpty' : 'recording.snapshotEmpty')
+  if (empty.reason === 'noTraffic') return kind === 'recording' ? t('recording.emptyNoTraffic', { url: empty.wiremockUrl }) : t('recording.snapshotEmpty')
+  const parts = [
+    empty.filters.method && t('recording.filterMethod', { method: empty.filters.method }),
+    empty.filters.urlPathPattern && t('recording.filterPath', { pattern: empty.filters.urlPathPattern }),
+  ].filter(Boolean)
+  const filters = parts.length > 0 ? parts.join(', ') : t('recording.filterNone')
+  const one = empty.requests === 1
+  if (kind === 'recording') return t(one ? 'recording.emptyFilteredOne' : 'recording.emptyFiltered', { count: empty.requests, filters })
+  return t(one ? 'recording.snapshotFilteredOne' : 'recording.snapshotFiltered', { count: empty.requests, filters })
+}
 
 /** The filter fields as the API takes them (empty ones left out). */
 function filterInput(f: Filters): Omit<SnapshotInput, 'ids'> {
@@ -28,7 +47,7 @@ function filterInput(f: Filters): Omit<SnapshotInput, 'ids'> {
     .filter(Boolean)
   return {
     ...(f.method !== ALL ? { method: f.method as SnapshotInput['method'] } : {}),
-    ...(f.urlPathPattern.trim() ? { urlPathPattern: f.urlPathPattern.trim() } : {}),
+    ...(f.urlPathPattern.trim() ? { urlPathPattern: f.urlPathPattern.trim(), ...(f.urlPathMode !== 'auto' ? { urlPathMode: f.urlPathMode } : {}) } : {}),
     ...(headers.length > 0 ? { captureHeaders: headers } : {}),
     repeatsAsScenarios: f.repeatsAsScenarios,
   }
@@ -38,6 +57,11 @@ function FilterFields({ value, onChange }: { value: Filters; onChange: (next: Fi
   const t = useT()
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
+  const typed = value.urlPathPattern.trim()
+  // How the value is read (auto: a regex when it uses regex-only syntax), what WireMock gets, and a regex that can
+  // never match a path, with its fix.
+  const path = typed ? resolvePathFilter(typed, value.urlPathMode) : null
+  const problem = path?.kind === 'regex' ? path.problem : null
   return (
     <fieldset className="flex flex-col gap-4">
       <legend className="mb-3 text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">// {t('recording.filters')}</legend>
@@ -66,14 +90,64 @@ function FilterFields({ value, onChange }: { value: Filters; onChange: (next: Fi
             className="font-mono"
             autoComplete="off"
             spellCheck={false}
-            placeholder="/api/.*"
+            placeholder={value.urlPathMode === 'regex' ? '/api/Products.*' : '/api/*'}
             value={value.urlPathPattern}
-            aria-describedby={id('pattern-hint')}
+            aria-invalid={Boolean(problem)}
+            aria-describedby={[id('pattern-hint'), path && id('pattern-check')].filter(Boolean).join(' ')}
             onChange={(e) => onChange({ ...value, urlPathPattern: e.target.value })}
           />
           <FieldDescription id={id('pattern-hint')} className="text-xs">
-            {t('recording.pathPatternHint')}
+            {t(value.urlPathMode === 'regex' ? 'recording.pathRegexHint' : 'recording.pathPatternHint')}
           </FieldDescription>
+          {path && (
+            <div id={id('pattern-check')} className="flex flex-col items-start gap-1 text-xs text-muted-foreground">
+              {path.kind === 'wildcard' ? (
+                <span>
+                  {t('recording.pathMatchesWildcard', { example: path.example })}{' '}
+                  <code dir="ltr" className="rounded-sm bg-surface-2 px-1 font-mono text-foreground">
+                    {path.regex}
+                  </code>
+                </span>
+              ) : (
+                <span>{t('recording.pathMatchesRegex')}</span>
+              )}
+              {path.kind === 'wildcard' && path.droppedQuery && (
+                <span className="text-hazard-fg">{t('recording.pathDroppedQuery', { query: path.droppedQuery })}</span>
+              )}
+              {path.kind === 'wildcard' && path.addedSlash && <span>{t('recording.pathAddedSlash')}</span>}
+              {problem && (
+                <span role="alert" className="flex flex-col items-start gap-1.5 text-hazard-fg">
+                  <span className="flex items-start gap-1.5">
+                    <TriangleAlertIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+                    {t(problem.kind === 'query' ? 'recording.pathRegexQuery' : 'recording.pathRegexStart', {
+                      typed: typedAsPath(typed),
+                      suggestion: problem.suggestion,
+                    })}
+                  </span>
+                  <Button type="button" variant="outline" size="xs" onClick={() => onChange({ ...value, urlPathPattern: problem.suggestion })}>
+                    {t('recording.pathUse', { suggestion: problem.suggestion })}
+                  </Button>
+                </span>
+              )}
+            </div>
+          )}
+          <div className="mt-1 flex items-center gap-2">
+            <FieldLabel htmlFor={id('mode')} className="text-xs font-normal text-muted-foreground">
+              {t('recording.pathMode')}
+            </FieldLabel>
+            <Select value={value.urlPathMode} onValueChange={(mode) => onChange({ ...value, urlPathMode: mode as PathMode })}>
+              <SelectTrigger id={id('mode')} size="sm" className="h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PATH_MODES.map((mode) => (
+                  <SelectItem key={mode} value={mode}>
+                    {t(`recording.pathMode.${mode}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </Field>
       </div>
       <Field>
@@ -118,11 +192,12 @@ export function useStopAndReview() {
   const navigate = useNavigate()
   const run = async () => {
     try {
-      const { recording } = await stop.mutateAsync()
+      const result = await stop.mutateAsync()
+      const { recording } = result
       if (recording) {
         toast.success(t(recording.items.length === 1 ? 'recording.stoppedOne' : 'recording.stopped', { count: recording.items.length }))
         void navigate({ to: '/recording', search: { review: recording.id } })
-      } else toast.info(t('recording.stoppedEmpty'))
+      } else toast.info(t('recording.stoppedEmptyTitle'), { description: emptyMessage(result.empty, 'recording'), duration: 15_000 })
     } catch (error) {
       toast.error(t('recording.stopFailed'), { description: error instanceof Error ? error.message : undefined })
     }
@@ -244,9 +319,10 @@ export function SnapshotPanel() {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     try {
-      const { recording } = await snapshot.mutateAsync(filterInput(filters))
+      const result = await snapshot.mutateAsync(filterInput(filters))
+      const { recording } = result
       if (!recording) {
-        toast.info(t('recording.snapshotEmpty'))
+        toast.info(t('recording.snapshotEmptyTitle'), { description: emptyMessage(result.empty, 'snapshot'), duration: 15_000 })
         return
       }
       toast.success(t(recording.items.length === 1 ? 'recording.snapshotDoneOne' : 'recording.snapshotDone', { count: recording.items.length }))

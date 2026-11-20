@@ -21,18 +21,21 @@ export const startRecording = withAuth(null, async ({ rt, request, principal }) 
   return json(await rt.recordings.start(input, principal.user.username, [new URL(request.url).origin, own]))
 })
 
-/** POST /api/recordings/stop → { recording } (the new review list, null when nothing was recorded). 409 when not recording. */
+/**
+ * POST /api/recordings/stop → { recording, empty? }: the new review list, or null with `empty` saying why nothing was
+ * recorded (requests went through but the filters left them out, or none reached WireMock). 409 when not recording.
+ */
 export const stopRecording = withAuth(null, async ({ rt, principal }) => {
   rt.recordings.assertAllowed()
-  return json({ recording: await rt.recordings.stop(principal.user.username) })
+  return json(await rt.recordings.stop(principal.user.username))
 })
 
-/** POST /api/recordings/snapshot { method?, urlPathPattern?, captureHeaders?, repeatsAsScenarios?, ids? } → { recording }. */
+/** POST /api/recordings/snapshot { method?, urlPathPattern?, captureHeaders?, repeatsAsScenarios?, ids? } → { recording, empty? } (as stop). */
 export const snapshotRecording = withAuth(null, async ({ rt, request, principal }) => {
   rt.recordings.assertAllowed()
   requireJson(request)
   const input = parse(snapshotSchema, await readJson(request))
-  return json({ recording: await rt.recordings.snapshot(input, principal.user.username) })
+  return json(await rt.recordings.snapshot(input, principal.user.username))
 })
 
 /** GET /api/recordings → { recordings }: summaries (no rows) of the review lists waiting, newest first. */

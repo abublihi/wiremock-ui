@@ -101,13 +101,80 @@ describe('Record tab', () => {
 
     await ue.clear(screen.getByLabelText('Target URL'))
     await ue.type(screen.getByLabelText('Target URL'), 'https://api.example.com')
-    await ue.type(screen.getByLabelText('URL path pattern'), '/api/.*')
+    await ue.type(screen.getByLabelText('Paths to record'), '/api/*')
+    expect(screen.getByText('^/api/.*$')).toBeTruthy()
     await ue.type(screen.getByLabelText('Request headers to match'), 'Accept, X-Tenant')
     await ue.click(screen.getByRole('switch', { name: 'Turn repeated requests into a scenario' }))
     await ue.click(screen.getByRole('button', { name: 'Start recording' }))
     await waitFor(() => expect(bodies).toHaveLength(2))
-    expect(bodies[1]).toEqual({ targetUrl: 'https://api.example.com', urlPathPattern: '/api/.*', captureHeaders: ['Accept', 'X-Tenant'], repeatsAsScenarios: false })
+    expect(bodies[1]).toEqual({ targetUrl: 'https://api.example.com', urlPathPattern: '/api/*', captureHeaders: ['Accept', 'X-Tenant'], repeatsAsScenarios: false })
     expect(await screen.findByRole('heading', { name: /Recording traffic to https:\/\/api\.example\.com/ })).toBeTruthy()
+  })
+
+  it('Paths to record takes wildcards: the regex WireMock gets is shown, a typed query string is left out with a note', async () => {
+    server.use(
+      http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })),
+      http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [] })),
+    )
+    const ue = userEvent.setup()
+    await renderApp(withConfig(<RecordingPage search={{}} />))
+    expect(screen.getByText(/Use \* for anything, e\.g\. \/api\/\* or \/api\/Products\*/)).toBeTruthy()
+    await ue.type(screen.getByLabelText('Paths to record'), '/api/Products?limit=3')
+    expect(screen.getByText('^/api/Products$')).toBeTruthy()
+    expect(screen.getByText(/Matches paths like \/api\/Products \(wildcard\)/)).toBeTruthy()
+    expect(screen.getByText('The query string ?limit=3 is left out: WireMock matches the path only.')).toBeTruthy()
+  })
+
+  it('a regex is recognised (or picked) and sent as is; one that can never match gets a one-click fix', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })),
+      http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [] })),
+      http.post(`${BASE}/api/recordings/start`, async ({ request }) => {
+        const body = (await request.json()) as { targetUrl: string }
+        bodies.push(body)
+        return HttpResponse.json({ status: 'recording', target: body.targetUrl, startedBy: 'sara', startedAt: new Date().toISOString() })
+      }),
+    )
+    const ue = userEvent.setup()
+    await renderApp(withConfig(<RecordingPage search={{}} />))
+    await ue.type(screen.getByLabelText('Paths to record'), '/api/.*')
+    expect(screen.getByText(/\(regular expression\)/)).toBeTruthy()
+    await ue.clear(screen.getByLabelText('Paths to record'))
+    // Without regex syntax, auto reads it as a wildcard: pick Regular expression to send it as is.
+    await ue.click(screen.getByRole('combobox', { name: 'Read as' }))
+    await ue.click(await screen.findByRole('option', { name: 'Regular expression' }))
+    expect(screen.getByText(/Regular expression for the path only \(no query string\)/)).toBeTruthy()
+    await ue.type(screen.getByLabelText('Paths to record'), 'api/Products?limit=3')
+    expect(screen.getByRole('alert').textContent).toContain('This matches the path only, without the query string. To record /api/Products?limit=3 use /api/Products.*')
+    await ue.click(screen.getByRole('button', { name: 'Use /api/Products.*' }))
+    expect((screen.getByLabelText('Paths to record') as HTMLInputElement).value).toBe('/api/Products.*')
+    expect(screen.queryByRole('alert')).toBeNull()
+    await ue.type(screen.getByLabelText('Target URL'), 'https://api.testingapis.com')
+    await ue.click(screen.getByRole('button', { name: 'Start recording' }))
+    await waitFor(() => expect(bodies).toEqual([{ targetUrl: 'https://api.testingapis.com', urlPathPattern: '/api/Products.*', urlPathMode: 'regex', repeatsAsScenarios: true }]))
+  })
+
+  it.each([
+    [
+      { reason: 'filtered', requests: 3, filters: { method: 'POST', urlPathPattern: '^/api/Products$' } },
+      '3 requests went through the recording but none matched your filters (method POST, path pattern ^/api/Products$). Remove or fix the filters and record again.',
+    ],
+    [
+      { reason: 'noTraffic', wiremockUrl: 'http://localhost:8080' },
+      'No requests reached WireMock while recording. Point your app (or curl) at WireMock — http://localhost:8080 — not at the real service.',
+    ],
+  ])('an empty stop says why nothing was recorded (%o)', async (empty, message) => {
+    server.use(
+      http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'recording', target: 'https://api.example.com', startedBy: 'ann', startedAt: new Date().toISOString() })),
+      http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [] })),
+      http.post(`${BASE}/api/recordings/stop`, () => HttpResponse.json({ recording: null, empty })),
+    )
+    const ue = userEvent.setup()
+    await renderApp(withConfig(<RecordingPage search={{}} />))
+    await ue.click(await screen.findByRole('button', { name: 'Stop and review' }))
+    expect(await screen.findByText('Recording stopped: nothing was recorded')).toBeTruthy()
+    expect(await screen.findByText(message)).toBeTruthy()
   })
 
   it('while recording: Stop opens the review list it produced', async () => {

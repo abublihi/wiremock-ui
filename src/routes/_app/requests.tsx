@@ -4,6 +4,7 @@ import { AlertCircleIcon, FileStackIcon, PauseIcon, PlayIcon, RadioTowerIcon, Tr
 import { toast } from 'sonner'
 import { MAX_REQUEST_ROWS, type RequestFilter, useClearRequests, useDocumentVisible, useIntegrations, useRequests, useSnapshot } from '@/ui/api/queries'
 import { useRecordingAllowed } from '@/ui/config'
+import { emptyMessage } from '@/ui/components/recording/RecordForms'
 import { LiveDot } from '@/ui/components/common/LiveDot'
 import { CountTool } from '@/ui/components/requests/CountTool'
 import { RequestDrawer } from '@/ui/components/requests/RequestDrawer'
@@ -178,9 +179,10 @@ function CreateMocksButton({ ids }: { ids: string[] }) {
   if (!allowed || ids.length === 0) return null
   const onClick = async () => {
     try {
-      const { recording } = await snapshot.mutateAsync({ ids })
+      const result = await snapshot.mutateAsync({ ids })
+      const { recording } = result
       if (!recording) {
-        toast.info(t('recording.snapshotEmpty'))
+        toast.info(t('recording.snapshotEmptyTitle'), { description: emptyMessage(result.empty, 'snapshot'), duration: 15_000 })
         return
       }
       toast.success(t(recording.items.length === 1 ? 'recording.snapshotDoneOne' : 'recording.snapshotDone', { count: recording.items.length }))
