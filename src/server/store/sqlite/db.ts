@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs'
+import { chmodSync, closeSync, mkdirSync, openSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 
@@ -81,6 +81,11 @@ CREATE TABLE IF NOT EXISTS endpoints (
 );
 `
 
+const isThenable = (value: unknown): boolean =>
+  (typeof value === 'object' || typeof value === 'function') &&
+  value !== null &&
+  typeof (value as { then?: unknown }).then === 'function'
+
 /**
  * One SQLite file shared by every store. `node:sqlite` is synchronous, so inside one process
  * nothing interleaves with a transaction; `BEGIN IMMEDIATE` plus busy_timeout covers other processes.
@@ -91,7 +96,13 @@ export class SqliteDb {
   private closed = false
 
   constructor(path: string) {
-    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
+    if (path !== ':memory:') {
+      // The file holds password hashes and sessions: owner-only directory (when we create it) and file.
+      // SQLite creates the -wal and -shm files with the database file's permissions.
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+      closeSync(openSync(path, 'a', 0o600))
+      chmodSync(path, 0o600)
+    }
     this.db = new DatabaseSync(path)
     try {
       this.db.exec('PRAGMA busy_timeout = 5000')
@@ -121,14 +132,20 @@ export class SqliteDb {
     return s
   }
 
+  /** Runs `fn` in one write transaction. `fn` must be synchronous: a promise would commit before its work ran. */
   tx<T>(fn: () => T): T {
     this.db.exec('BEGIN IMMEDIATE')
     try {
       const out = fn()
+      if (isThenable(out)) throw new TypeError('SqliteDb.tx callback must be synchronous')
       this.db.exec('COMMIT')
       return out
     } catch (err) {
-      this.db.exec('ROLLBACK')
+      try {
+        this.db.exec('ROLLBACK')
+      } catch {
+        // SQLite may already have rolled back (e.g. after SQLITE_FULL); never mask the original error.
+      }
       throw err
     }
   }

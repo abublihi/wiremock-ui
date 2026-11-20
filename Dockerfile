@@ -14,7 +14,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY server.mjs ./
 COPY --from=build /app/dist ./dist
-RUN mkdir -p /data && chown node:node /data
+RUN mkdir -p /data && chown node:node /data && chmod 700 /data
 VOLUME /data
 USER node
 EXPOSE 3000
