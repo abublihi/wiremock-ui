@@ -409,3 +409,11 @@ describe('this install\'s WireMock address', () => {
     expect(screen.getByText('https://mocks.example.test/blog/posts/42')).toBeTruthy()
   })
 })
+
+describe('docs/USAGE.md index', () => {
+  it('lists every guide section, in order, with its title and file', () => {
+    const usage = readFileSync(join(process.cwd(), 'docs/USAGE.md'), 'utf8')
+    const rows = [...usage.matchAll(/^\| (\d+) \| \[([^\]]+)\]\(guide\/([a-z0-9-]+)\.md\) \|/gm)].map((m) => [Number(m[1]), m[2], m[3]])
+    expect(rows).toEqual(GUIDE_SECTIONS.map((s, i) => [i + 1, s.title, s.slug]))
+  })
+})
