@@ -94,6 +94,33 @@ describe('Advanced mode', () => {
   })
 })
 
+describe('Advanced mode — body from a file', () => {
+  it('puts a binary file in as base64Body with its Content-Type, and a JSON file as jsonBody', async () => {
+    mockCatalog(server)
+    server.use(http.get(`${BASE}/api/mocks/m-1`, () => HttpResponse.json(headersStub())))
+    await renderApp(<EditMockPage id="m-1" />)
+    await screen.findByRole('tab', { name: 'Advanced', selected: true })
+    const ue = userEvent.setup({ applyAccept: false })
+    setJson('{"request": {"method": "GET", "urlPath": "/x"}, "response": {"status": 200, "body": "old"}}')
+    await ue.upload(screen.getByLabelText('Upload body from file'), new File([Uint8Array.from([0x89, 0x50, 0x4e, 0x47])], 'a.png', { type: 'image/png' }))
+    await waitFor(() => expect(JSON.parse(jsonText()).response).toEqual({ status: 200, base64Body: 'iVBORw==', headers: { 'Content-Type': 'image/png' } }))
+    await ue.upload(screen.getByLabelText('Upload body from file'), new File(['{"ok":true}'], 'b.json', { type: 'application/json' }))
+    // The Content-Type the stub already has (from the PNG) is kept.
+    await waitFor(() => expect(JSON.parse(jsonText()).response).toEqual({ status: 200, jsonBody: { ok: true }, headers: { 'Content-Type': 'image/png' } }))
+  })
+
+  it('asks to fix the JSON first when it does not parse', async () => {
+    mockCatalog(server)
+    server.use(http.get(`${BASE}/api/mocks/m-1`, () => HttpResponse.json(headersStub())))
+    await renderApp(<EditMockPage id="m-1" />)
+    await screen.findByRole('tab', { name: 'Advanced', selected: true })
+    setJson('{ nope')
+    await userEvent.setup({ applyAccept: false }).upload(screen.getByLabelText('Upload body from file'), new File(['x'], 'a.txt', { type: 'text/plain' }))
+    expect(await screen.findByText('Fix the JSON first, then upload the body again.')).toBeTruthy()
+    expect(jsonText()).toBe('{ nope')
+  })
+})
+
 describe('Simple ↔ Advanced', () => {
   it('Simple → Advanced shows the preview; Advanced → Simple reads it back', async () => {
     const calls = mockCatalog(server)

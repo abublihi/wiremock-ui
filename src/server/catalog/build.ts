@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { ValidationError } from '../errors'
-import { assertHttpUrl, assertWebhook } from '../mocks/power-fields'
+import { assertBase64Body, assertHttpUrl, assertWebhook } from '../mocks/power-fields'
 import type { MockInput } from '../mocks/service'
 import type { Endpoint, Integration } from './types'
 
@@ -73,6 +73,8 @@ export const simpleMockSchema = z.strictObject(
       .max(599, 'status must be between 100 and 599')
       .optional(),
     body: z.string({ error: 'body must be a string' }).optional(),
+    /** A binary body (an uploaded file) as base64; its Content-Type comes from `headers`. */
+    base64Body: z.string({ error: 'base64Body must be a string' }).optional(),
     headers: z
       .record(z.string().min(1, 'headers: names must not be empty'), z.string({ error: 'headers values must be strings' }), {
         error: 'headers must be an object of strings',
@@ -101,6 +103,9 @@ const MIME: Record<Endpoint['contentType'], string> = {
   text: 'text/plain; charset=utf-8',
   html: 'text/html; charset=utf-8',
 }
+
+/** A binary body whose type is not known. */
+export const BINARY_MIME = 'application/octet-stream'
 
 export const escapeRegex = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
 
@@ -171,13 +176,18 @@ function scenarioFields(scenario: NonNullable<SimpleMockInput['scenario']>): Sce
   }
 }
 
-/** A status with the endpoint's content type, extra headers and an optional body. */
+/** A status with the endpoint's content type (or the file's, for a binary body), extra headers and an optional body. */
 function mockResponse(endpoint: Endpoint, input: SimpleMockInput): Record<string, unknown> {
   const response: Record<string, unknown> = { status: input.status }
-  const headers: Record<string, string> = { 'Content-Type': MIME[endpoint.contentType] }
+  if (input.base64Body !== undefined) {
+    if (input.body) throw new ValidationError('body and base64Body cannot be combined')
+    assertBase64Body(input.base64Body, 'base64Body')
+  }
+  const headers: Record<string, string> = { 'Content-Type': input.base64Body !== undefined ? BINARY_MIME : MIME[endpoint.contentType] }
   if (Object.keys(input.headers ?? {}).some((h) => h.toLowerCase() === 'content-type')) delete headers['Content-Type']
   response.headers = { ...headers, ...input.headers }
-  if (input.body) {
+  if (input.base64Body !== undefined) response.base64Body = input.base64Body
+  else if (input.body) {
     if (endpoint.contentType === 'json') {
       try {
         response.jsonBody = JSON.parse(input.body)

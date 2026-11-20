@@ -94,6 +94,17 @@ Other status presets: **Not found** (404), **Validation error** (400), **Server 
 
 **Preview** shows the exact WireMock stub that will be saved.
 
+**Body from a file.** **Upload body from file** (next to **Response body**) reads a file in your browser, up to 5 MB:
+
+- a text file (`.json`, `.xml`, `.txt`, `.html`, `.csv`) fills the body; the response keeps the endpoint's content type;
+- anything else (an image, a PDF…) becomes a **binary body**: WireMock answers with the file's exact bytes and the file's type as `Content-Type` (from the browser, else the extension, else `application/octet-stream`). The form shows "Binary body: logo.png · 1.2 KB · image/png" with **Replace** and **Remove**.
+
+  ![Binary body](screenshots/body-file-dark.png)
+
+  A saved binary mock reopens in Simple mode with its size and type (WireMock keeps no file name).
+
+In **Advanced** mode the same button puts the file into the stub JSON: `base64Body` for a binary file, `jsonBody` for valid JSON (a `.json` file, or any text file on a JSON endpoint), `body` otherwise. The other body fields are removed, and `Content-Type` is set from the file unless the stub already has one. WireMock's `bodyFileName` (a file in WireMock's own `__files` folder) is still refused: put the body inline.
+
 The **About this endpoint** panel beside the form says what the key is in plain words. The same form can also forward to a real service, call back after responding and take part in a scenario (see below).
 
 ## Point your application at WireMock and check
@@ -221,11 +232,41 @@ To write a stub from scratch, choose **New mock** → **Start from blank JSON**.
 
 ![Audit log](screenshots/audit-dark.png)
 
-## Importing a bundle and seeding baseline mocks
+## Import from files
 
-**Import** takes one `.json` file (up to 10 MB): drop it on the page or choose it, check the summary, and **Import**. Tick **Remove baseline mocks that aren't in this file** to also prune baseline mocks missing from it.
+**Import** reads mocks and catalog entries from:
+
+- one or more `.json` files (**Choose files**, or drop them on the page);
+- a folder (**Choose folder**, or drop it): every `.json` file inside, sub-folders included; hidden files and folders (`.git`, `.DS_Store`) and other file types are skipped, so a WireMock `mappings/` folder works as is;
+- a `.zip` (**Choose files**): its `.json` entries, read in your browser. Entries with an absolute path or `..` are skipped and listed; a zip may hold at most 2,000 entries and unpack to at most 10 MB.
+
+Before anything is sent, the page lists every file with what it holds ("1 integration · 2 endpoints · 3 mocks") or why it can't be used (not JSON, not a known shape, over 10 MB), with the totals on top. Remove the files marked with an error, or fix them and choose again; **Import** stays off until every listed file is usable. The files are merged in path order into one import of at most 10 MB; when they add up to more, the page says so: split them into smaller imports.
+
+Tick **Remove baseline mocks that aren't in this import** to also prune baseline mocks missing from the files (not offered in WireMock-only mode).
 
 ![Import](screenshots/import-dark.png)
+
+## Export
+
+**Export** on the **Mocks** list downloads what the list is showing:
+
+| List filter | Exported |
+|---|---|
+| an integration picked | that integration, its endpoints and its mocks |
+| **My mocks** | your mocks, and the integrations and endpoints they belong to |
+| **All mocks** (or WireMock-only mode) | every mock and the whole catalog |
+
+The status and text filters do not narrow an export. The **Import** page has the same **Export** menu, always for everything. Pick a format:
+
+![Export](screenshots/export-dark.png)
+
+
+- **Bundle (.json)**: `{ "integrations", "catalog", "mocks", "oidcIdentities": [] }`, ready to import here again (into another environment, say). Mocks keep their id, owner and catalog link.
+- **WireMock mappings (.zip)**: `mappings/<name>-<id>.json`, one stub per file, to commit or to put in a WireMock `mappings` folder. The zip imports here again too.
+
+Exports work on every store and in WireMock-only mode, where the mocks are read from WireMock and the catalog is the one in memory: export a bundle to keep catalog changes you made there.
+
+## Bundle files and seeding baseline mocks
 
 A file can be any of:
 
@@ -347,6 +388,10 @@ curl -u $AUTH -X DELETE $UI/api/requests            # clear the request log
 
 # Import a bundle (add ?prune=true to remove baseline mocks missing from it)
 curl -u $AUTH -X POST $UI/api/import -H "$JSON" --data-binary @bundle.json
+
+# Export: scope=all|integration|mine (integration=<key> with scope=integration), format=bundle|mappings
+curl -u $AUTH -OJ "$UI/api/export?scope=all&format=bundle"                       # wiremock-ui-all-<date>.json
+curl -u $AUTH -OJ "$UI/api/export?scope=integration&integration=nic&format=mappings"  # a zip of mappings/*.json
 ```
 
 A stale `version` on update or delete answers `409` (`changed by someone else`). Other useful endpoints: `GET /api/audit?limit=100` (paged with `cursor`), `GET|POST /api/users`, `GET /healthz` (no auth).
@@ -366,7 +411,9 @@ curl -b jar -X POST $UI/api/mocks/reset-mine -H 'X-CSRF-Token: <token>'
 - **Cookies** are `Secure` when `PUBLIC_UI_URL` is https, or when `TRUST_PROXY` is on and the proxy sends `X-Forwarded-Proto: https`.
 - **Create-only catalog writes:** `PUT /api/integrations/<key>` and `PUT /api/integrations/<key>/endpoints/<endpoint>` replace what is there. Send `If-None-Match: *` to create only: when the key already exists the answer is `409` (`An integration with this key already exists` / `An endpoint with this key already exists`) and nothing changes. The UI uses this when you add an integration or an endpoint, so two people adding the same key cannot overwrite each other.
 - **Catalog:** endpoints with `pathType: regex` are matched by WireMock, so the pattern uses Java's regex dialect; the UI only checks that it parses as a JavaScript regex. An endpoint cannot be deleted while mocks built from it exist, and an integration cannot be deleted while it has mocks (`409`).
-- **Imports** over 10 MB get `413`.
+- **Imports** over 10 MB get `413`. The API takes one JSON body; merging files, folders and zips happens in the browser.
+- **Export** (`GET /api/export`) answers with `Content-Disposition: attachment`: a JSON bundle (`application/json`) or, with `format=mappings`, a zip (`application/zip`) of `mappings/<name>-<id>.json`. `scope` defaults to `all` and `format` to `bundle`; an unknown value, or `scope=integration` without `integration`, is `400`, an unknown integration `404`. Catalog entries come without `updatedAt`/`updatedBy`, so a bundle imports as it is.
+- **Binary bodies:** `response.base64Body` must be standard base64 with padding (`400 response.base64Body must be valid base64` otherwise). Simple-mode mocks take `base64Body` (with `headers: { "Content-Type": … }`, else `application/octet-stream`) instead of `body`; both together are `400`.
 - **Test requests** (`POST /api/test-request`) go only to `WIREMOCK_URL`'s stub port, without WireMock's admin credentials, and never follow redirects. Paths must start with `/`; absolute URLs, `/__admin`, `.`/`..` segments and encoded slashes are refused (`400`). `Host`, `Content-Length` and hop-by-hop headers are dropped; line breaks or characters beyond Latin-1 in header values are refused. `Accept-Encoding: identity` is sent unless you set it, so the headers shown describe the body. Bodies are limited to 1 MB each way (a longer response comes back cut, with `bodyTruncated: true`); binary responses come back base64 (`bodyIsBase64: true`). The relay waits 30 s.
 - **Proxy mocks** (`response.proxyBaseUrl`) need an http(s) base URL; `proxyUrlPrefixToRemove` starts with `/`. `removeProxyRequestHeaders` is stored lower-cased, because WireMock 3.13.1 only removes headers listed that way.
 - **Webhooks** (`serveEventListeners: [{ "name": "webhook", "parameters": { method, url, headers, body, delay } }]`) are sent by WireMock, from wherever WireMock runs, after it answers: a URL like `http://localhost:…` means WireMock's own machine. The method is any HTTP method (stored upper-case); the URL must start with `http://` or `https://` (the rest may be a template); `delay` is `{ "type": "fixed", "milliseconds" }`, `{ "type": "uniform", "lower", "upper" }` or `{ "type": "lognormal", "median", "sigma" }`, at most 600000 ms.

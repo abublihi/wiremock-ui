@@ -114,7 +114,7 @@ Everything is set through environment variables. Empty values count as unset.
 | `BOOT_TIMEOUT_SECONDS` | `60` | How long the UI waits for WireMock and the store on start before giving up. |
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy, so the client IP for the sign-in rate limit comes from `X-Forwarded-For` (the rightmost hop). Leave it off without a proxy. |
 | `PUBLIC_UI_URL` | (none) | The address people use to reach the UI, for example `https://mocks.example.com`. An `https` URL makes session cookies `Secure`. |
-| `SEED_PATH` | (none) | A bundle file or a folder of `*.json` files to import as baseline mocks on every start. See [USAGE.md](USAGE.md#importing-a-bundle-and-seeding-baseline-mocks). |
+| `SEED_PATH` | (none) | A bundle file or a folder of `*.json` files to import as baseline mocks on every start. See [USAGE.md](USAGE.md#bundle-files-and-seeding-baseline-mocks). |
 | `SEED_PRUNE` | `false` | With `SEED_PATH`: also delete baseline mocks that are no longer in the seed. People's own mocks are never touched. Ignored with `STORE_DRIVER=none`. |
 | `PORT` | `3000` | Port the UI listens on. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. Logs are JSON lines on stdout. |

@@ -398,3 +398,39 @@ describe('isScenarioNameSettable (kept in step with the server)', () => {
     for (const name of ['loan', 'loan-approval_2.x', 'with space', '.hidden', 'a/b', 'a%20b', 'ok:@!', '']) expect(ui(name)).toBe(server(name))
   })
 })
+
+describe('binary body from a file', () => {
+  const png = { base64: 'iVBORw0KGgo=', name: 'logo.png', size: 8, contentType: 'image/png' }
+
+  it('a new form has no binary body', () => {
+    expect(emptyForm(endpoint()).binary).toBeNull()
+  })
+
+  it('sends base64Body with the file\'s Content-Type instead of a body', () => {
+    const input = toSimpleInput(form(endpoint(), { keyValue: '1', binary: png }))
+    expect(input).toMatchObject({ status: 200, base64Body: png.base64, headers: { 'Content-Type': 'image/png' } })
+    expect(input).not.toHaveProperty('body')
+  })
+
+  it('a fault or a proxy drops the binary body', () => {
+    expect(toSimpleInput(form(endpoint(), { keyValue: '1', binary: png, fault: 'EMPTY_RESPONSE' }))).not.toHaveProperty('base64Body')
+    expect(toSimpleInput(form(endpoint(), { keyValue: '1', binary: png, answer: 'proxy', proxy: { baseUrl: 'http://up', stripPrefix: '', addHeaders: [], removeHeaders: '' } }))).not.toHaveProperty('base64Body')
+  })
+
+  it('round-trips through the builder: Simple mode shows a base64Body (name unknown after saving)', () => {
+    for (const e of [endpoint(), endpoint({ contentType: 'xml' })]) {
+      const f = form(e, { keyValue: '1', binary: png, body: '' })
+      const back = fromStub(stored(e, f), integration, e)
+      expect(back).not.toBeNull()
+      expect(back!.binary).toEqual({ ...png, name: '' })
+      expect(back!.body).toBe('')
+    }
+  })
+
+  it('refuses a base64Body next to a body, or with other headers', () => {
+    const e = endpoint()
+    const s = stored(e, form(e, { keyValue: '1', binary: png }))
+    expect(fromStub({ ...s, response: { ...s.response, body: 'x' } }, integration, e)).toBeNull()
+    expect(fromStub({ ...s, response: { ...s.response, headers: { 'Content-Type': 'image/png', 'X-A': '1' } } }, integration, e)).toBeNull()
+  })
+})

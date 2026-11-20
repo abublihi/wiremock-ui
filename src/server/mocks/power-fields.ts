@@ -98,9 +98,19 @@ function scenario(stub: Record<string, unknown>): void {
   }
 }
 
-/** Throws a ValidationError naming the field when a proxy, webhook or scenario field is malformed. */
+const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+
+/** Standard base64 with padding, as WireMock decodes base64Body (an uploaded binary body). */
+export const isBase64 = (value: unknown): value is string => typeof value === 'string' && BASE64.test(value)
+
+export function assertBase64Body(value: unknown, field: string): void {
+  if (value !== undefined && !isBase64(value)) throw new ValidationError(`${field} must be valid base64`)
+}
+
+/** Throws a ValidationError naming the field when a proxy, webhook or scenario field (or a binary body) is malformed. */
 export function assertPowerFields(stub: { response: Record<string, unknown> } & Record<string, unknown>): void {
   proxy(stub.response)
+  assertBase64Body(stub.response.base64Body, 'response.base64Body')
   const listeners = stub.serveEventListeners
   if (listeners !== undefined) {
     if (!Array.isArray(listeners)) throw new ValidationError('serveEventListeners must be a list')

@@ -93,6 +93,31 @@ describe('mock list', () => {
     expect(lastSearch.owner).toBe('all')
   })
 
+  it('Export takes its scope from the filter: my mocks, all mocks, or one integration', async () => {
+    mockApi([stub('a')])
+    const ue = userEvent.setup()
+    const hrefs = async () => {
+      await ue.click(screen.getByRole('button', { name: 'Export' }))
+      const out = screen.getAllByRole('menuitem').map((m) => m.getAttribute('href'))
+      await ue.keyboard('{Escape}')
+      return out
+    }
+    await renderApp(<Harness />)
+    await screen.findByText('Mock a')
+    expect(await hrefs()).toEqual(['/api/export?scope=mine&format=bundle', '/api/export?scope=mine&format=mappings'])
+    await ue.click(screen.getByRole('radio', { name: 'All mocks' }))
+    expect(await hrefs()).toEqual(['/api/export?scope=all&format=bundle', '/api/export?scope=all&format=mappings'])
+  })
+
+  it('Export with an integration filter exports that integration', async () => {
+    mockApi([stub('a')])
+    await renderApp(<Harness initial={{ integration: 'payments' }} />)
+    await screen.findByText('Mock a')
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Export' }))
+    expect(screen.getByRole('menuitem', { name: /Bundle/ }).getAttribute('href')).toBe('/api/export?scope=integration&integration=payments&format=bundle')
+    expect(screen.getByText('// payments: its mocks and endpoints')).toBeTruthy()
+  })
+
   it('maps the text and status filters to query parameters (text debounced)', async () => {
     const seen = mockApi([stub('a')])
     await renderApp(<Harness initial={{ status: '404', integration: 'payments' }} />)

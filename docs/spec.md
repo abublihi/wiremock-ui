@@ -338,6 +338,8 @@ Ship in five steps, each usable on its own; QA can start using it after step 2.
 
 **A6 — Exports and nightly backups move to Milestone 4.** Milestone 2 ships imports and `SEED_PATH` seeding only.
 
+**A6 amended — Export partly pulled forward (Milestone 2C).** `GET /api/export?scope=all|integration|mine&integration=&format=bundle|mappings` ships in Milestone 2C on every store driver: `bundle` is one JSON file `POST /api/import` takes back (`integrations`, `catalog` without `updatedAt`/`updatedBy`, `mocks` as stored, `oidcIdentities: []`); `mappings` is a zip of `mappings/<name>-<id>.json` built on the server; both are sent as attachments. "Mine" carries the integrations and endpoints its mocks link to. In WireMock-only mode (A10) both formats work: mocks come from WireMock and the catalog from memory, so a bundle export is how catalog changes made there are kept. The Mocks list ("Export", scope from its filter) and the Import page offer it. Import from the UI also grows: several files, a folder or a zip, read and merged in the browser into one import of at most 10 MB. Nightly backups (`BACKUP_PATH`) stay in Milestone 4.
+
 **A7 — English only (Milestone 2B).** Arabic UI strings and RTL support are not required. UI strings stay centralised in one English message file so a translation can be added later.
 
 **A8 — Sign-in without authorization (Milestone 2B).** Users still sign in (local accounts, sessions, CSRF, rate-limited login, Basic auth for scripts), but every signed-in user can do everything: no roles in the UI or the API, no ownership restrictions, baseline mocks editable by anyone. Mocks still record `owner`, and imports still never touch person-owned mocks. Roles may return later.

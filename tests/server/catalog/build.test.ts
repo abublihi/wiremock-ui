@@ -137,6 +137,25 @@ describe('response', () => {
   })
 })
 
+describe('binary body (base64Body)', () => {
+  test('base64Body is written as is, with the Content-Type the input gives', () => {
+    const r = build({}, { base64Body: 'iVBORw0KGgo=', headers: { 'Content-Type': 'image/png' } }).response
+    expect(r).toEqual({ status: 200, headers: { 'Content-Type': 'image/png' }, base64Body: 'iVBORw0KGgo=' })
+  })
+  test('without a Content-Type it falls back to application/octet-stream, not the endpoint type', () => {
+    expect(build({}, { base64Body: 'AAEC' }).response.headers).toEqual({ 'Content-Type': 'application/octet-stream' })
+  })
+  test('body and base64Body together → 400', () => {
+    expect(failure(() => build({}, { base64Body: 'AAEC', body: '{}' }))).toEqual({ status: 400, message: 'body and base64Body cannot be combined' })
+  })
+  test('invalid base64 → 400', () => {
+    expect(failure(() => build({}, { base64Body: '%%%' }))).toEqual({ status: 400, message: 'base64Body must be valid base64' })
+  })
+  test('the schema accepts base64Body', () => {
+    expect(simpleMockSchema.safeParse({ isDefault: true, status: 200, base64Body: 'AAEC' }).success).toBe(true)
+  })
+})
+
 describe('validation', () => {
   test('keyValue required unless default', () => {
     for (const keyValue of [undefined, '']) {

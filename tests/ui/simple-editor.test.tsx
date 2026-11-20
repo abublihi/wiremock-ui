@@ -234,6 +234,80 @@ describe('new mock — Simple form', () => {
   })
 })
 
+describe('body from a file', () => {
+  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 255])
+  function mockCreate(calls: Call[]) {
+    server.use(
+      http.post(`${CATALOG}/:endpoint/mocks`, async ({ request }) => {
+        calls.push({ method: 'POST', path: 'create', body: await request.json() })
+        return HttpResponse.json({ id: 'm-3', request: {}, response: {} }, { status: 201 })
+      }),
+    )
+  }
+
+  it('a binary file replaces the body with a "Binary body" card and saves base64Body with its type', async () => {
+    const calls = mockCatalog([textEndpoint()])
+    mockCreate(calls)
+    await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'ping' }} />)
+    const ue = userEvent.setup({ applyAccept: false })
+    await screen.findByRole('textbox', { name: 'Response body' })
+    await ue.upload(screen.getByLabelText('Upload body from file'), new File([PNG], 'logo.png', { type: 'image/png' }))
+    const card = await screen.findByRole('group', { name: 'Binary body' })
+    expect(within(card).getByText('logo.png · 8 B · image/png')).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: 'Response body' })).toBeNull()
+    await ue.type(screen.getByLabelText('Value of query parameter id'), 'abc')
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    await waitFor(() =>
+      expect(calls.find((c) => c.path === 'create')?.body).toEqual({ keyValue: 'abc', status: 200, base64Body: 'iVBORwABAv8=', headers: { 'Content-Type': 'image/png' } }),
+    )
+  })
+
+  it('Remove brings the text body back; a text file fills the body', async () => {
+    mockCatalog([textEndpoint()])
+    await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'ping' }} />)
+    const ue = userEvent.setup({ applyAccept: false })
+    await screen.findByRole('textbox', { name: 'Response body' })
+    await ue.upload(screen.getByLabelText('Upload body from file'), new File([PNG], 'logo.png', { type: 'image/png' }))
+    await ue.click(within(await screen.findByRole('group', { name: 'Binary body' })).getByRole('button', { name: 'Remove' }))
+    const body = (await screen.findByRole('textbox', { name: 'Response body' })) as HTMLTextAreaElement
+    expect(body.value).toBe('')
+    await ue.upload(screen.getByLabelText('Upload body from file'), new File(['a,b\n1,2'], 'rows.csv', { type: 'text/csv' }))
+    await waitFor(() => expect(body.value).toBe('a,b\n1,2'))
+  })
+
+  it('refuses a file over 5 MB with a clear message', async () => {
+    mockCatalog([textEndpoint()])
+    await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'ping' }} />)
+    const ue = userEvent.setup({ applyAccept: false })
+    await screen.findByRole('textbox', { name: 'Response body' })
+    const big = new File(['x'], 'video.mp4')
+    Object.defineProperty(big, 'size', { value: 5 * 1024 * 1024 + 1 })
+    await ue.upload(screen.getByLabelText('Upload body from file'), big)
+    expect(await screen.findByText(/video\.mp4 is 5\.0 MB\. A body file can be at most 5 MB/)).toBeTruthy()
+    expect(screen.queryByRole('group', { name: 'Binary body' })).toBeNull()
+  })
+
+  it('a saved binary mock opens in Simple mode with its size and type', async () => {
+    mockCatalog([endpoint()])
+    server.use(
+      http.get(`${BASE}/api/mocks/m-1`, () =>
+        HttpResponse.json({
+          id: 'm-1',
+          name: 'Fetch citizen — 42',
+          priority: 5,
+          request: { method: 'POST', urlPath: '/nic/nic-service/get-citizen-info', bodyPatterns: [{ matchesJsonPath: { expression: '$.idNo', equalTo: '42' } }] },
+          response: { status: 200, headers: { 'Content-Type': 'image/png' }, base64Body: 'iVBORwABAv8=' },
+          metadata: { wiremockUi: { integration: 'nic', endpoint: 'get-citizen-info', owner: 'sara', version: 1, updatedAt: '', updatedBy: 'sara', source: 'ui' } },
+        }),
+      ),
+    )
+    await renderApp(<EditMockPage id="m-1" />)
+    const card = await screen.findByRole('group', { name: 'Binary body' })
+    expect(within(card).getByText('8 B · image/png')).toBeTruthy()
+    expect((screen.getByRole('tab', { name: 'Simple' })).getAttribute('aria-selected')).toBe('true')
+  })
+})
+
 describe('edit mock', () => {
   const stored = {
     id: 'm-1',

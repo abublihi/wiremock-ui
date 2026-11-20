@@ -278,6 +278,7 @@ export function MockEditor({
             onTextChange={setText}
             mock={mock}
             endpointLabel={endpointLabel}
+            jsonEndpoint={catalog?.endpoint.contentType === 'json'}
             saving={saving}
             error={formError}
             onSave={(value) => void saveAdvanced(value)}

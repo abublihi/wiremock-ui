@@ -1,5 +1,5 @@
-import { useId, useRef, useState } from 'react'
-import { AlertCircleIcon, CheckCircle2Icon, FileJsonIcon, UploadIcon } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { AlertCircleIcon, CheckCircle2Icon, FileJsonIcon, FolderOpenIcon, UploadIcon, XIcon } from 'lucide-react'
 import type { ImportReport } from '@/server/bundle/importer'
 import { useImport } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
@@ -7,97 +7,93 @@ import { Button } from '@/ui/components/ui/button'
 import { Spinner } from '@/ui/components/ui/spinner'
 import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
+import {
+  MAX_IMPORT_BYTES,
+  loadPicked,
+  megabytes,
+  mergeResults,
+  pickedFromDrop,
+  pickedFromInput,
+  type FileResult,
+  type ImportSummary,
+  type PickedFile,
+} from '@/ui/lib/import-files'
 import { cn } from '@/ui/lib/utils'
 
-export const MAX_IMPORT_BYTES = 10 * 1024 * 1024
-const BUNDLE_KEYS = ['integrations', 'catalog', 'mocks', 'oidcIdentities'] as const
-
-export type ImportSummary = { integrations: number; endpoints: number; mocks: number; oidcIdentities: number }
-
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-const count = (v: unknown) => (Array.isArray(v) ? v.length : 0)
-
-/** Mirrors the server's accepted shapes: a bundle, a WireMock export, a single stub or an array of stubs. */
-export function summarize(json: unknown): ImportSummary | null {
-  if (Array.isArray(json)) return { integrations: 0, endpoints: 0, mocks: json.length, oidcIdentities: 0 }
-  if (!isObject(json)) return null
-  if (BUNDLE_KEYS.some((k) => k in json)) {
-    return { integrations: count(json.integrations), endpoints: count(json.catalog), mocks: count(json.mocks), oidcIdentities: count(json.oidcIdentities) }
-  }
-  if ('mappings' in json) return { integrations: 0, endpoints: 0, mocks: count(json.mappings), oidcIdentities: 0 }
-  if (isObject(json.request) && isObject(json.response)) return { integrations: 0, endpoints: 0, mocks: 1, oidcIdentities: 0 }
-  return null
-}
-
-function readText(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error ?? new Error('read failed'))
-    reader.readAsText(file)
-  })
-}
-
-type Loaded = { name: string; bundle: unknown; summary: ImportSummary }
+type Loaded = { label: string; results: FileResult[]; skipped: string[] }
 
 export function ImportPanel() {
   const t = useT()
   // Prune would delete stubs from the user's own WireMock: not offered in WireMock-only mode.
   const wiremockOnly = useWireMockOnly()
   const inputId = useId()
-  const inputRef = useRef<HTMLInputElement>(null)
+  const filesRef = useRef<HTMLInputElement>(null)
+  const folderRef = useRef<HTMLInputElement>(null)
   const run = useImport()
   const [loaded, setLoaded] = useState<Loaded | null>(null)
-  const [fileError, setFileError] = useState<string | null>(null)
+  const [reading, setReading] = useState(false)
   const [prune, setPrune] = useState(false)
   const [report, setReport] = useState<ImportReport | null>(null)
   const [dragging, setDragging] = useState(false)
 
+  // React has no prop for it: the folder picker needs the (non-standard, widely supported) webkitdirectory attribute.
+  useEffect(() => {
+    folderRef.current?.setAttribute('webkitdirectory', '')
+  }, [report])
+
+  const clearInputs = () => {
+    if (filesRef.current) filesRef.current.value = ''
+    if (folderRef.current) folderRef.current.value = ''
+  }
   const reset = () => {
     setLoaded(null)
     setReport(null)
-    setFileError(null)
     setPrune(false)
     run.reset()
-    if (inputRef.current) inputRef.current.value = ''
+    clearInputs()
   }
 
-  const choose = async (file: File | undefined) => {
-    if (!file) return
+  const choose = async (picked: PickedFile[], folder: (p: PickedFile) => boolean) => {
+    if (picked.length === 0) return
     setLoaded(null)
     setReport(null)
-    setFileError(null)
     run.reset()
-    // Checked before reading anything: the server's 10 MB limit and its JSON-only body.
-    if (!file.name.toLowerCase().endsWith('.json')) return setFileError(t('import.notJson', { name: file.name }))
-    if (file.size > MAX_IMPORT_BYTES) return setFileError(t('import.tooLarge', { name: file.name, size: (file.size / 1024 / 1024).toFixed(1) }))
-    let text: string
+    setReading(true)
     try {
-      text = await readText(file)
-    } catch {
-      return setFileError(t('import.readFailed', { name: file.name }))
+      const { results, skipped } = await loadPicked(picked, { folder })
+      const label = results.length === 1 ? results[0].path : t('import.filesLabel', { count: results.length })
+      setLoaded({ label, results, skipped })
+    } finally {
+      setReading(false)
     }
-    let bundle: unknown
-    try {
-      bundle = JSON.parse(text)
-    } catch (error) {
-      return setFileError(t('import.invalidJson', { name: file.name, message: error instanceof Error ? error.message : '' }))
-    }
-    const summary = summarize(bundle)
-    if (!summary) return setFileError(t('import.unrecognised', { name: file.name }))
-    setLoaded({ name: file.name, bundle, summary })
   }
 
+  const remove = (path: string) =>
+    setLoaded((current) => {
+      if (!current) return current
+      const results = current.results.filter((r) => r.path !== path)
+      if (results.length === 0) {
+        clearInputs()
+        return null
+      }
+      return { ...current, results, label: results.length === 1 ? results[0].path : t('import.filesLabel', { count: results.length }) }
+    })
+
+  const merged = useMemo(() => (loaded ? mergeResults(loaded.results) : null), [loaded])
+  const failed = loaded?.results.filter((r) => !r.ok).length ?? 0
+  const tooBig = merged !== null && merged.bytes > MAX_IMPORT_BYTES
+  const empty = loaded !== null && failed === 0 && loaded.results.length === 0
+
   const submit = async () => {
-    if (!loaded) return
+    if (!merged || failed > 0 || tooBig) return
     try {
-      setReport(await run.mutateAsync({ bundle: loaded.bundle, prune }))
+      setReport(await run.mutateAsync({ bundle: merged.bundle, prune }))
     } catch {
       // shown from run.error
     }
   }
 
-  if (report) return <ReportCard report={report} name={loaded?.name} onAgain={reset} />
+  if (report) return <ReportCard report={report} name={loaded?.label} onAgain={reset} />
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
@@ -110,7 +106,7 @@ export function ImportPanel() {
         onDrop={(e) => {
           e.preventDefault()
           setDragging(false)
-          void choose(e.dataTransfer.files[0])
+          void pickedFromDrop(e.dataTransfer).then(({ picked, fromFolder }) => choose(picked, (p) => fromFolder.has(p.path)))
         }}
         className={cn(
           'flex flex-col items-center gap-3 rounded-md border border-dashed border-line bg-surface px-4 py-10 text-center transition-colors',
@@ -123,38 +119,94 @@ export function ImportPanel() {
           <p className="text-xs text-muted-foreground">{t('import.dropHint')}</p>
         </div>
         <input
-          ref={inputRef}
-          id={inputId}
+          ref={filesRef}
           type="file"
-          accept=".json,application/json"
+          multiple
+          accept=".json,.zip,application/json,application/zip"
           className="sr-only"
           aria-label={t('import.choose')}
-          onChange={(e) => void choose(e.target.files?.[0])}
+          onChange={(e) => void choose(pickedFromInput(e.target.files ?? []), () => false)}
         />
-        <Button type="button" variant="outline" onClick={() => inputRef.current?.click()}>
-          <FileJsonIcon data-icon="inline-start" />
-          {t(loaded ? 'import.change' : 'import.choose')}
-        </Button>
+        <input
+          ref={folderRef}
+          type="file"
+          multiple
+          className="sr-only"
+          aria-label={t('import.chooseFolder')}
+          onChange={(e) => void choose(pickedFromInput(e.target.files ?? []), () => true)}
+        />
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button type="button" variant="outline" disabled={reading} onClick={() => filesRef.current?.click()}>
+            <FileJsonIcon data-icon="inline-start" />
+            {t('import.choose')}
+          </Button>
+          <Button type="button" variant="outline" disabled={reading} onClick={() => folderRef.current?.click()}>
+            <FolderOpenIcon data-icon="inline-start" />
+            {t('import.chooseFolder')}
+          </Button>
+        </div>
+        {reading && (
+          <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Spinner />
+            {t('import.reading')}
+          </p>
+        )}
       </div>
 
-      {fileError && (
-        <Alert variant="destructive" role="alert">
-          <AlertCircleIcon />
-          <AlertDescription>{fileError}</AlertDescription>
-        </Alert>
-      )}
-
-      {loaded && (
+      {loaded && merged && (
         <section aria-labelledby={`${inputId}-summary`} className="glow-border flex flex-col gap-4 rounded-md border border-line bg-surface p-4">
-          <h2 id={`${inputId}-summary`} className="font-mono text-xs text-muted-foreground">
-            {t('import.summaryTitle', { name: loaded.name })}
+          <h2 id={`${inputId}-summary`} className="font-mono text-xs break-all text-muted-foreground">
+            {t('import.summaryTitle', { name: loaded.label })}
           </h2>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label={t('import.summaryIntegrations')} value={loaded.summary.integrations} />
-            <Stat label={t('import.summaryEndpoints')} value={loaded.summary.endpoints} />
-            <Stat label={t('import.summaryMocks')} value={loaded.summary.mocks} />
-            {loaded.summary.oidcIdentities > 0 && <Stat label={t('import.summaryIdentities')} value={loaded.summary.oidcIdentities} />}
+            <Stat label={t('import.summaryIntegrations')} value={merged.summary.integrations} />
+            <Stat label={t('import.summaryEndpoints')} value={merged.summary.endpoints} />
+            <Stat label={t('import.summaryMocks')} value={merged.summary.mocks} />
+            {merged.summary.oidcIdentities > 0 && <Stat label={t('import.summaryIdentities')} value={merged.summary.oidcIdentities} />}
           </dl>
+
+          <ul aria-label={t('import.filesList')} className="flex max-h-72 flex-col divide-y divide-line overflow-y-auto rounded-md border border-line">
+            {loaded.results.map((r) => (
+              <li key={r.path} className="flex items-start gap-2 px-3 py-2 text-xs">
+                {r.ok ? (
+                  <CheckCircle2Icon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-signal-fg" />
+                ) : (
+                  <AlertCircleIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-mismatch" />
+                )}
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span data-path dir="ltr" className="font-mono break-all">{r.path}</span>
+                  {r.ok ? (
+                    <span className="text-muted-foreground">{countsText(t, r.summary)}</span>
+                  ) : (
+                    <span className="break-words text-mismatch">{t(r.error.key, r.error.params)}</span>
+                  )}
+                </div>
+                <Button type="button" variant="ghost" size="icon-xs" aria-label={t('import.removeFile', { name: r.path })} onClick={() => remove(r.path)}>
+                  <XIcon />
+                </Button>
+              </li>
+            ))}
+          </ul>
+
+          {loaded.skipped.length > 0 && (
+            <p className="text-[11px] break-all text-hazard-fg">
+              {t(loaded.skipped.length === 1 ? 'import.skippedEntriesOne' : 'import.skippedEntries', { count: loaded.skipped.length, names: loaded.skipped.join(', ') })}
+            </p>
+          )}
+          {failed > 0 && (
+            <Alert variant="destructive" role="alert">
+              <AlertCircleIcon />
+              <AlertDescription>{t('import.fixErrors')}</AlertDescription>
+            </Alert>
+          )}
+          {failed === 0 && tooBig && (
+            <Alert variant="destructive" role="alert">
+              <AlertCircleIcon />
+              <AlertDescription>{t('import.mergedTooLarge', { size: megabytes(merged.bytes) })}</AlertDescription>
+            </Alert>
+          )}
+          {empty && <p className="text-xs text-muted-foreground">{t('import.nothingFound')}</p>}
+
           {!wiremockOnly && (
             <div className="flex items-start gap-2">
               <input
@@ -183,7 +235,7 @@ export function ImportPanel() {
             </Alert>
           )}
           <div>
-            <Button onClick={() => void submit()} disabled={run.isPending}>
+            <Button onClick={() => void submit()} disabled={run.isPending || failed > 0 || tooBig || empty}>
               {run.isPending ? <Spinner data-icon="inline-start" /> : <UploadIcon data-icon="inline-start" />}
               {t(run.isPending ? 'import.running' : 'import.run')}
             </Button>
@@ -192,6 +244,14 @@ export function ImportPanel() {
       )}
     </div>
   )
+}
+
+function countsText(t: ReturnType<typeof useT>, s: ImportSummary): string {
+  const parts: string[] = []
+  if (s.integrations > 0) parts.push(t(s.integrations === 1 ? 'import.countIntegration' : 'import.countIntegrations', { count: s.integrations }))
+  if (s.endpoints > 0) parts.push(t(s.endpoints === 1 ? 'import.countEndpoint' : 'import.countEndpoints', { count: s.endpoints }))
+  parts.push(t(s.mocks === 1 ? 'import.countMock' : 'import.countMocks', { count: s.mocks }))
+  return parts.join(' · ')
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
@@ -207,10 +267,10 @@ function ReportCard({ report, name, onAgain }: { report: ImportReport; name?: st
   const t = useT()
   return (
     <section aria-label={t('import.reportTitle')} className="glow-border flex max-w-2xl flex-col gap-4 rounded-md border border-line bg-surface p-4">
-      <h2 className="flex items-center gap-2 text-sm font-medium text-signal-fg">
+      <h2 className="flex flex-wrap items-center gap-2 text-sm font-medium text-signal-fg">
         <CheckCircle2Icon aria-hidden className="size-4" />
         {t('import.reportTitle')}
-        {name && <span className="font-mono text-xs font-normal text-muted-foreground">{name}</span>}
+        {name && <span className="font-mono text-xs font-normal break-all text-muted-foreground">{name}</span>}
       </h2>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label={t('import.reportCreated')} value={report.created} />

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertCircleIcon, EyeIcon, SaveIcon } from 'lucide-react'
+import { AlertCircleIcon, EyeIcon, FileIcon, SaveIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
@@ -39,6 +39,8 @@ import {
   visiblePresets,
 } from '@/ui/lib/presets'
 import { cn } from '@/ui/lib/utils'
+import { type BodyFile, formatSize } from '@/ui/lib/body-file'
+import { BodyFileButton } from './BodyFileButton'
 import { CodeEditor } from './CodeEditor'
 import { Eyebrow } from './EditorShell'
 import { keyLabel } from './EndpointPicker'
@@ -142,6 +144,7 @@ export function SimpleEditor({
   const [serverErrors, setServerErrors] = useState<Errors>({})
   const [formError, setFormError] = useState<{ title: string; message: string } | null>(null)
   const [preview, setPreview] = useState<BuiltStub | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
   // Required URLs are only flagged once the user tries to preview or save.
   const [attempted, setAttempted] = useState(false)
 
@@ -221,6 +224,13 @@ export function SimpleEditor({
     const refill = !bodyTouched && (example !== '' || !keepWithoutExample)
     if (refill) setExampleStatus(status)
     update({ preset, status, ...(refill ? { body: example } : {}) }, ['status', 'body'])
+  }
+  /** A text file becomes the body (the endpoint keeps its Content-Type); anything else a binary body with its own. */
+  const onBodyFile = (file: BodyFile) => {
+    setBodyTouched(true)
+    if (file.kind === 'text') update({ body: file.text, binary: null }, ['body'])
+    else update({ body: '', binary: { base64: file.base64, name: file.name, size: file.size, contentType: file.contentType } }, ['body'])
+    toast.success(t('editor.bodyFile.loaded', { name: file.name }))
   }
   const onPreset = (value: string) => {
     if (!value) return // the toggle group allows deselecting; a status is always chosen
@@ -456,11 +466,37 @@ export function SimpleEditor({
                 ) : (
                   <FieldLabel htmlFor={id('body')}>{t('editor.body')}</FieldLabel>
                 )}
-                {!broken && !bodyTouched && form.body !== '' && (
-                  <span className="text-[11px] text-muted-foreground">{t('editor.bodyFromExample', { status: exampleStatus })}</span>
-                )}
+                <span className="flex flex-wrap items-center gap-2">
+                  {!broken && !bodyTouched && form.body !== '' && (
+                    <span className="text-[11px] text-muted-foreground">{t('editor.bodyFromExample', { status: exampleStatus })}</span>
+                  )}
+                  {!broken && !form.binary && <BodyFileButton onFile={onBodyFile} onError={setFileError} />}
+                </span>
               </div>
-              {bodyLanguage ? (
+              {!broken && form.binary ? (
+                <div
+                  role="group"
+                  aria-label={t('editor.bodyFile.binary')}
+                  className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-surface-2 px-3 py-2.5"
+                >
+                  <FileIcon aria-hidden className="size-4 shrink-0 text-signal-fg" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{t('editor.bodyFile.binary')}</span>
+                    <span dir="ltr" className="font-mono text-xs [overflow-wrap:anywhere]">
+                      {form.binary.name
+                        ? t('editor.bodyFile.binaryDetails', { name: form.binary.name, size: formatSize(form.binary.size), type: form.binary.contentType })
+                        : t('editor.bodyFile.binaryDetailsNoName', { size: formatSize(form.binary.size), type: form.binary.contentType })}
+                    </span>
+                  </div>
+                  <span className="flex items-center gap-1.5">
+                    <BodyFileButton label={t('editor.bodyFile.replace')} onFile={onBodyFile} onError={setFileError} />
+                    <Button type="button" variant="ghost" size="xs" onClick={() => update({ binary: null, body: '' }, ['body'])}>
+                      <Trash2Icon data-icon="inline-start" />
+                      {t('editor.bodyFile.remove')}
+                    </Button>
+                  </span>
+                </div>
+              ) : bodyLanguage ? (
                 <CodeEditor
                   value={broken ? '' : form.body}
                   language={bodyLanguage}
@@ -494,6 +530,11 @@ export function SimpleEditor({
                 <FieldDescription id={id('body-hint')} className="text-xs">
                   {t('editor.bodyDisabled')}
                 </FieldDescription>
+              )}
+              {fileError && (
+                <p role="alert" className="text-xs text-mismatch">
+                  {fileError}
+                </p>
               )}
               {fieldError('body')}
             </Field>

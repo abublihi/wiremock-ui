@@ -119,7 +119,7 @@ describe('WireMock-only mode (STORE_DRIVER=none)', () => {
     const user = userEvent.setup({ applyAccept: false })
     await renderApp(none(<ImportPage />))
     const bundle = JSON.stringify({ mocks: [{ request: { method: 'GET', urlPath: '/x' }, response: { status: 200 } }] })
-    await user.upload(screen.getByLabelText('Choose file'), new File([bundle], 'b.json', { type: 'application/json' }))
+    await user.upload(screen.getByLabelText('Choose files'), new File([bundle], 'b.json', { type: 'application/json' }))
     await screen.findByRole('region', { name: /In b\.json/ })
     expect(screen.queryByRole('checkbox')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Import' }))

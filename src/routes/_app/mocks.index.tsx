@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { Link, createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { AlertCircleIcon, DatabaseIcon, InboxIcon } from 'lucide-react'
 import { useIntegrations, useMocks } from '@/ui/api/queries'
+import { ExportMenu } from '@/ui/components/mocks/ExportMenu'
 import { NewMockButton, ResetMineButton } from '@/ui/components/mocks/MockActions'
 import { MockFilters, type MocksSearch } from '@/ui/components/mocks/MockFilters'
 import { MockTable, MockTableSkeleton } from '@/ui/components/mocks/MockTable'
@@ -10,6 +11,7 @@ import { Button } from '@/ui/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
 import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
+import { scopeFromFilter } from '@/ui/lib/export'
 
 export type { MocksSearch }
 
@@ -72,7 +74,8 @@ export function MocksPage({
             {mocks.data ? t(count === 1 ? 'mocks.captionOne' : 'mocks.caption', { count, baseline }) : '//'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportMenu scope={scopeFromFilter({ owner, integration: search.integration, wiremockOnly })} />
           {!wiremockOnly && <ResetMineButton />}
           <NewMockButton />
         </div>

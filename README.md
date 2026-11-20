@@ -32,7 +32,7 @@ Other ways to run it: with Redis, from source, or **against a WireMock you alrea
 ## Documentation
 
 - [Installing](docs/INSTALL.md): the ways to run it (Compose without Redis, Compose with Redis, from source, or against an existing WireMock with no storage), every setting, Kubernetes, backups, upgrades and troubleshooting.
-- [Using it](docs/USAGE.md): the concepts (integration → endpoint → mock), a walkthrough from the catalog to the request log, testing and curl, proxies, webhooks, scenarios, WireMock-only mode, Advanced mode and history, users and audit, imports and seeding, and the API for scripts and CI.
+- [Using it](docs/USAGE.md): the concepts (integration → endpoint → mock), a walkthrough from the catalog to the request log, testing and curl, proxies, webhooks, scenarios, WireMock-only mode, Advanced mode and history, users and audit, import from files and export, seeding, and the API for scripts and CI.
 
 ## Development
 

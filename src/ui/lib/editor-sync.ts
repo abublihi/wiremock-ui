@@ -14,6 +14,7 @@ import {
   type Preset,
   type WebhookMethod,
 } from './presets'
+import { base64Size } from './body-file'
 
 /** A header name and value as the form edits them (rows keep their order). */
 export type HeaderRow = { name: string; value: string }
@@ -62,6 +63,15 @@ const SETTABLE_SCENARIO_NAME = /^[A-Za-z0-9\-._~!$&'()*+,=:@]+$/
 /** Whether the Scenarios page can set this scenario's state (WireMock 3.13.1 cannot address names with spaces and the like). */
 export const isScenarioNameSettable = (name: string) => SETTABLE_SCENARIO_NAME.test(name) && !name.startsWith('.')
 
+/** A response body uploaded from a non-text file: sent as WireMock's base64Body with the file's Content-Type. */
+export type BinaryBody = {
+  base64: string
+  /** The file name when it was just uploaded; '' for a saved mock (WireMock keeps no file name). */
+  name: string
+  size: number
+  contentType: string
+}
+
 export type SimpleForm = {
   integration: string
   endpoint: string
@@ -70,6 +80,8 @@ export type SimpleForm = {
   preset: Preset
   status: number
   body: string
+  /** Replaces `body` while set. */
+  binary: BinaryBody | null
   slow: boolean
   delaySeconds: number
   fault: '' | Fault
@@ -107,6 +119,7 @@ export function emptyForm(endpoint: Endpoint): SimpleForm {
     preset: first ?? 'custom',
     status,
     body: exampleFor(endpoint, status),
+    binary: null,
     slow: false,
     delaySeconds: DEFAULT_SLOW_SECONDS,
     fault: '',
@@ -160,7 +173,10 @@ export function toSimpleInput(form: SimpleForm): SimpleMockInput {
   } else if (form.fault) input.fault = form.fault
   else {
     input.status = form.status
-    if (form.body !== '') input.body = form.body
+    if (form.binary) {
+      input.base64Body = form.binary.base64
+      input.headers = { 'Content-Type': form.binary.contentType }
+    } else if (form.body !== '') input.body = form.body
   }
   if (form.answer !== 'proxy') {
     if (!form.fault && form.preset === 'timeout') input.delayMs = TIMEOUT_DELAY_MS
@@ -280,6 +296,18 @@ export function fromStub(stub: StubMapping, integration: Integration, endpoint: 
     if (!isFault(response.fault) || !onlyKeys(response, ['fault', 'fixedDelayMilliseconds'])) return null
     form.fault = response.fault
     form.body = ''
+  } else if (response.base64Body !== undefined) {
+    // A body uploaded from a file: the builder writes the file's Content-Type and nothing else.
+    if (!onlyKeys(response, ['status', 'headers', 'base64Body', 'fixedDelayMilliseconds'])) return null
+    const { status, headers, base64Body } = response
+    if (typeof status !== 'number' || typeof base64Body !== 'string' || !isRecord(headers) || !onlyKeys(headers, ['Content-Type'])) return null
+    const contentType = headers['Content-Type']
+    if (typeof contentType !== 'string' || contentType === '') return null
+    form.status = status
+    form.preset = presetForStatus(status, delay)
+    form.body = ''
+    form.binary = { base64: base64Body, name: '', size: base64Size(base64Body), contentType }
+    if (form.preset === 'timeout') return finish(stub, endpoint, form)
   } else {
     const bodyField = endpoint.contentType === 'json' ? 'jsonBody' : 'body'
     if (!onlyKeys(response, ['status', 'headers', bodyField, 'fixedDelayMilliseconds'])) return null
