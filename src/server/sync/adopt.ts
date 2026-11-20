@@ -7,14 +7,16 @@ import type { MockStore } from '../store/types'
 import type { WireMockClient } from '../wiremock/client'
 import type { StubMapping, WireMockUiMeta } from '../wiremock/types'
 import { MARKER_ID } from './marker'
-import { isRecordingProxy } from '../recording/proxy'
+import { recordingProxyMatcher } from '../recording/proxy'
 import { ADOPTION_PENDING, SYNC_LOCK, SYNC_LOCK_TTL_MS } from './reconciler'
 
 /** Owner of a stub taken over from WireMock that names none itself. */
 export const ADOPTED_OWNER = 'wiremock'
 
-const liveStubs = async (wiremock: WireMockClient) =>
-  (await wiremock.listStubs()).filter((s) => s.id !== MARKER_ID && !isRecordingProxy(s))
+const liveStubs = async (wiremock: WireMockClient) => {
+  const isRecordingProxy = await recordingProxyMatcher(wiremock)
+  return (await wiremock.listStubs()).filter((s) => s.id !== MARKER_ID && !isRecordingProxy(s))
+}
 
 /**
  * Decides at boot whether WireMock's stubs must be adopted, and records the decision in the store before

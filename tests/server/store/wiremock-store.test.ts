@@ -100,3 +100,10 @@ test('delete checks the version when given; a missing id resolves; history is em
   expect(a && b && a !== b).toBe(true)
   expect(await store.ping()).toBe(true)
 })
+
+test("a person's own catch-all proxy stub is a mock when WireMock is not recording", async () => {
+  const proxy = { id: ID3, request: { method: 'ANY' }, response: { proxyBaseUrl: 'http://upstream.test' } } as StubMapping
+  await client.importStubs([proxy], { deleteAllNotInImport: false })
+  expect(await client.recordingStatus()).not.toBe('Recording')
+  expect((await store.listAll()).map((s) => s.id)).toEqual([ID3])
+})

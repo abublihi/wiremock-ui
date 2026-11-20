@@ -4,7 +4,7 @@ import type { MockStore } from '../store/types'
 import type { WireMockClient } from '../wiremock/client'
 import type { StubMapping } from '../wiremock/types'
 import { MARKER_ID, markerStub } from './marker'
-import { isRecordingProxy } from '../recording/proxy'
+import { recordingProxyMatcher } from '../recording/proxy'
 
 /** Held by a full sync and by adoption, so the two never run at once (on any instance). */
 export const SYNC_LOCK = 'sync:lock'
@@ -89,6 +89,7 @@ export class Reconciler {
       // Stubs not adopted yet are not in the store: keep every live stub until adoption completes.
       const adopting = await this.store.getFlag(ADOPTION_PENDING)
       if (adopting) logger.warn('adoption pending: full sync keeps WireMock stubs that are not in the store')
+      const isRecordingProxy = await recordingProxyMatcher(this.wiremock)
       for (const live of adopting ? [] : await this.wiremock.listStubs()) {
         const id = live.id
         // A recording in progress: the proxy stub is WireMock's own and goes when the recording stops.
