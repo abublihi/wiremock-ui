@@ -24,9 +24,11 @@ docker compose -f compose.sqlite.yaml up -d --build
 # open http://localhost:3000, sign in with ADMIN_USER / ADMIN_PASSWORD; WireMock is on :8080
 ```
 
+Other ways to run it: with Redis, from source, or **against a WireMock you already have, storing nothing** (`STORE_DRIVER=none`, view and edit WireMock's own stubs): see [Installing](docs/INSTALL.md#run-against-an-existing-wiremock-no-storage).
+
 ## Documentation
 
-- [Installing](docs/INSTALL.md): the three ways to run it (Compose without Redis, Compose with Redis, from source), every setting, Kubernetes, backups, upgrades and troubleshooting.
+- [Installing](docs/INSTALL.md): the ways to run it (Compose without Redis, Compose with Redis, from source, or against an existing WireMock with no storage), every setting, Kubernetes, backups, upgrades and troubleshooting.
 - [Using it](docs/USAGE.md): a walkthrough from the catalog to the request log, Advanced mode and history, users and audit, imports and seeding, and the API for scripts and CI.
 
 ## Development

@@ -3,6 +3,7 @@ import { safeRecord, type AuditLog } from '../audit/log'
 import { SESSION_TTL_SECONDS, limitLoginAttempts } from '../auth/session'
 import type { Config } from '../config'
 import { AppError, ConfigError, NotFoundError, ValidationError } from '../errors'
+import { NO_USER_MANAGEMENT } from '../store/memory'
 import { hashPassword, verifyPassword, verifyPasswordOrDummy } from './passwords'
 import { toPublicUser } from './types'
 import type { PublicUser, Session, User, UserStore } from './types'
@@ -31,8 +32,11 @@ export class UserService {
   private readonly audit: AuditLog
   private readonly now: () => Date
   private readonly hashCost?: number
+  private readonly fixedAccounts: boolean
 
-  constructor(deps: { users: UserStore; audit: AuditLog; now?: () => Date; hashCost?: number }) {
+  /** `fixedAccounts`: WireMock-only mode (spec A10) keeps the bootstrap account only; account changes are refused. */
+  constructor(deps: { users: UserStore; audit: AuditLog; now?: () => Date; hashCost?: number; fixedAccounts?: boolean }) {
+    this.fixedAccounts = deps.fixedAccounts ?? false
     this.users = deps.users
     this.audit = deps.audit
     this.now = deps.now ?? (() => new Date())
@@ -51,6 +55,10 @@ export class UserService {
     if (isActive(target) && (await this.otherActiveUsers(target.id)) === 0) {
       throw new AppError('At least one active user is required', 409)
     }
+  }
+
+  private assertManaged(): void {
+    if (this.fixedAccounts) throw new ValidationError(NO_USER_MANAGEMENT)
   }
 
   private async load(id: string): Promise<User> {
@@ -112,6 +120,7 @@ export class UserService {
   }
 
   async create(input: { username: string; displayName?: string; password: string }, actor: string): Promise<PublicUser> {
+    this.assertManaged()
     const username = normalizeUsername(input.username)
     checkPassword(input.password)
     const ts = this.now().toISOString()
@@ -136,6 +145,7 @@ export class UserService {
     actor: string,
     opts: { keepSessionId?: string } = {},
   ): Promise<PublicUser> {
+    this.assertManaged()
     const current = await this.load(id)
     if (patch.password !== undefined) checkPassword(patch.password)
     const next: User = {
@@ -163,6 +173,7 @@ export class UserService {
   }
 
   async remove(id: string, actor: string): Promise<void> {
+    this.assertManaged()
     const user = await this.load(id)
     await this.guardLastActive(user)
     await this.users.deleteUser(id)
@@ -170,6 +181,7 @@ export class UserService {
   }
 
   async changeOwnPassword(userId: string, current: string, next: string, keepSessionId?: string): Promise<void> {
+    this.assertManaged()
     const user = await this.load(userId)
     if (!(await verifyPassword(String(current ?? ''), user.passwordHash))) throw new ValidationError('Current password is incorrect')
     checkPassword(next)

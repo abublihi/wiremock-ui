@@ -1,11 +1,13 @@
 import { Outlet, createFileRoute } from '@tanstack/react-router'
 import { useSession } from '@/ui/api/queries'
-import { requireSession } from '@/ui/auth/session'
-import { APP_NAV, AppShell } from '@/ui/components/shell/AppShell'
+import { loadConfigForApp, requireSession } from '@/ui/auth/session'
+import { AppShell, navFor } from '@/ui/components/shell/AppShell'
+import { ServerConfigProvider } from '@/ui/config'
 
 export const Route = createFileRoute('/_app')({
   beforeLoad: async ({ context, location }) => ({
     session: await requireSession(context.queryClient, location),
+    serverConfig: await loadConfigForApp(context.queryClient),
   }),
   component: AppLayout,
 })
@@ -13,9 +15,12 @@ export const Route = createFileRoute('/_app')({
 function AppLayout() {
   // The query keeps the user current (after a password change, say); beforeLoad guarantees it is cached.
   const { data } = useSession()
+  const { session, serverConfig } = Route.useRouteContext()
   return (
-    <AppShell nav={APP_NAV} user={data?.user ?? Route.useRouteContext().session.user}>
-      <Outlet />
-    </AppShell>
+    <ServerConfigProvider config={serverConfig}>
+      <AppShell nav={navFor(serverConfig)} user={data?.user ?? session.user}>
+        <Outlet />
+      </AppShell>
+    </ServerConfigProvider>
   )
 }

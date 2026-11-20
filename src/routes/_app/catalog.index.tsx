@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { AlertCircleIcon, ChevronRightIcon, DatabaseIcon, PlusIcon } from 'lucide-react'
+import { AlertCircleIcon, ChevronRightIcon, DatabaseIcon, InfoIcon, PlusIcon, XIcon } from 'lucide-react'
 import { useEndpoints, useIntegrations } from '@/ui/api/queries'
 import { IntegrationForm } from '@/ui/components/catalog/IntegrationForm'
-import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
 import { Skeleton } from '@/ui/components/ui/skeleton'
+import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 import type { Integration } from '@/server/catalog/types'
 
@@ -34,6 +35,8 @@ export function CatalogPage() {
         </div>
         {add}
       </header>
+
+      <MemoryNotice />
 
       {integrations.isPending ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -73,6 +76,39 @@ export function CatalogPage() {
 
       <IntegrationForm open={adding} onOpenChange={setAdding} />
     </div>
+  )
+}
+
+const NOTICE_DISMISSED = 'wmui.catalogMemoryNotice.dismissed'
+
+/** WireMock-only mode keeps the catalog in memory: say so once, until this browser dismisses it. */
+function MemoryNotice() {
+  const t = useT()
+  const wiremockOnly = useWireMockOnly()
+  // Read after mount (the server render cannot see this browser's storage); storage may be unavailable.
+  const [dismissed, setDismissed] = useState(false)
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(NOTICE_DISMISSED) === '1') setDismissed(true)
+    } catch {}
+  }, [])
+  if (!wiremockOnly || dismissed) return null
+  const dismiss = () => {
+    setDismissed(true)
+    try {
+      localStorage.setItem(NOTICE_DISMISSED, '1')
+    } catch {}
+  }
+  return (
+    <Alert role="status" className="border-hazard/50 bg-hazard/10 text-foreground">
+      <InfoIcon className="text-hazard-fg" />
+      <AlertDescription className="text-foreground">{t('catalog.memoryNotice')}</AlertDescription>
+      <AlertAction>
+        <Button variant="ghost" size="icon-sm" aria-label={t('catalog.memoryNoticeDismiss')} onClick={dismiss}>
+          <XIcon />
+        </Button>
+      </AlertAction>
+    </Alert>
   )
 }
 

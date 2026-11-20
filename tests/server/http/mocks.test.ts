@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'vitest'
 import { healthz } from '../../../src/server/http/handlers/health'
 import { createMock, deleteMock, duplicateMock, getMock, listMocks, mockHistory, resetMine, restoreMock, updateMock } from '../../../src/server/http/handlers/mocks'
 import type { Runtime } from '../../../src/server/runtime'
-import { URL_, basic, login, req as baseReq, startTestRuntime } from '../../helpers/http'
+import { STORELESS, URL_, basic, req as baseReq, signIn, startTestRuntime } from '../../helpers/http'
 
 let env: Awaited<ReturnType<typeof startTestRuntime>>
 let rt: Runtime
@@ -141,10 +141,7 @@ test('WireMock rejects stub → 400 carrying WireMock reason', async () => {
 
 const mockBody = (path: string) => input(path)
 
-async function userSession(username: string) {
-  await rt.users.create({ username, password: 'password-1' }, 'ui-admin')
-  return login(rt, username, 'password-1')
-}
+const userSession = (username: string) => signIn(rt, username)
 
 const asSession = (s: { cookie: string; csrf: string }, withCsrf = true) => ({
   Cookie: s.cookie,
@@ -159,7 +156,8 @@ async function seedBaseline(path: string) {
     metadata: { wiremockUi: { owner: 'baseline', version: 1, updatedAt: new Date().toISOString(), updatedBy: 'baseline', source: 'seed' } },
   }
   await rt.wiremock.importStubs([stub as never], { deleteAllNotInImport: false })
-  await rt.store.save(stub as never, 0)
+  // In WireMock-only mode WireMock is the store.
+  if (!STORELESS) await rt.store.save(stub as never, 0)
   return stub.id
 }
 
@@ -202,16 +200,16 @@ test('mock create/update/delete write audit entries with actor and target', asyn
   await deleteMock(rt, req(`/api/mocks/${m.id}`, 'DELETE', undefined, asSession(s)), { id: m.id })
   const entries = (await rt.audit.list({ limit: 500 })).entries.filter((e) => e.target === m.id)
   expect(entries.map((e) => e.action).sort()).toEqual(['mock.create', 'mock.delete', 'mock.update'])
-  expect(entries.every((e) => e.actor === 'audited')).toBe(true)
+  expect(entries.every((e) => e.actor === s.username)).toBe(true)
 })
 
 test('a body cannot spoof the owner', async () => {
   const s = await userSession('spoofer')
   const body = input('/h/spoof', { metadata: { wiremockUi: { owner: 'baseline', version: 99, updatedBy: 'baseline' } } })
   const created = await (await createMock(rt, req('/api/mocks', 'POST', body, asSession(s)))).json()
-  expect(created.metadata.wiremockUi).toMatchObject({ owner: 'spoofer', version: 1, updatedBy: 'spoofer' })
+  expect(created.metadata.wiremockUi).toMatchObject({ owner: s.username, version: 1, updatedBy: s.username })
   const upd = await (await updateMock(rt, req(`/api/mocks/${created.id}`, 'PUT', { stub: body, version: 1 }, asSession(s)), { id: created.id })).json()
-  expect(upd.metadata.wiremockUi).toMatchObject({ owner: 'spoofer', version: 2 })
+  expect(upd.metadata.wiremockUi).toMatchObject({ owner: s.username, version: 2 })
 })
 
 test('an audit failure after a committed write is logged and the write still succeeds', async () => {
@@ -229,7 +227,8 @@ test('an audit failure after a committed write is logged and the write still suc
   }
 })
 
-test('GET /api/mocks: owner=me, status and q filters; bad status is 400', async () => {
+// Needs a second account (WireMock-only mode has one).
+test.skipIf(STORELESS)('GET /api/mocks: owner=me, status and q filters; bad status is 400', async () => {
   const s = await userSession('filterer')
   const mine = await (await createMock(rt, req('/api/mocks', 'POST', input('/h/f-mine/zebra', { response: { status: 418 } }), asSession(s)))).json()
   await createMock(rt, req('/api/mocks', 'POST', input('/h/f-other')))
@@ -244,7 +243,8 @@ test('GET /api/mocks: owner=me, status and q filters; bad status is 400', async 
   }
 })
 
-test('duplicate, history, restore and reset-mine over HTTP', async () => {
+// History and restore need a store.
+test.skipIf(STORELESS)('duplicate, history, restore and reset-mine over HTTP', async () => {
   const s = await userSession('extras')
   const viewer = await userSession('extras-viewer')
   const other = await userSession('extras-other')
@@ -303,13 +303,14 @@ test('a body id/uuid cannot target another stub (create, update, duplicate, rest
   const dup = await duplicateMock(rt, req(`/api/mocks/${mine.id}/duplicate`, 'POST', {}, asSession(s)), { id: mine.id })
   expect(dup.status).toBe(201)
   const restored = await restoreMock(rt, req(`/api/mocks/${mine.id}/restore`, 'POST', { version: 1 }, asSession(s)), { id: mine.id })
-  expect(restored.status).toBe(200)
+  // No history in WireMock-only mode, so no version to restore.
+  expect(restored.status).toBe(STORELESS ? 404 : 200)
 
   expect(await wmBody(baseId)).toMatchObject({ urlPath: '/h/uuid-base' })
   expect(await served('/h/uuid-base')).toBe(200)
   expect((await rt.store.get(baseId))?.metadata?.wiremockUi?.owner).toBe('baseline')
-  // Store and WireMock agree on the number of stubs, so the sync count check holds.
-  expect((await rt.wiremock.listStubIds()).length).toBe((await rt.store.listAll()).length + 1)
+  // Store and WireMock agree on the number of stubs (plus the marker), so the sync count check holds.
+  expect((await rt.wiremock.listStubIds()).length).toBe((await rt.store.listAll()).length + (STORELESS ? 0 : 1))
 })
 
 
@@ -319,10 +320,12 @@ test('healthz 200 with lastSyncAt set; 503 with wiremock:"error" after WireMock 
   const body = await ok.json()
   expect(body).toMatchObject({ ui: 'ok', store: 'ok', wiremock: 'ok', lastSyncError: null })
   expect(body.lastSyncError).toBeNull()
-  expect(typeof body.lastSyncAt).toBe('string')
+  // WireMock-only mode never syncs.
+  expect(typeof body.lastSyncAt).toBe(STORELESS ? 'object' : 'string')
 
   await wm().stop()
   const down = await healthz(rt, new Request(`${URL_}/healthz`))
   expect(down.status).toBe(503)
-  expect(await down.json()).toMatchObject({ store: 'ok', wiremock: 'error' })
+  // In WireMock-only mode WireMock is the store, so both are down.
+  expect(await down.json()).toMatchObject({ store: STORELESS ? 'error' : 'ok', wiremock: 'error' })
 })

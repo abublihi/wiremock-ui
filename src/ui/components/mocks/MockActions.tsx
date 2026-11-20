@@ -23,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/ui/components/ui/dropdown-menu'
+import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 
 export const mockName = (stub: StubMapping) => stub.name || stub.id
@@ -51,6 +52,8 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
   const duplicate = useDuplicateMock()
   const remove = useDeleteMock()
   const queryClient = useQueryClient()
+  // No history in WireMock-only mode, so nothing to undo a delete from.
+  const wiremockOnly = useWireMockOnly()
   const name = mockName(stub)
 
   const onDelete = () => {
@@ -59,7 +62,7 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
       { id: stub.id, version },
       {
         onSuccess: () =>
-          toast(t('mocks.deleted'), {
+          toast(t('mocks.deleted'), wiremockOnly ? undefined : {
             action: {
               label: t('mocks.undo'),
               onClick: () =>

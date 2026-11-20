@@ -4,6 +4,7 @@ import type { Integration } from '@/server/catalog/types'
 import { Input } from '@/ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
+import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 
 export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string }
@@ -23,6 +24,8 @@ export function MockFilters({
   onChange: (next: MocksSearch) => void
 }) {
   const t = useT()
+  // WireMock-only mode has one account and WireMock's own stubs: there is no "mine" to filter by.
+  const wiremockOnly = useWireMockOnly()
   const owner = search.owner ?? 'me'
   const [text, setText] = useState(search.q ?? '')
   const pushed = useRef(search.q ?? '')
@@ -45,17 +48,19 @@ export function MockFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <ToggleGroup
-        type="single"
-        variant="outline"
-        size="sm"
-        aria-label={t('mocks.filterOwner')}
-        value={owner === 'me' || owner === 'all' ? owner : ''}
-        onValueChange={(value) => value && onChange({ owner: value })}
-      >
-        <ToggleGroupItem value="me" className={ON}>{t('mocks.ownerMe')}</ToggleGroupItem>
-        <ToggleGroupItem value="all" className={ON}>{t('mocks.ownerAll')}</ToggleGroupItem>
-      </ToggleGroup>
+      {!wiremockOnly && (
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          aria-label={t('mocks.filterOwner')}
+          value={owner === 'me' || owner === 'all' ? owner : ''}
+          onValueChange={(value) => value && onChange({ owner: value })}
+        >
+          <ToggleGroupItem value="me" className={ON}>{t('mocks.ownerMe')}</ToggleGroupItem>
+          <ToggleGroupItem value="all" className={ON}>{t('mocks.ownerAll')}</ToggleGroupItem>
+        </ToggleGroup>
+      )}
 
       <div className="relative min-w-48 basis-full sm:flex-1 sm:basis-auto sm:max-w-72">
         <SearchIcon aria-hidden className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />

@@ -21,7 +21,13 @@ test('config picks redis when REDIS_URL is set, unless STORE_DRIVER says otherwi
   expect(loadConfig({ ...base, STORE_DRIVER: 'sqlite', SQLITE_PATH: '/data/x.db' })).toMatchObject({ storeDriver: 'sqlite', sqlitePath: '/data/x.db' })
 })
 test('rejects an unknown STORE_DRIVER', () => {
-  expect(() => loadConfig({ ...base, STORE_DRIVER: 'mongo' })).toThrow('STORE_DRIVER must be "redis" or "sqlite", got "mongo"')
+  expect(() => loadConfig({ ...base, STORE_DRIVER: 'mongo' })).toThrow('STORE_DRIVER must be "redis", "sqlite" or "none", got "mongo"')
+})
+test('STORE_DRIVER=none (WireMock-only mode) must be chosen explicitly and needs no Redis', () => {
+  const { REDIS_URL, ...rest } = base
+  expect(loadConfig({ ...rest, STORE_DRIVER: 'none' })).toMatchObject({ storeDriver: 'none' })
+  expect(loadConfig({ ...base, STORE_DRIVER: 'none' })).toMatchObject({ storeDriver: 'none' })
+  expect(loadConfig(rest).storeDriver).toBe('sqlite')
 })
 test('rejects non-positive SYNC_INTERVAL_SECONDS', () => {
   expect(() => loadConfig({ ...base, SYNC_INTERVAL_SECONDS: '0' })).toThrow(/SYNC_INTERVAL_SECONDS/)

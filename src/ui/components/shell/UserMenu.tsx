@@ -3,6 +3,7 @@ import { ChevronsUpDownIcon, KeyRoundIcon, LogOutIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PublicUser } from '@/server/users/types'
 import { useChangePassword, useLogout } from '@/ui/api/queries'
+import { useWireMockOnly } from '@/ui/config'
 import { Button } from '@/ui/components/ui/button'
 import {
   Dialog,
@@ -35,6 +36,8 @@ export function UserMenu({ user }: { user: PublicUser }) {
   const t = useT()
   const logout = useLogout()
   const [passwordOpen, setPasswordOpen] = useState(false)
+  // WireMock-only mode signs in with ADMIN_USER / ADMIN_PASSWORD only; the password is set there.
+  const wiremockOnly = useWireMockOnly()
   return (
     <>
       <DropdownMenu>
@@ -62,10 +65,12 @@ export function UserMenu({ user }: { user: PublicUser }) {
         <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-52">
           <DropdownMenuLabel>{t('user.signedInAs', { name: user.displayName })}</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setPasswordOpen(true)}>
-            <KeyRoundIcon data-icon="inline-start" />
-            {t('user.changePassword')}
-          </DropdownMenuItem>
+          {!wiremockOnly && (
+            <DropdownMenuItem onSelect={() => setPasswordOpen(true)}>
+              <KeyRoundIcon data-icon="inline-start" />
+              {t('user.changePassword')}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem disabled={logout.isPending} onSelect={() => logout.mutate()}>
             <LogOutIcon data-icon="inline-start" />
             {t('user.signOut')}

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { DatabaseIcon, FileClockIcon, ListIcon, ScrollTextIcon, UploadIcon, UsersIcon } from 'lucide-react'
 import type { PublicUser } from '@/server/users/types'
+import type { ServerConfig } from '@/ui/api/queries'
 import { useT } from '@/ui/i18n'
 import { Brand } from './Brand'
 import { HazardStrip } from './HazardStrip'
@@ -19,6 +20,11 @@ export const APP_NAV: NavItem[] = [
   { to: '/audit', label: 'nav.audit', icon: FileClockIcon, group: 'admin' },
   { to: '/import', label: 'nav.import', icon: UploadIcon, group: 'admin' },
 ]
+
+/** The nav for how the server runs: WireMock-only mode has no accounts to manage, so no Users page. */
+export function navFor(config: ServerConfig | null): NavItem[] {
+  return config?.storeDriver === 'none' ? APP_NAV.filter((item) => item.to !== '/users') : APP_NAV
+}
 
 export function AppShell({ nav, user, children }: { nav: NavItem[]; user: PublicUser | null; children: ReactNode }) {
   const t = useT()

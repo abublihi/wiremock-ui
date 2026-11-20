@@ -19,6 +19,8 @@ type Deps = {
   audit: AuditLog
   now?: () => Date
   newId?: () => string
+  /** WireMock-only mode (spec A10): the store writes WireMock itself, so the service does not write it first. */
+  storeIsWireMock?: boolean
 }
 
 const URL_FIELDS = ['url', 'urlPath', 'urlPattern', 'urlPathPattern', 'urlPathTemplate'] as const
@@ -81,8 +83,10 @@ export class MockService {
   private audit: AuditLog
   private now: () => Date
   private newId: () => string
+  private storeIsWireMock: boolean
 
   constructor(deps: Deps) {
+    this.storeIsWireMock = deps.storeIsWireMock ?? false
     this.wiremock = deps.wiremock
     this.store = deps.store
     this.audit = deps.audit
@@ -121,6 +125,7 @@ export class MockService {
     if (expectedVersion !== undefined && current.metadata?.wiremockUi?.version !== expectedVersion) {
       throw new ConflictError()
     }
+    if (this.storeIsWireMock) return this.store.delete(id, expectedVersion)
     await this.wiremock.deleteStub(id)
     try {
       await this.store.delete(id, expectedVersion)
@@ -269,6 +274,10 @@ export class MockService {
       metadata: { ...input.metadata, wiremockUi },
     }
 
+    if (this.storeIsWireMock) {
+      await this.store.save(stub, expectedVersion)
+      return stub
+    }
     await this.wiremock.importStubs([stub], { deleteAllNotInImport: false })
     try {
       await this.store.save(stub, expectedVersion)

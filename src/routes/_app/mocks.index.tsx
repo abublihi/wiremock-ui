@@ -8,6 +8,7 @@ import { MockTable, MockTableSkeleton } from '@/ui/components/mocks/MockTable'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
+import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 
 export type { MocksSearch }
@@ -48,11 +49,13 @@ export function MocksPage({
   onSearchChange: (next: MocksSearch) => void
 }) {
   const t = useT()
-  const owner = search.owner ?? 'me'
+  const wiremockOnly = useWireMockOnly()
+  // WireMock-only mode lists everything WireMock serves (no owner filter, no "Reset my mocks").
+  const owner = wiremockOnly ? 'all' : (search.owner ?? 'me')
   // 'all' is the UI's word for no owner filter; the API treats an owner value literally.
   const mocks = useMocks({ owner: owner === 'all' ? undefined : owner, integration: search.integration, status: search.status, q: search.q })
   const integrations = useIntegrations()
-  const filtered = Boolean(search.integration || search.status || search.q || owner !== 'me')
+  const filtered = Boolean(search.integration || search.status || search.q || (!wiremockOnly && owner !== 'me'))
 
   const count = mocks.data?.length ?? 0
   const baseline = (mocks.data ?? []).filter((m) => (m.metadata?.wiremockUi?.owner ?? 'baseline') === 'baseline').length
@@ -68,7 +71,7 @@ export function MocksPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <ResetMineButton />
+          {!wiremockOnly && <ResetMineButton />}
           <NewMockButton />
         </div>
       </header>

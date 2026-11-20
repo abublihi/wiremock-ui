@@ -6,6 +6,7 @@ import { useT } from '@/ui/i18n'
 import type { SimpleMockInput } from '@/server/catalog/build'
 import type { AuditPage } from '@/server/audit/log'
 import type { ImportReport } from '@/server/bundle/importer'
+import type { PublicConfig } from '@/server/http/handlers/config'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { PublicUser } from '@/server/users/types'
 import type { NearMissView, RequestSummary } from '@/server/requests/journal'
@@ -25,6 +26,7 @@ export type MockFilter = { owner?: string; integration?: string; status?: string
 /** Single source for every query key. Later tasks add their resources here. */
 export const queryKeys = {
   session: SESSION_KEY,
+  config: ['config'] as const,
   mocks: ['mocks'] as const,
   mockList: (filter: MockFilter) => ['mocks', 'list', filter] as const,
   integrations: ['integrations'] as const,
@@ -50,6 +52,17 @@ export const sessionQueryOptions = (fetchSession: () => Promise<SessionData> = d
 function defaultFetchSession() {
   return apiFetch<SessionData>('/api/session', { redirectOnUnauthorized: false })
 }
+
+export type ServerConfig = PublicConfig
+
+/** How the server runs (store driver, …); it only changes with a restart, so it is never refetched. */
+export const serverConfigQueryOptions = (fetchConfig: () => Promise<ServerConfig> = () => apiFetch<ServerConfig>('/api/config')) =>
+  queryOptions({
+    queryKey: queryKeys.config,
+    queryFn: fetchConfig,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  })
 
 export function useSession() {
   return useQuery(sessionQueryOptions())

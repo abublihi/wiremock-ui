@@ -20,6 +20,7 @@ import {
 import { Button } from '@/ui/components/ui/button'
 import { Spinner } from '@/ui/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/components/ui/tabs'
+import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 import {
   type EditableStub,
@@ -82,6 +83,7 @@ export function MockEditor({
   onRestored?: (stub: StubMapping, dirty: boolean) => void
 }) {
   const t = useT()
+  const wiremockOnly = useWireMockOnly()
   const link = mock ? linkOf(mock) : catalog && { integration: catalog.integration.key, endpoint: catalog.endpoint.key }
 
   const [init] = useState(() => {
@@ -238,7 +240,7 @@ export function MockEditor({
               {t('editor.mode.advanced')}
             </TabsTrigger>
           </TabsList>
-          {mock && onRestored && <HistorySheet id={mock.id} keepsDraft={dirty} onRestored={(stub) => onRestored(stub, dirty)} />}
+          {mock && onRestored && !wiremockOnly && <HistorySheet id={mock.id} keepsDraft={dirty} onRestored={(stub) => onRestored(stub, dirty)} />}
         </div>
 
         <TabsContent value="simple">

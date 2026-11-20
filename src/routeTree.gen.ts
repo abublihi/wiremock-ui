@@ -18,6 +18,7 @@ import { Route as AppImportRouteImport } from './routes/_app/import'
 import { Route as AppRequestsRouteImport } from './routes/_app/requests'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as ApiAuditRouteImport } from './routes/api/audit'
+import { Route as ApiConfigRouteImport } from './routes/api/config'
 import { Route as ApiImportRouteImport } from './routes/api/import'
 import { Route as ApiIntegrationsRouteImport } from './routes/api/integrations'
 import { Route as ApiMocksRouteImport } from './routes/api/mocks'
@@ -87,6 +88,11 @@ const AppUsersRoute = AppUsersRouteImport.update({
 const ApiAuditRoute = ApiAuditRouteImport.update({
   id: '/api/audit',
   path: '/api/audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiConfigRoute = ApiConfigRouteImport.update({
+  id: '/api/config',
+  path: '/api/config',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiImportRoute = ApiImportRouteImport.update({
@@ -233,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/requests': typeof AppRequestsRoute
   '/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
+  '/api/config': typeof ApiConfigRoute
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
@@ -268,6 +275,7 @@ export interface FileRoutesByTo {
   '/requests': typeof AppRequestsRoute
   '/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
+  '/api/config': typeof ApiConfigRoute
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
@@ -306,6 +314,7 @@ export interface FileRoutesById {
   '/_app/requests': typeof AppRequestsRoute
   '/_app/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
+  '/api/config': typeof ApiConfigRoute
   '/api/import': typeof ApiImportRoute
   '/api/integrations': typeof ApiIntegrationsRouteWithChildren
   '/api/mocks': typeof ApiMocksRouteWithChildren
@@ -345,6 +354,7 @@ export interface FileRouteTypes {
     | '/requests'
     | '/users'
     | '/api/audit'
+    | '/api/config'
     | '/api/import'
     | '/api/integrations'
     | '/api/mocks'
@@ -380,6 +390,7 @@ export interface FileRouteTypes {
     | '/requests'
     | '/users'
     | '/api/audit'
+    | '/api/config'
     | '/api/import'
     | '/api/integrations'
     | '/api/mocks'
@@ -417,6 +428,7 @@ export interface FileRouteTypes {
     | '/_app/requests'
     | '/_app/users'
     | '/api/audit'
+    | '/api/config'
     | '/api/import'
     | '/api/integrations'
     | '/api/mocks'
@@ -451,6 +463,7 @@ export interface RootRouteChildren {
   HealthzRoute: typeof HealthzRoute
   LoginRoute: typeof LoginRoute
   ApiAuditRoute: typeof ApiAuditRoute
+  ApiConfigRoute: typeof ApiConfigRoute
   ApiImportRoute: typeof ApiImportRoute
   ApiIntegrationsRoute: typeof ApiIntegrationsRouteWithChildren
   ApiMocksRoute: typeof ApiMocksRouteWithChildren
@@ -522,6 +535,13 @@ declare module '@tanstack/react-router' {
       path: '/api/audit'
       fullPath: '/api/audit'
       preLoaderRoute: typeof ApiAuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/config': {
+      id: '/api/config'
+      path: '/api/config'
+      fullPath: '/api/config'
+      preLoaderRoute: typeof ApiConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/import': {
@@ -879,6 +899,7 @@ const rootRouteChildren: RootRouteChildren = {
   HealthzRoute: HealthzRoute,
   LoginRoute: LoginRoute,
   ApiAuditRoute: ApiAuditRoute,
+  ApiConfigRoute: ApiConfigRoute,
   ApiImportRoute: ApiImportRoute,
   ApiIntegrationsRoute: ApiIntegrationsRouteWithChildren,
   ApiMocksRoute: ApiMocksRouteWithChildren,

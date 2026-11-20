@@ -24,12 +24,13 @@ export type Runtime = {
   mocks: MockService
   catalog: CatalogService
   requests: RequestJournal
-  reconciler: Reconciler
+  /** null in WireMock-only mode (spec A10): WireMock is the store, so there is nothing to sync. */
+  reconciler: Reconciler | null
 }
 
 export type BootDeps = {
   fetch?: typeof fetch
-  createStores?: (config: Config) => Stores
+  createStores?: (config: Config, opts: { wiremock: WireMockClient }) => Stores
   sleep?: (ms: number) => Promise<void>
 }
 
@@ -77,7 +78,7 @@ export async function bootRuntime(
     )
     const open = deps.createStores ?? createStores
     stores = await untilReachable('Store', deadline, sleep, async () => {
-      const candidate = open(config)
+      const candidate = open(config, { wiremock })
       try {
         let timer: NodeJS.Timeout | undefined
         const timeout = new Promise<never>((_, reject) => {
@@ -97,14 +98,17 @@ export async function bootRuntime(
     })
     const store = stores.mocks
     const audit = stores.audit
-    const users = new UserService({ users: stores.users, audit })
+    const wiremockOnly = config.storeDriver === 'none'
+    const users = new UserService({ users: stores.users, audit, fixedAccounts: wiremockOnly })
     await users.ensureFirstAdmin(config.adminUser, config.adminPassword)
-    const mocks = new MockService({ wiremock, store, audit })
+    const mocks = new MockService({ wiremock, store, audit, storeIsWireMock: wiremockOnly })
     const catalog = new CatalogService({ catalog: stores.catalog, audit, mocks: store })
     const requests = new RequestJournal({ wiremock, catalog, audit })
-    const reconciler = new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000 })
+    const reconciler = wiremockOnly
+      ? null
+      : new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000 })
     // Read before the seed writes anything: an empty store takes over what WireMock already serves.
-    const adoptable = await stubsToAdopt(wiremock, store)
+    const adoptable = reconciler ? await stubsToAdopt(wiremock, store) : []
     if (config.seedPath) {
       try {
         const { bundle, skipped } = await readBundleFromPath(config.seedPath)
@@ -119,7 +123,7 @@ export async function bootRuntime(
         }
         const report = await importBundle(
           bundle,
-          { catalog, mocks, store, audit, reposition: () => reconciler.repositionPersonMocks() },
+          { catalog, mocks, store, audit, reposition: reconciler ? () => reconciler.repositionPersonMocks() : undefined },
           { actor: 'system', prune: config.seedPrune, source: 'seed', unreadable: skipped.length },
         )
         logger.info({ report, seedPath: config.seedPath }, 'seed imported')
@@ -129,7 +133,8 @@ export async function bootRuntime(
     }
     // After the seed, so its catalog prefixes can name the integrations; before the first full sync.
     await adoptStubs(adoptable, { mocks, store, catalog, audit })
-    await reconciler.start()
+    if (reconciler) await reconciler.start()
+    else logger.info({ wiremockUrl: config.wiremockUrl }, 'WireMock-only mode: mocks are read from and written to WireMock; accounts, catalog and audit are kept in memory')
     return { config, wiremock, store, stores, users, audit, mocks, catalog, requests, reconciler }
   } catch (err) {
     await stores?.close().catch(() => {})

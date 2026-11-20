@@ -30,7 +30,7 @@ export const runImport = withAuth('import.run', async ({ rt, request, principal 
     mocks: rt.mocks,
     store: rt.store,
     audit: rt.audit,
-    reposition: () => rt.reconciler.repositionPersonMocks(),
+    reposition: rt.reconciler ? () => rt.reconciler!.repositionPersonMocks() : undefined,
   }, {
     actor: principal.user.username,
     prune,

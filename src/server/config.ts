@@ -5,7 +5,8 @@ export type Config = {
   wiremockUrl: string
   wiremockAdminUser?: string
   wiremockAdminPassword?: string
-  storeDriver: 'redis' | 'sqlite'
+  /** `none` = WireMock-only mode (spec A10): WireMock holds the mocks, everything else lives in memory. */
+  storeDriver: 'redis' | 'sqlite' | 'none'
   /** Set when storeDriver is redis. */
   redisUrl?: string
   sqlitePath: string
@@ -69,10 +70,10 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   }
   const data = parsed.success ? parsed.data : undefined
 
-  // Spec A9: Redis when REDIS_URL is set, otherwise SQLite.
+  // Spec A9: Redis when REDIS_URL is set, otherwise SQLite. WireMock-only mode (A10) is never a default.
   const driver = cleaned.STORE_DRIVER ?? (cleaned.REDIS_URL ? 'redis' : 'sqlite')
-  if (driver !== 'redis' && driver !== 'sqlite') {
-    problems.push(`STORE_DRIVER must be "redis" or "sqlite", got "${driver}"`)
+  if (driver !== 'redis' && driver !== 'sqlite' && driver !== 'none') {
+    problems.push(`STORE_DRIVER must be "redis", "sqlite" or "none", got "${driver}"`)
   } else if (driver === 'redis' && !cleaned.REDIS_URL) {
     problems.push('REDIS_URL is required when STORE_DRIVER=redis')
   }

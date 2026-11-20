@@ -16,9 +16,14 @@ export const req = (path: string, method = 'GET', body?: unknown, headers: Recor
     body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
   })
 
-/** The `server-sqlite` vitest project sets TEST_STORE_DRIVER=sqlite to run the HTTP tests without Redis. */
+/** The driver the HTTP tests run on: `server-sqlite` and `server-none` set TEST_STORE_DRIVER; Redis otherwise. */
+export const TEST_DRIVER = (process.env.TEST_STORE_DRIVER ?? 'redis') as 'redis' | 'sqlite' | 'none'
+/** WireMock-only mode (spec A10): one account, no history, no sync. Tests that need more skip themselves. */
+export const STORELESS = TEST_DRIVER === 'none'
+
 async function startStore(): Promise<{ env: Record<string, string>; stop(): Promise<void> }> {
-  if (process.env.TEST_STORE_DRIVER === 'sqlite') {
+  if (STORELESS) return { env: { STORE_DRIVER: 'none' }, stop: async () => {} }
+  if (TEST_DRIVER === 'sqlite') {
     const dir = mkdtempSync(join(tmpdir(), 'wmui-http-'))
     return {
       env: { STORE_DRIVER: 'sqlite', SQLITE_PATH: join(dir, 'wiremock-ui.db') },
@@ -46,7 +51,7 @@ export async function startTestRuntime(adminUser = 'ui-admin', adminPassword = '
     rt,
     wm,
     async stop() {
-      rt.reconciler.stop()
+      rt.reconciler?.stop()
       await rt.stores.close()
       await store.stop()
       await wm.stop().catch(() => {})
@@ -63,4 +68,14 @@ export async function login(rt: Runtime, username: string, password: string, ip 
   const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0]
   const { csrfToken } = await res.json()
   return { cookie, csrf: csrfToken as string }
+}
+
+/**
+ * A signed-in session for `username` (created with password-1). In WireMock-only mode there is only the bootstrap
+ * account, so every "user" is that one: callers read the name back from `username`.
+ */
+export async function signIn(rt: Runtime, username: string, adminUser = 'ui-admin', adminPassword = 'ui-admin-pass') {
+  if (STORELESS) return { ...(await login(rt, adminUser, adminPassword)), username: adminUser }
+  await rt.users.create({ username, password: 'password-1' }, adminUser)
+  return { ...(await login(rt, username, 'password-1')), username }
 }

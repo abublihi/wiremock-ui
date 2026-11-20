@@ -275,7 +275,7 @@ Two images are published to Docker Hub for amd64 and arm64 on every tag, built b
 |---|---|---|
 | `WIREMOCK_URL` | `http://localhost:8080` | WireMock base URL the UI talks to |
 | `WIREMOCK_ADMIN_USER`, `WIREMOCK_ADMIN_PASSWORD` | Generated in all-in-one | WireMock admin basic auth |
-| `STORE_DRIVER` | `redis` (`sqlite` in all-in-one) | Store driver |
+| `STORE_DRIVER` | `redis` (`sqlite` in all-in-one) | Store driver: `redis`, `sqlite`, or `none` for WireMock-only mode (A10) |
 | `REDIS_URL` | none | Redis connection |
 | `SQLITE_PATH` | `/data/wiremock-ui.db` | SQLite file |
 | `ADMIN_USER`, `ADMIN_PASSWORD` | none, required | First admin account |
@@ -343,5 +343,14 @@ Ship in five steps, each usable on its own; QA can start using it after step 2.
 **A8 — Sign-in without authorization (Milestone 2B).** Users still sign in (local accounts, sessions, CSRF, rate-limited login, Basic auth for scripts), but every signed-in user can do everything: no roles in the UI or the API, no ownership restrictions, baseline mocks editable by anyone. Mocks still record `owner`, and imports still never touch person-owned mocks. Roles may return later.
 
 **A9 — Works without Redis (pulled forward from Milestone 5).** The SQLite store driver ships in Milestone 2 using Node's built-in `node:sqlite` (no native build). `STORE_DRIVER` defaults to `redis` when `REDIS_URL` is set and to `sqlite` otherwise; `SQLITE_PATH` defaults to `./data/wiremock-ui.db` (`/data/wiremock-ui.db` in the image).
+
+**A10 — WireMock-only mode (`STORE_DRIVER=none`, Milestone 2C).** For people who only want to view and edit the stubs a WireMock already has, without storing anything. It is never a default: `STORE_DRIVER=none` must be set explicitly (the A9 defaults stay). In this mode:
+- **WireMock is the store.** Lists, filters and the editor read WireMock's admin API live (`GET /__admin/mappings`, all pages; filters and sorting are applied in memory, fine for a few thousand stubs). A save imports the one stub into WireMock (`OVERWRITE`), a delete removes it. The optimistic version check is made against the live stub's `metadata.wiremockUi.version` just before the write (0 = must not exist); two saves that race between that read and the write both land, and the later wins — accepted for this mode. A stub WireMock keeps in its own files (`persistent: true`) stays persistent when edited; new mocks are `persistent: false`.
+- **Stubs made outside the UI are editable.** A stub without `wiremockUi` metadata is shown as version 1 owned by `wiremock`; saving it adds the metadata. The UI's marker stub, if one is left from a store-backed run, is hidden.
+- **No sync.** The reconciler does not start: no marker, no full sync, nothing is ever deleted or re-added behind the user's back. `/healthz` reports `lastSyncAt: null`, and `store` follows WireMock's reachability.
+- **Kept in memory, lost on restart:** sessions and the sign-in rate limit, the audit log (the last 500 entries) and the catalog (seeded from `SEED_PATH` on every start; a seed's mocks are imported into WireMock).
+- **Accounts:** only the bootstrap account from `ADMIN_USER` / `ADMIN_PASSWORD`, for browser sign-in and Basic auth alike. Creating, changing (password included) or deleting accounts answers 400 `User management is not available in WireMock-only mode`.
+- **No history:** `GET /api/mocks/{id}/history` is always empty, so restore and Undo are unavailable.
+- **The UI** reads the mode from `GET /api/config` (`{ storeDriver }`, signed-in users) and hides Users, History/Restore, Undo after a delete, Change password, Reset my mocks and the My/All toggle (the list shows every stub). Catalog shows a dismissible notice: "Catalog changes are kept in memory and lost on restart (WireMock-only mode)".
 
 **A3 — Milestone 1 API protection.** Users, roles and sessions arrive in Milestone 2. Until then `/api/*` is protected by HTTP basic auth checked against `ADMIN_USER` / `ADMIN_PASSWORD`, and every write is recorded as made by `ADMIN_USER`.

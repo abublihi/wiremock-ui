@@ -2,7 +2,7 @@ import { redirect } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
 import { createIsomorphicFn, createServerFn } from '@tanstack/react-start'
 import { ApiError, apiFetch, type SessionData } from '@/ui/api/client'
-import { sessionQueryOptions } from '@/ui/api/queries'
+import { serverConfigQueryOptions, sessionQueryOptions, type ServerConfig } from '@/ui/api/queries'
 
 /**
  * On the server the session is read by calling the handler behind GET /api/session directly with the
@@ -25,6 +25,37 @@ const loadSession = createIsomorphicFn()
     return session
   })
   .client(() => apiFetch<SessionData>('/api/session', { redirectOnUnauthorized: false }))
+
+const readConfigOnServer = createServerFn({ method: 'GET' }).handler(async (): Promise<ServerConfig | null> => {
+  const { getRequest } = await import('@tanstack/react-start/server')
+  const { getRuntime } = await import('@/server/runtime')
+  const { getConfig } = await import('@/server/http/handlers/config')
+  const response = await getConfig(await getRuntime(), getRequest())
+  return response.ok ? ((await response.json()) as ServerConfig) : null
+})
+
+const loadServerConfig = createIsomorphicFn()
+  .server(async (): Promise<ServerConfig> => {
+    const config = await readConfigOnServer()
+    if (!config) throw new ApiError(500, 'Server configuration unavailable')
+    return config
+  })
+  .client(() => apiFetch<ServerConfig>('/api/config', { redirectOnUnauthorized: false }))
+
+/**
+ * Loads how the server runs, for the signed-in layout. Never blocks the app: if it fails, the UI behaves as
+ * with a store (null).
+ */
+export async function loadConfigForApp(
+  queryClient: QueryClient,
+  fetchConfig: () => Promise<ServerConfig> = loadServerConfig,
+): Promise<ServerConfig | null> {
+  try {
+    return await queryClient.ensureQueryData(serverConfigQueryOptions(fetchConfig))
+  } catch {
+    return null
+  }
+}
 
 /**
  * `beforeLoad` guard for the authenticated layout: resolves the session (cached in the query client,

@@ -328,6 +328,8 @@ export const en = {
   'catalog.caption': '// {count} integrations',
   'catalog.captionOne': '// 1 integration',
   'catalog.addIntegration': 'Add integration',
+  'catalog.memoryNotice': 'Catalog changes are kept in memory and lost on restart (WireMock-only mode)',
+  'catalog.memoryNoticeDismiss': 'Dismiss',
   'catalog.emptyTitle': 'No integrations yet',
   'catalog.emptyBody': '// add an integration, then describe its endpoints',
   'catalog.loadFailed': 'Could not load the catalog',
