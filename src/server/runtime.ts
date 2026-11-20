@@ -110,7 +110,7 @@ export async function bootRuntime(
     const catalog = new CatalogService({ catalog: stores.catalog, audit, mocks: store })
     const requests = new RequestJournal({ wiremock, catalog, audit })
     const scenarios = new ScenarioService({ wiremock, store, audit })
-    const recordings = new RecordingService({ wiremock, store: stores.recordings, mocks, catalog, audit, config })
+    const recordings = new RecordingService({ wiremock, store: stores.recordings, locks: store, mocks, catalog, audit, config })
     const reconciler = wiremockOnly
       ? null
       : new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000 })

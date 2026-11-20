@@ -1,9 +1,11 @@
 import type { Redis } from 'ioredis'
 import type { SqliteDb } from '../store/sqlite/db'
-import type { Recording, RecordingStore } from './types'
+import type { ActiveRecording, Recording, RecordingStore } from './types'
 
 const key = (id: string) => `recording:${id}`
-const INDEX = 'recordings'
+// Named like the other indexes (stubs:all, integrations:all).
+const INDEX = 'recordings:all'
+const ACTIVE = 'recordings:active'
 const expiry = (r: Recording) => Date.parse(r.expiresAt)
 const newestFirst = (a: Recording, b: Recording) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)
 
@@ -44,13 +46,30 @@ export class RedisRecordingStore implements RecordingStore {
     m.zrem(INDEX, id)
     await m.exec()
   }
+
+  async getActive(): Promise<ActiveRecording | null> {
+    const json = await this.redis.get(ACTIVE)
+    return json ? (JSON.parse(json) as ActiveRecording) : null
+  }
+
+  async setActive(active: ActiveRecording | null): Promise<void> {
+    if (active) await this.redis.set(ACTIVE, JSON.stringify(active))
+    else await this.redis.del(ACTIVE)
+  }
 }
 
-/** One row per review list; expired rows are deleted on read. */
+/** One row per review list; expired rows are deleted when the store opens, on every write and on list. */
 export class SqliteRecordingStore implements RecordingStore {
-  constructor(private readonly sql: SqliteDb) {}
+  constructor(private readonly sql: SqliteDb) {
+    this.purge()
+  }
+
+  private purge(): void {
+    this.sql.stmt('DELETE FROM recordings WHERE expires_at <= ?').run(Date.now())
+  }
 
   async put(r: Recording): Promise<void> {
+    this.purge()
     this.sql
       .stmt('INSERT INTO recordings (id, json, expires_at) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET json = excluded.json, expires_at = excluded.expires_at')
       .run(r.id, JSON.stringify(r), expiry(r))
@@ -62,7 +81,7 @@ export class SqliteRecordingStore implements RecordingStore {
   }
 
   async list(): Promise<Recording[]> {
-    this.sql.stmt('DELETE FROM recordings WHERE expires_at <= ?').run(Date.now())
+    this.purge()
     return (this.sql.stmt('SELECT json FROM recordings').all() as { json: string }[])
       .map((row) => JSON.parse(row.json) as Recording)
       .sort(newestFirst)
@@ -70,6 +89,17 @@ export class SqliteRecordingStore implements RecordingStore {
 
   async delete(id: string): Promise<void> {
     this.sql.stmt('DELETE FROM recordings WHERE id = ?').run(id)
+  }
+
+  async getActive(): Promise<ActiveRecording | null> {
+    const row = this.sql.stmt('SELECT json FROM recording_active WHERE id = 1').get() as { json: string } | undefined
+    return row ? (JSON.parse(row.json) as ActiveRecording) : null
+  }
+
+  async setActive(active: ActiveRecording | null): Promise<void> {
+    if (active) {
+      this.sql.stmt('INSERT INTO recording_active (id, json) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET json = excluded.json').run(JSON.stringify(active))
+    } else this.sql.stmt('DELETE FROM recording_active').run()
   }
 }
 
@@ -100,5 +130,15 @@ export class MemoryRecordingStore implements RecordingStore {
 
   async delete(id: string): Promise<void> {
     this.items.delete(id)
+  }
+
+  private active: ActiveRecording | null = null
+
+  async getActive(): Promise<ActiveRecording | null> {
+    return this.active
+  }
+
+  async setActive(active: ActiveRecording | null): Promise<void> {
+    this.active = active
   }
 }

@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { AlertCircleIcon, ArrowLeftIcon, CircleDotIcon, InboxIcon } from 'lucide-react'
-import { useRecordingState, useRecordings } from '@/ui/api/queries'
+import { ApiError } from '@/ui/api/client'
+import { useRecording, useRecordingState, useRecordings } from '@/ui/api/queries'
 import { LiveDot } from '@/ui/components/common/LiveDot'
 import { RecordPanel, SnapshotPanel } from '@/ui/components/recording/RecordForms'
 import { ReviewList } from '@/ui/components/recording/ReviewList'
@@ -93,8 +94,8 @@ export function RecordingPage({ search }: { search: RecordingSearch }) {
 
 function OneList({ id }: { id: string }) {
   const t = useT()
-  const lists = useRecordings()
-  const recording = lists.data?.find((r) => r.id === id)
+  const one = useRecording(id)
+  const recording = one.data
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -105,7 +106,7 @@ function OneList({ id }: { id: string }) {
           </Link>
         </Button>
       </div>
-      {lists.isPending ? (
+      {one.isPending ? (
         <Skeleton className="h-40 w-full" />
       ) : recording ? (
         // Keyed so a different list starts with fresh selections.
@@ -113,7 +114,7 @@ function OneList({ id }: { id: string }) {
       ) : (
         <Alert>
           <AlertCircleIcon />
-          <AlertDescription>{lists.isError ? lists.error.message : t('recording.reviewMissing')}</AlertDescription>
+          <AlertDescription>{one.error instanceof ApiError && one.error.status === 404 ? t('recording.reviewMissing') : (one.error?.message ?? t('recording.reviewMissing'))}</AlertDescription>
         </Alert>
       )}
     </div>
@@ -154,8 +155,8 @@ function AllLists() {
               {r.kind === 'recording' ? t('recording.listRecording', { url: r.target ?? '?' }) : t('recording.listSnapshot')}
             </p>
             <p className="text-xs text-muted-foreground">
-              {t(r.items.length === 1 ? 'recording.listMetaOne' : 'recording.listMeta', {
-                count: r.items.length,
+              {t(r.itemCount === 1 ? 'recording.listMetaOne' : 'recording.listMeta', {
+                count: r.itemCount,
                 name: r.createdBy,
                 when: relativeTime(r.createdAt),
                 expires: relativeTime(r.expiresAt),

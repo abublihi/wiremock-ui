@@ -6,7 +6,7 @@ import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { Endpoint, Integration } from '@/server/catalog/types'
-import type { Recording } from '@/server/recording/types'
+import { summaryOf, type Recording } from '@/server/recording/types'
 import { RecordingPage } from '@/routes/_app/recording'
 import { APP_NAV, navFor } from '@/ui/components/shell/AppShell'
 import { RecordingBanner } from '@/ui/components/shell/RecordingBanner'
@@ -135,7 +135,8 @@ describe('Record tab', () => {
 describe('review list', () => {
   it('warns about real data, shows each row with its flags, preselects the useful rows and suggests the catalog link', async () => {
     catalog()
-    server.use(http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [review()] })), http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })))
+    server.use(http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [summaryOf(review())] })),
+      http.get(`${BASE}/api/recordings/rec-1`, () => HttpResponse.json(review())), http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })))
     await renderApp(withConfig(<RecordingPage search={{ review: 'rec-1' }} />))
     expect(await screen.findByText('Recorded answers may contain real data')).toBeTruthy()
     expect(screen.getByText(/come straight from https:\/\/api\.example\.com/)).toBeTruthy()
@@ -146,7 +147,8 @@ describe('review list', () => {
     expect(box('/hello').getAttribute('data-state')).toBe('unchecked')
     expect(box('/missing').getAttribute('data-state')).toBe('unchecked')
     expect(screen.getByRole('button', { name: 'Accept 2 selected' })).toBeTruthy()
-    // The recorded body is one click away, secret and all.
+    // The recorded body is one click away, secret and all, and only rendered once opened.
+    expect(screen.queryByText(/secret-123/)).toBeNull()
     await userEvent.setup().click(screen.getAllByText(/Show recorded answer/)[0])
     expect(screen.getByText(/secret-123/)).toBeTruthy()
     const first = screen.getByText('/shop/items/1').closest('li')!
@@ -160,7 +162,8 @@ describe('review list', () => {
     catalog()
     const bodies: unknown[] = []
     server.use(
-      http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [review()] })),
+      http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [summaryOf(review())] })),
+      http.get(`${BASE}/api/recordings/rec-1`, () => HttpResponse.json(review())),
       http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })),
       http.post(`${BASE}/api/recordings/rec-1/accept`, async ({ request }) => {
         bodies.push(await request.json())
@@ -184,7 +187,8 @@ describe('review list', () => {
     catalog()
     let deleted = false
     server.use(
-      http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: deleted ? [] : [review()] })),
+      http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: deleted ? [] : [summaryOf(review())] })),
+      http.get(`${BASE}/api/recordings/rec-1`, () => (deleted ? HttpResponse.json({ error: 'gone' }, { status: 404 }) : HttpResponse.json(review()))),
       http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })),
       http.post(`${BASE}/api/recordings/rec-1/accept`, () =>
         HttpResponse.json({ created: [{ id: 'i1', mockId: 'm1' }], failed: [{ id: 'i2', error: 'An endpoint with this key already exists' }], recording: review({ items: review().items.slice(1) }) }),
@@ -207,6 +211,37 @@ describe('review list', () => {
     await ue.click(within(dialog).getByRole('button', { name: 'Discard all' }))
     await waitFor(() => expect(deleted).toBe(true))
     await waitFor(() => expect(router.state.location.search).toEqual({ tab: 'review' }))
+  })
+})
+
+describe('review list limits', () => {
+  it('a too-large row is flagged and cannot be selected; leftovers in WireMock are called out (WireMock-only wording)', async () => {
+    catalog()
+    const base = review()
+    const big = review({
+      leftInWireMock: 2,
+      items: [
+        { ...base.items[1], id: 'big', url: '/shop/export', bodySize: 3 * 1024 * 1024, tooLarge: true, stub: { ...base.items[1].stub, response: { status: 200 } } },
+        base.items[1],
+      ],
+    })
+    server.use(
+      http.get(`${BASE}/api/recordings/rec-1`, () => HttpResponse.json(big)),
+      http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [summaryOf(big)] })),
+      http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })),
+    )
+    await renderApp(
+      <ServerConfigProvider config={{ storeDriver: 'none', wiremockPublicUrl: 'http://wiremock.test:8080', recordingAllowed: true }}>
+        <RecordingPage search={{ review: 'rec-1' }} />
+      </ServerConfigProvider>,
+    )
+    expect(await screen.findByText('2 recorded stubs are still in WireMock')).toBeTruthy()
+    expect(screen.getByText(/show up in the Mocks list as ordinary mocks/)).toBeTruthy()
+    expect(screen.getByText(/Too large to review \(3\.0 MB\)/)).toBeTruthy()
+    const box = screen.getByRole('checkbox', { name: 'Select POST /shop/export' }) as HTMLButtonElement
+    expect(box.disabled).toBe(true)
+    expect(box.getAttribute('data-state')).toBe('unchecked')
+    expect(screen.getByRole('button', { name: 'Accept 1 selected' })).toBeTruthy()
   })
 })
 

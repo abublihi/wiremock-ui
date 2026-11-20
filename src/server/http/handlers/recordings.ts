@@ -15,7 +15,10 @@ export const startRecording = withAuth(null, async ({ rt, request, principal }) 
   rt.recordings.assertAllowed()
   requireJson(request)
   const input = parse(startSchema, await readJson(request))
-  return json(await rt.recordings.start(input, principal.user.username, [new URL(request.url).origin]))
+  // The app as WireMock might reach it: the URL this request came in on, and the app's own port on WireMock's
+  // machine (all-in-one setups run both side by side).
+  const own = `http://localhost:${process.env.PORT ?? 3000}`
+  return json(await rt.recordings.start(input, principal.user.username, [new URL(request.url).origin, own]))
 })
 
 /** POST /api/recordings/stop → { recording } (the new review list, null when nothing was recorded). 409 when not recording. */
@@ -32,7 +35,7 @@ export const snapshotRecording = withAuth(null, async ({ rt, request, principal 
   return json({ recording: await rt.recordings.snapshot(input, principal.user.username) })
 })
 
-/** GET /api/recordings → { recordings } waiting for review, newest first. */
+/** GET /api/recordings → { recordings }: summaries (no rows) of the review lists waiting, newest first. */
 export const listRecordings = withAuth(null, async ({ rt }) => json({ recordings: await rt.recordings.list() }))
 
 /** GET /api/recordings/:id → the review list. 404 once accepted, discarded or expired. */

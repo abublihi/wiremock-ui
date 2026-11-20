@@ -170,6 +170,16 @@ test('a stub with a better priority answers before the proxy stub and is not rec
   expect(recorded.map((s) => s.request.url)).toEqual(['/other'])
 })
 
+test('a default-priority stub added after recording started answers before the proxy stub (newest wins)', async () => {
+  await wm.startRecording({ targetBaseUrl: pair.upstreamInternalUrl, persist: false })
+  await wm.importStubs([{ id: '00000000-0000-4000-8000-000000000009', request: { method: 'GET', urlPath: '/other' }, response: { status: 297 } }], {
+    deleteAllNotInImport: false,
+  })
+  expect((await fetch(`${W}/other`)).status).toBe(297)
+  expect((await fetch(`${W}/api/users/1`)).status).toBe(200)
+  expect((await wm.stopRecording())!.map((s) => s.request.url)).toEqual(['/api/users/1'])
+})
+
 test('the journal keeps proxied requests (matched by the proxy stub); stop when not recording is null', async () => {
   await wm.startRecording({ targetBaseUrl: pair.upstreamInternalUrl, persist: false })
   const proxyId = (await wm.listStubs())[0].id

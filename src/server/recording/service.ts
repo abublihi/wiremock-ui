@@ -13,12 +13,28 @@ import type { StubMapping } from '../wiremock/types'
 import { reviewItem } from './normalise'
 import { isRecordingProxy } from './proxy'
 import { validateTarget } from './target'
-import { RECORDING_TTL_MS, type Recording, type RecordingStore, type ReviewItem, type ReviewStub } from './types'
+import {
+  MAX_REVIEW_BODY_BYTES,
+  MAX_REVIEW_LIST_BYTES,
+  RECORDING_TTL_MS,
+  summaryOf,
+  type Recording,
+  type RecordingStore,
+  type RecordingSummary,
+  type ReviewItem,
+  type ReviewStub,
+} from './types'
+import type { MockStore } from '../store/types'
 
 export const RECORDING_DISABLED = 'Recording is turned off on this environment (RECORDING_ALLOWED=false)'
 /** A review list holds at most this many stubs; the rest are counted in `dropped`. */
 export const MAX_REVIEW_ITEMS = 1000
 const MAX_SNAPSHOT_IDS = 1000
+/** Recorded stubs are removed from WireMock this many at a time (a snapshot of the whole log can be large). */
+const DELETE_BATCH = 20
+// Long enough for an accept of 1000 rows; the lock is released as soon as the work is done.
+const LIST_LOCK_TTL_MS = 120_000
+export const TOO_LARGE = 'This answer is over 1 MB, too large to review here, so it was not kept. Create this mock by hand or record a smaller response.'
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'TRACE'] as const
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
@@ -101,6 +117,8 @@ export type AcceptResult = {
 type Deps = {
   wiremock: WireMockClient
   store: RecordingStore
+  /** For the short lock around accept and discard (any driver). */
+  locks: Pick<MockStore, 'acquireLock' | 'releaseLock'>
   mocks: MockService
   catalog: CatalogService
   audit: AuditLog
@@ -141,8 +159,14 @@ const pathOf = (stub: ReviewStub) =>
 const contentTypeOf = (type: string | undefined): Endpoint['contentType'] =>
   !type ? 'text' : /[/+]json/i.test(type) ? 'json' : /[/+]xml/i.test(type) ? 'xml' : /html/i.test(type) ? 'html' : 'text'
 
+/** A row whose body is over the cap: the body is not kept, the row says so and cannot be accepted. */
+function withoutBody(item: ReviewItem): ReviewItem {
+  const { body: _b, jsonBody: _j, base64Body: _6, ...response } = item.stub.response
+  return { ...item, stub: { ...item.stub, response }, tooLarge: true }
+}
+
 export class RecordingService {
-  private active: { target: string; startedBy: string; startedAt: string } | null = null
+  private readonly busy = new Set<string>()
   private readonly now: () => Date
   private readonly newId: () => string
 
@@ -161,47 +185,49 @@ export class RecordingService {
 
   async state(): Promise<RecordingState> {
     if ((await this.deps.wiremock.recordingStatus()) !== 'Recording') {
-      this.active = null
+      if (await this.deps.store.getActive()) await this.deps.store.setActive(null)
       return { status: 'idle' }
     }
-    if (this.active) return { status: 'recording', ...this.active }
-    // Started by another instance or outside the UI: the proxy stub WireMock added still names the target.
+    // Kept in the store, so every instance knows who started it.
+    const active = await this.deps.store.getActive()
+    if (active) return { status: 'recording', ...active }
+    // Started outside the UI: the proxy stub WireMock added still names the target.
     const proxy = (await this.deps.wiremock.listStubs()).find(isRecordingProxy)
     return { status: 'recording', target: (proxy?.response.proxyBaseUrl as string | undefined) ?? null, startedBy: null, startedAt: null }
   }
 
-  /** `appOrigins`: where this app is reached (the request's origin, PUBLIC_UI_URL), refused as targets. */
-  async start(input: StartInput, actor: string, appOrigins: string[]): Promise<RecordingState> {
+  /** `appUrls`: where this app is reached (the request's origin, its own port on WireMock's machine), refused as targets. */
+  async start(input: StartInput, actor: string, appUrls: string[]): Promise<RecordingState> {
     this.assertAllowed()
     const { config } = this.deps
     const target = validateTarget(input.targetUrl, {
       wiremock: [config.wiremockUrl, config.wiremockPublicUrl],
-      app: [...appOrigins, ...(config.publicUiUrl ? [config.publicUiUrl] : [])],
+      app: [...appUrls, ...(config.publicUiUrl ? [config.publicUiUrl] : [])],
     })
     if ((await this.deps.wiremock.recordingStatus()) === 'Recording') {
       throw new ConflictError('A recording is already running. Stop it before starting another one.')
     }
     await this.deps.wiremock.startRecording({ targetBaseUrl: target, ...recordSpec(input) })
-    this.active = { target, startedBy: actor, startedAt: this.now().toISOString() }
+    const active = { target, startedBy: actor, startedAt: this.now().toISOString() }
+    await this.deps.store.setActive(active)
     await safeRecord(this.deps.audit, { actor, action: 'recording.start', details: { target } })
-    return { status: 'recording', ...this.active }
+    return { status: 'recording', ...active }
   }
 
   /** Stops recording; the stubs go into a new review list (null when nothing was recorded). */
   async stop(actor: string): Promise<Recording | null> {
     this.assertAllowed()
-    const current = this.active ?? (await this.state())
-    const target = ('target' in current ? current.target : null) ?? undefined
+    const current = await this.state()
+    const target = (current.status === 'recording' ? current.target : null) ?? undefined
     const stubs = await this.deps.wiremock.stopRecording()
-    this.active = null
+    await this.deps.store.setActive(null)
     if (stubs === null) throw new ConflictError('No recording is running')
-    await this.removeFromWireMock(stubs)
-    const recording = await this.keep('recording', stubs, actor, target)
+    const recording = await this.keepAndRemove('recording', stubs, actor, target)
     await safeRecord(this.deps.audit, {
       actor,
       action: 'recording.stop',
       target: recording?.id,
-      details: { target, recorded: stubs.length },
+      details: { target, recorded: stubs.length, ...(recording?.leftInWireMock ? { leftInWireMock: recording.leftInWireMock } : {}) },
     })
     return recording
   }
@@ -212,15 +238,57 @@ export class RecordingService {
     const spec = recordSpec(input)
     const filters = { ...(spec.filters as Record<string, unknown> | undefined), allowNonProxied: true, ...(input.ids ? { ids: input.ids } : {}) }
     const stubs = await this.deps.wiremock.snapshotRecording({ ...spec, filters })
-    await this.removeFromWireMock(stubs)
-    const recording = await this.keep('snapshot', stubs, actor)
-    await safeRecord(this.deps.audit, { actor, action: 'recording.snapshot', target: recording?.id, details: { recorded: stubs.length } })
+    const recording = await this.keepAndRemove('snapshot', stubs, actor)
+    await safeRecord(this.deps.audit, {
+      actor,
+      action: 'recording.snapshot',
+      target: recording?.id,
+      details: { recorded: stubs.length, ...(recording?.leftInWireMock ? { leftInWireMock: recording.leftInWireMock } : {}) },
+    })
     return recording
   }
 
-  list(): Promise<Recording[]> {
+  /**
+   * The review list is saved first, so the recorded stubs are never only in WireMock's hands; then they are
+   * removed from WireMock (WireMock added them although persist was false). Whatever survives two tries is
+   * counted in `leftInWireMock` and logged by id.
+   */
+  private async keepAndRemove(kind: Recording['kind'], stubs: StubMapping[], actor: string, target?: string): Promise<Recording | null> {
+    if (stubs.length === 0) return null
+    const recording = await this.keep(kind, stubs, actor, target)
+    const left = await this.removeFromWireMock(stubs.map((s) => s.id))
+    if (left.length === 0) return recording
+    logger.error({ ids: left, recording: recording.id }, 'recorded stubs could not be removed from WireMock; they answer requests until deleted')
+    const updated = { ...recording, leftInWireMock: left.length }
+    await this.deps.store.put(updated)
+    return updated
+  }
+
+  /** Summaries only: the rows load with get(). */
+  async list(): Promise<RecordingSummary[]> {
     this.assertAllowed()
-    return this.deps.store.list()
+    return (await this.deps.store.list()).map(summaryOf)
+  }
+
+  /** Runs `fn` holding the review list's lock, so two accepts (or an accept and a discard) never overlap. */
+  private async locked<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    const busy = new ConflictError('Someone is changing this review list right now. Try again in a moment.')
+    // In this process too: WireMock-only mode's store grants every lock (it has no sync to guard).
+    if (this.busy.has(id)) throw busy
+    this.busy.add(id)
+    const name = `lock:recording:${id}`
+    let token: string | null = null
+    try {
+      token = await this.deps.locks.acquireLock(name, LIST_LOCK_TTL_MS)
+      if (token === null) throw busy
+      return await fn()
+    } finally {
+      this.busy.delete(id)
+      if (token !== null) {
+        const held = token
+        await this.deps.locks.releaseLock(name, held).catch((err) => logger.warn({ err }, 'recording lock release failed'))
+      }
+    }
   }
 
   async get(id: string): Promise<Recording> {
@@ -232,6 +300,11 @@ export class RecordingService {
 
   /** Drops the given items, or the whole list when `ids` is undefined. Returns what is left (null when nothing). */
   async discard(id: string, ids: string[] | undefined, actor: string): Promise<Recording | null> {
+    await this.get(id)
+    return this.locked(id, () => this.discardLocked(id, ids, actor))
+  }
+
+  private async discardLocked(id: string, ids: string[] | undefined, actor: string): Promise<Recording | null> {
     const recording = await this.get(id)
     const drop = ids ? new Set(ids) : null
     const left = drop ? recording.items.filter((i) => !drop.has(i.id)) : []
@@ -243,6 +316,12 @@ export class RecordingService {
 
   /** Creates a mock per item through the normal create path; accepted items leave the review list. */
   async accept(id: string, input: AcceptInput, actor: PublicUser): Promise<AcceptResult> {
+    await this.get(id)
+    return this.locked(id, () => this.acceptLocked(id, input, actor))
+  }
+
+  private async acceptLocked(id: string, input: AcceptInput, actor: PublicUser): Promise<AcceptResult> {
+    // Read again under the lock: rows another accept took are gone.
     const recording = await this.get(id)
     const byId = new Map(recording.items.map((i) => [i.id, i]))
     const owner = input.owner === 'baseline' ? 'baseline' : actor.username
@@ -252,6 +331,10 @@ export class RecordingService {
       const item = byId.get(choice.id)
       if (!item) {
         failed.push({ id: choice.id, error: 'Not in this review list (accepted or discarded already)' })
+        continue
+      }
+      if (item.tooLarge) {
+        failed.push({ id: item.id, error: TOO_LARGE })
         continue
       }
       try {
@@ -353,19 +436,29 @@ export class RecordingService {
     return buildStub(integration, endpoint, input)
   }
 
-  /** Recorded stubs land in WireMock even with persist: false (pinned): take them out again at once. */
-  private async removeFromWireMock(stubs: StubMapping[]): Promise<void> {
-    const results = await Promise.allSettled(stubs.map((s) => this.deps.wiremock.deleteStub(s.id)))
-    const failed = results.filter((r) => r.status === 'rejected').length
-    if (failed > 0) logger.error({ failed }, 'could not remove recorded stubs from WireMock')
+  /** Deletes in batches of DELETE_BATCH, then retries the failures once; returns the ids still in WireMock. */
+  private async removeFromWireMock(ids: string[]): Promise<string[]> {
+    const attempt = async (batch: string[]) => {
+      const failed: string[] = []
+      for (let i = 0; i < batch.length; i += DELETE_BATCH) {
+        const slice = batch.slice(i, i + DELETE_BATCH)
+        const results = await Promise.allSettled(slice.map((id) => this.deps.wiremock.deleteStub(id)))
+        results.forEach((r, n) => r.status === 'rejected' && failed.push(slice[n]))
+      }
+      return failed
+    }
+    const failed = await attempt(ids)
+    return failed.length === 0 ? [] : attempt(failed)
   }
 
-  private async keep(kind: Recording['kind'], stubs: StubMapping[], actor: string, target?: string): Promise<Recording | null> {
-    if (stubs.length === 0) return null
-    const existing = await this.deps.mocks.list()
+  private async keep(kind: Recording['kind'], stubs: StubMapping[], actor: string, target?: string): Promise<Recording> {
+    // The recorded stubs are still in WireMock (and so in WireMock-only mode's mock list): they are not "existing".
+    const recordedIds = new Set(stubs.map((s) => s.id))
+    const existing = (await this.deps.mocks.list()).filter((m) => !recordedIds.has(m.id))
     const ids = new Map(existing.map((m) => [m.id, m]))
-    const items = stubs.slice(0, MAX_REVIEW_ITEMS).map((stub): ReviewItem => {
-      const { matchedStubId, ...item } = reviewItem(stub)
+    const all = stubs.map((stub): ReviewItem => {
+      const { matchedStubId, ...normalised } = reviewItem(stub)
+      const item = normalised.bodySize > MAX_REVIEW_BODY_BYTES ? withoutBody(normalised) : normalised
       const path = item.url.split('?')[0]
       const same =
         (matchedStubId ? ids.get(matchedStubId) : undefined) ??
@@ -382,6 +475,15 @@ export class RecordingService {
         ...(unmatched ? { unmatched: true } : {}),
       }
     })
+    // At most MAX_REVIEW_ITEMS rows and MAX_REVIEW_LIST_BYTES of JSON; the rest is counted in `dropped`.
+    const items: ReviewItem[] = []
+    let bytes = 0
+    for (const item of all) {
+      const size = Buffer.byteLength(JSON.stringify(item))
+      if (items.length >= MAX_REVIEW_ITEMS || bytes + size > MAX_REVIEW_LIST_BYTES) continue
+      items.push(item)
+      bytes += size
+    }
     const now = this.now()
     const recording: Recording = {
       id: this.newId(),
@@ -391,7 +493,7 @@ export class RecordingService {
       createdBy: actor,
       expiresAt: new Date(now.getTime() + RECORDING_TTL_MS).toISOString(),
       items,
-      dropped: stubs.length - items.length,
+      dropped: all.length - items.length,
     }
     await this.deps.store.put(recording)
     return recording

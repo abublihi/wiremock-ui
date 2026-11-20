@@ -82,6 +82,11 @@ CREATE TABLE IF NOT EXISTS recordings (
   expires_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS recordings_by_expiry ON recordings (expires_at);
+-- The recording WireMock is running, as started from this app (one row at most).
+CREATE TABLE IF NOT EXISTS recording_active (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  json TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS endpoints (
   integration TEXT NOT NULL,

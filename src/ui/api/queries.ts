@@ -14,7 +14,7 @@ import type { NearMissView, RequestSummary } from '@/server/requests/journal'
 import type { TestRequestInput, TestRequestResult } from '@/server/wiremock/relay'
 import type { Scenario } from '@/server/scenarios/service'
 import type { AcceptResult, RecordingState, SnapshotInput, StartInput } from '@/server/recording/service'
-import type { Recording } from '@/server/recording/types'
+import type { Recording, RecordingSummary } from '@/server/recording/types'
 import type { AcceptItem } from '@/ui/lib/recording'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
 import { SESSION_KEY, apiFetch, type SessionData } from './client'
@@ -614,12 +614,20 @@ export function useSnapshot() {
   })
 }
 
-/** Review lists waiting to be accepted (they expire after 24 hours). */
+/** Review lists waiting to be accepted (they expire after 24 hours): summaries, without their rows. */
 export function useRecordings(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.recordings,
-    queryFn: async () => (await apiFetch<{ recordings: Recording[] }>('/api/recordings')).recordings,
+    queryFn: async () => (await apiFetch<{ recordings: RecordingSummary[] }>('/api/recordings')).recordings,
     enabled: options.enabled ?? true,
+  })
+}
+
+/** One review list with its rows (404 once accepted, discarded or expired). */
+export function useRecording(id: string) {
+  return useQuery({
+    queryKey: queryKeys.recording(id),
+    queryFn: () => apiFetch<Recording>(`/api/recordings/${encodeURIComponent(id)}`),
   })
 }
 

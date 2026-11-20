@@ -69,6 +69,7 @@ test('start → call → stop: the stub waits in a review list; nothing reaches 
   expect(started.status).toBe(200)
   expect(started.body).toMatchObject({ status: 'recording', target: pair.upstreamInternalUrl, startedBy: 'ui-admin' })
   expect((await status()).body).toMatchObject({ status: 'recording', target: pair.upstreamInternalUrl })
+  expect(await rt.stores.recordings.getActive()).toMatchObject({ target: pair.upstreamInternalUrl, startedBy: 'ui-admin' })
   // The app's own mock list does not show WireMock's proxy stub.
   expect(await mocks()).toEqual([])
 
@@ -89,7 +90,9 @@ test('start → call → stop: the stub waits in a review list; nothing reaches 
   expect(await mocks()).toEqual([])
   expect(await wmStubIds()).toEqual([])
   expect((await status()).body).toEqual({ status: 'idle' })
-  expect((await call(listRecordings, req('/api/recordings'))).body.recordings.map((r: Recording) => r.id)).toEqual([rec.id])
+  const listed = (await call(listRecordings, req('/api/recordings'))).body.recordings
+  expect(listed).toEqual([{ id: rec.id, kind: 'recording', target: pair.upstreamInternalUrl, createdBy: 'ui-admin', createdAt: rec.createdAt, expiresAt: rec.expiresAt, dropped: 0, itemCount: 1 }])
+  // Another instance (or a restart) still knows who started a recording: it is in the store.
   const actions = (await rt.audit.list({ limit: 10 })).entries.map((e) => e.action)
   expect(actions).toEqual(expect.arrayContaining(['recording.start', 'recording.stop']))
 })
@@ -149,6 +152,9 @@ test('start validates the target: http(s) only, never WireMock itself or this ap
   expect(await start({ targetUrl: 'ftp://x.example' })).toEqual({ status: 400, body: { error: 'Target URL must start with http:// or https://' } })
   expect((await start({ targetUrl: W() })).body.error).toMatch(/^Target URL is WireMock itself/)
   expect((await start({ targetUrl: 'http://ui.test/x' })).body.error).toMatch(/^Target URL is this app/)
+  // WireMock connects to the target: a loopback host on its own port is WireMock itself.
+  const port = new URL(W()).port
+  for (const host of ['localhost', '127.0.0.1', '[::1]', '0.0.0.0']) expect((await start({ targetUrl: `http://${host}:${port}` })).body.error, host).toMatch(/^Target URL is WireMock itself/)
   expect((await start({ targetUrl: pair.upstreamInternalUrl, urlPathPattern: '[' })).body.error).toBe('urlPathPattern is not a valid regular expression')
   expect((await start({ targetUrl: pair.upstreamInternalUrl, extra: 1 })).body.error).toBe('unknown field: extra')
   expect(await rt.wiremock.recordingStatus()).not.toBe('Recording')

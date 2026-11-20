@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { CheckIcon, CopyIcon, GitBranchIcon, SearchXIcon, ShieldAlertIcon, Trash2Icon } from 'lucide-react'
+import { AlertTriangleIcon, CheckIcon, FileWarningIcon, CopyIcon, GitBranchIcon, SearchXIcon, ShieldAlertIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import { matchesPrefix } from '@/server/catalog/prefix'
@@ -27,6 +27,7 @@ import { Input } from '@/ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import { Spinner } from '@/ui/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
+import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 import { NEW_ENDPOINT, acceptPayload, formatBytes, newEndpointFor, suggestLink, type RowChoice } from '@/ui/lib/recording'
 import { relativeTime } from '@/ui/lib/time'
@@ -54,7 +55,9 @@ function bodyText(item: ReviewItem): string | null {
 }
 
 /** Rows a reviewer usually wants: not answered by "no mock", not already a mock. */
-const preselected = (item: ReviewItem) => !item.unmatched && !item.duplicateOf
+const preselected = (item: ReviewItem) => !item.unmatched && !item.duplicateOf && !item.tooLarge
+/** A row whose body was too large to keep cannot be accepted. */
+const acceptable = (item: ReviewItem) => !item.tooLarge
 
 /**
  * One recording's review list: each recorded stub with its method, URL, status, body size and warnings,
@@ -83,10 +86,12 @@ export function ReviewList({ recording }: { recording: Recording }) {
   const busy = accept.isPending || discard.isPending
 
   const items = recording.items
+  const wiremockOnly = useWireMockOnly()
   const choiceOf = (item: ReviewItem): RowChoice => choices[item.id] ?? { name: '', ...suggestLink(item, allIntegrations, endpoints) }
   const setChoice = (item: ReviewItem, patch: Partial<RowChoice>) => setChoices((prev) => ({ ...prev, [item.id]: { ...choiceOf(item), ...patch } }))
   const picked = items.filter((i) => selected.has(i.id))
-  const allSelected = picked.length === items.length
+  const selectable = items.filter(acceptable)
+  const allSelected = picked.length === selectable.length && selectable.length > 0
   const toggle = (id: string, on: boolean) =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -153,12 +158,19 @@ export function ReviewList({ recording }: { recording: Recording }) {
         <AlertDescription className="text-foreground/90">{t('recording.realDataBody', { source })}</AlertDescription>
       </Alert>
       {recording.dropped > 0 && <p className="text-xs text-hazard-fg">{t('recording.dropped', { count: recording.dropped })}</p>}
+      {(recording.leftInWireMock ?? 0) > 0 && (
+        <Alert variant="destructive">
+          <AlertTriangleIcon />
+          <AlertTitle>{t('recording.leftTitle', { count: recording.leftInWireMock ?? 0 })}</AlertTitle>
+          <AlertDescription>{t(wiremockOnly ? 'recording.leftBodyWireMockOnly' : 'recording.leftBody')}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-line bg-surface-2 px-3 py-2">
         <label className="flex items-center gap-2 text-xs">
           <Checkbox
             checked={allSelected ? true : picked.length > 0 ? 'indeterminate' : false}
-            onCheckedChange={(on) => setSelected(on === true ? new Set(items.map((i) => i.id)) : new Set())}
+            onCheckedChange={(on) => setSelected(on === true ? new Set(selectable.map((i) => i.id)) : new Set())}
           />
           {t('recording.selectAll')}
         </label>
@@ -254,7 +266,7 @@ function ReviewRow({
   const t = useT()
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
-  const body = bodyText(item)
+  const hasBody = bodyText(item) !== null
   const integration = integrations.find((i) => i.key === choice.integration)
   const options = integration ? (endpoints[integration.key] ?? []) : []
   const scenario = typeof item.stub.scenarioName === 'string' ? item.stub.scenarioName : undefined
@@ -268,7 +280,7 @@ function ReviewRow({
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Checkbox id={id('check')} checked={checked} onCheckedChange={(on) => onCheck(on === true)} aria-label={t('recording.selectRow', { name: `${item.method} ${item.url}` })} />
+        <Checkbox id={id('check')} checked={checked} disabled={item.tooLarge} onCheckedChange={(on) => onCheck(on === true)} aria-label={t('recording.selectRow', { name: `${item.method} ${item.url}` })} />
         <MethodBadge method={item.method} />
         <label htmlFor={id('check')} className="min-w-0 flex-1 font-mono text-xs break-all">
           {item.url}
@@ -276,7 +288,7 @@ function ReviewRow({
         {item.status !== null ? <StatusBadge status={item.status} /> : <span className="font-mono text-[10px] text-mismatch">{t('recording.fault')}</span>}
         <span className="font-mono text-[10px] text-muted-foreground tabular-nums">{item.bodySize > 0 ? formatBytes(item.bodySize) : t('recording.noBody')}</span>
       </div>
-      {(item.duplicateOf || item.unmatched || scenario) && (
+      {(item.duplicateOf || item.unmatched || item.tooLarge || scenario) && (
         <div className="flex flex-wrap gap-2 text-[11px]">
           {item.duplicateOf && (
             <Link
@@ -287,6 +299,12 @@ function ReviewRow({
               <CopyIcon aria-hidden className="size-3" />
               {t('recording.duplicate', { name: item.duplicateOf.name ?? item.duplicateOf.id })}
             </Link>
+          )}
+          {item.tooLarge && (
+            <span className="inline-flex items-center gap-1 rounded-sm border border-mismatch/40 bg-mismatch/10 px-1.5 py-0.5 text-mismatch">
+              <FileWarningIcon aria-hidden className="size-3" />
+              {t('recording.tooLarge', { size: formatBytes(item.bodySize) })}
+            </span>
           )}
           {item.unmatched && (
             <span className="inline-flex items-center gap-1 rounded-sm border border-mismatch/40 bg-mismatch/10 px-1.5 py-0.5 text-mismatch">
@@ -353,21 +371,30 @@ function ReviewRow({
           </Select>
         </div>
       </div>
-      {body !== null && (
-        <details className="group rounded-md border border-line/70 bg-surface-2">
-          <summary className="cursor-pointer px-2.5 py-1.5 text-[11px] text-muted-foreground select-none hover:text-foreground">
-            {t('recording.showBody', { size: formatBytes(item.bodySize) })}
-          </summary>
-          <pre dir="ltr" className="max-h-64 overflow-auto border-t border-line/70 px-2.5 py-2 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
-            {body}
-          </pre>
-        </details>
-      )}
+      {hasBody && <RecordedAnswer item={item} />}
       {error && (
         <p role="alert" className="text-xs text-mismatch">
           {error}
         </p>
       )}
     </li>
+  )
+}
+
+/** The recorded answer, rendered only once its <details> is opened (bodies can be up to 1 MB each). */
+function RecordedAnswer({ item }: { item: ReviewItem }) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  return (
+    <details className="group rounded-md border border-line/70 bg-surface-2" onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary className="cursor-pointer px-2.5 py-1.5 text-[11px] text-muted-foreground select-none hover:text-foreground">
+        {t('recording.showBody', { size: formatBytes(item.bodySize) })}
+      </summary>
+      {open && (
+        <pre dir="ltr" className="max-h-64 overflow-auto border-t border-line/70 px-2.5 py-2 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+          {bodyText(item)}
+        </pre>
+      )}
+    </details>
   )
 }
