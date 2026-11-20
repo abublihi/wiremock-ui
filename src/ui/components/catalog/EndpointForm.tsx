@@ -3,7 +3,7 @@ import { AlertCircleIcon, PlusIcon, SaveIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Endpoint, KeyLocation } from '@/server/catalog/types'
 import { ApiError } from '@/ui/api/client'
-import { useUpsertEndpoint } from '@/ui/api/queries'
+import { useEndpoints, useUpsertEndpoint } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Eyebrow } from '@/ui/components/editor/EditorShell'
@@ -123,6 +123,7 @@ function Body({ integration, endpoint, onClose }: { integration: string; endpoin
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
   const upsert = useUpsertEndpoint()
+  const existing = useEndpoints(integration)
   const [form, setForm] = useState<Form>(() => initialForm(endpoint))
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
@@ -155,6 +156,11 @@ function Body({ integration, endpoint, onClose }: { integration: string; endpoin
     event.preventDefault()
     setErrors({})
     setFormError(null)
+    // A PUT is an upsert: adding over an existing key would silently replace it.
+    if (!endpoint && existing.data?.some((e) => e.key === form.key.trim())) {
+      setErrors({ key: t('catalog.endpoint.keyTaken') })
+      return
+    }
     const exampleResponses = Object.fromEntries(Object.entries(form.examples).filter(([, body]) => body.trim() !== ''))
     const links = form.links.filter((l) => l.label.trim() || l.url.trim()).map((l) => ({ label: l.label.trim(), url: l.url.trim() }))
     try {

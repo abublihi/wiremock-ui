@@ -3,7 +3,7 @@ import { AlertCircleIcon, SaveIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Integration } from '@/server/catalog/types'
 import { ApiError } from '@/ui/api/client'
-import { useUpsertIntegration } from '@/ui/api/queries'
+import { useIntegrations, useUpsertIntegration } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/ui/components/ui/dialog'
@@ -54,6 +54,7 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
   const upsert = useUpsertIntegration()
+  const existing = useIntegrations()
   const [form, setForm] = useState({
     key: integration?.key ?? '',
     name: integration?.name ?? '',
@@ -72,6 +73,11 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
     event.preventDefault()
     setErrors({})
     setFormError(null)
+    // A PUT is an upsert: adding over an existing key would silently replace it.
+    if (!integration && existing.data?.some((i) => i.key === form.key.trim())) {
+      setErrors({ key: t('catalog.integration.keyTaken') })
+      return
+    }
     try {
       const saved = await upsert.mutateAsync({
         key: form.key.trim(),

@@ -353,12 +353,17 @@ export function useUpsertIntegration() {
   })
 }
 
+/** Deletes an integration. The caller leaves the page first, then calls forgetIntegration (so no "not found" flashes). */
 export function useDeleteIntegration() {
-  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (key: string) => apiFetch<void>(integrationPath(key), { method: 'DELETE' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
   })
+}
+
+/** Drops a deleted integration's cached endpoints and refreshes the integration list. */
+export function forgetIntegration(queryClient: QueryClient, key: string) {
+  queryClient.removeQueries({ queryKey: queryKeys.endpoints(key) })
+  return queryClient.invalidateQueries({ queryKey: queryKeys.integrations })
 }
 
 export function useUpsertEndpoint() {

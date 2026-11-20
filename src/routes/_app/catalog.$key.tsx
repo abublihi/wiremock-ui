@@ -1,9 +1,10 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { AlertCircleIcon, ArrowLeftIcon, ListTreeIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Endpoint } from '@/server/catalog/types'
-import { useDeleteIntegration, useEndpoints, useIntegrations } from '@/ui/api/queries'
+import { forgetIntegration, useDeleteIntegration, useEndpoints, useIntegrations } from '@/ui/api/queries'
 import { DeleteConfirm } from '@/ui/components/catalog/DeleteConfirm'
 import { EndpointForm } from '@/ui/components/catalog/EndpointForm'
 import { EndpointList } from '@/ui/components/catalog/EndpointList'
@@ -24,11 +25,18 @@ function IntegrationRoute() {
 export function IntegrationPage({ integrationKey }: { integrationKey: string }) {
   const t = useT()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const integrations = useIntegrations()
   const endpoints = useEndpoints(integrationKey)
   const removeIntegration = useDeleteIntegration()
   const [editingIntegration, setEditingIntegration] = useState(false)
-  const [form, setForm] = useState<{ endpoint?: Endpoint } | null>(null)
+  // The endpoint form keeps its last content while the sheet animates closed.
+  const [form, setForm] = useState<{ endpoint?: Endpoint }>({})
+  const [formOpen, setFormOpen] = useState(false)
+  const openForm = (endpoint?: Endpoint) => {
+    setForm({ endpoint })
+    setFormOpen(true)
+  }
 
   const integration = integrations.data?.find((i) => i.key === integrationKey)
   const back = (
@@ -64,7 +72,7 @@ export function IntegrationPage({ integrationKey }: { integrationKey: string }) 
 
   const count = endpoints.data?.length ?? 0
   const addEndpoint = (
-    <Button onClick={() => setForm({})}>
+    <Button onClick={() => openForm()}>
       <PlusIcon data-icon="inline-start" />
       {t('catalog.endpoints.add')}
     </Button>
@@ -99,6 +107,7 @@ export function IntegrationPage({ integrationKey }: { integrationKey: string }) 
               await removeIntegration.mutateAsync(integration.key)
               toast.success(t('catalog.deleted', { name: integration.name }))
               await navigate({ to: '/catalog' })
+              await forgetIntegration(queryClient, integration.key)
             }}
           />
         </div>
@@ -139,11 +148,11 @@ export function IntegrationPage({ integrationKey }: { integrationKey: string }) 
           <EmptyContent>{addEndpoint}</EmptyContent>
         </Empty>
       ) : (
-        <EndpointList integration={integration} endpoints={endpoints.data} onEdit={(endpoint) => setForm({ endpoint })} />
+        <EndpointList integration={integration} endpoints={endpoints.data} onEdit={openForm} />
       )}
 
       <IntegrationForm integration={integration} open={editingIntegration} onOpenChange={setEditingIntegration} />
-      <EndpointForm integration={integration} endpoint={form?.endpoint} open={form !== null} onOpenChange={(open) => !open && setForm(null)} />
+      <EndpointForm integration={integration} endpoint={form?.endpoint} open={formOpen} onOpenChange={setFormOpen} />
     </div>
   )
 }

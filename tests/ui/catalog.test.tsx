@@ -105,6 +105,21 @@ describe('catalog index', () => {
     expect(prefix.getAttribute('aria-describedby')).toContain('prefix-error')
   })
 
+  it('refuses to add an integration over an existing key, without sending the PUT', async () => {
+    const calls = mockApi()
+    await renderApp(<CatalogPage />)
+    const ue = userEvent.setup()
+    await screen.findByRole('link', { name: /NIC/ })
+    await ue.click(screen.getByRole('button', { name: 'Add integration' }))
+    const dialog = await screen.findByRole('dialog')
+    await ue.type(within(dialog).getByLabelText('Key'), 'nic')
+    await ue.type(within(dialog).getByLabelText('Name'), 'Other')
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await within(dialog).findByText('An integration with this key already exists')
+    expect(within(dialog).getByLabelText('Key').getAttribute('aria-invalid')).toBe('true')
+    expect(calls).toHaveLength(0)
+  })
+
   it('shows an empty state with an add button', async () => {
     mockApi({ integrations: [] })
     await renderApp(<CatalogPage />)
@@ -226,6 +241,49 @@ describe('integration page', () => {
     await ue.click(within(dialog).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
     expect(attempts).toBe(2)
+  })
+
+  it('refuses to add an endpoint over an existing key, without sending the PUT', async () => {
+    const calls = mockApi()
+    await renderApp(<IntegrationPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    await ue.click(await screen.findByRole('button', { name: 'Add endpoint' }))
+    const sheet = await screen.findByRole('dialog')
+    await ue.type(within(sheet).getByLabelText('Key'), 'get-citizen')
+    await ue.type(within(sheet).getByLabelText('Name'), 'Dup')
+    await ue.click(within(sheet).getByRole('button', { name: 'Save' }))
+    await within(sheet).findByText('An endpoint with this key already exists')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('shows the server message when deleting an integration that still has mocks', async () => {
+    server.use(http.delete(`${BASE}/api/integrations/nic`, () => HttpResponse.json({ error: 'Integration still has mocks' }, { status: 409 })))
+    mockApi()
+    await renderApp(<IntegrationPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    await screen.findByText('Fetch citizen')
+    await ue.click(screen.getByRole('button', { name: 'Delete' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await ue.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await within(dialog).findByText('Integration still has mocks')
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+  })
+
+  it('edits an integration: key is fixed, body omits key, updatedAt and updatedBy', async () => {
+    const calls = mockApi()
+    await renderApp(<IntegrationPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    await screen.findByText('Fetch citizen')
+    await ue.click(screen.getByRole('button', { name: 'Edit' }))
+    const dialog = await screen.findByRole('dialog')
+    const key = within(dialog).getByLabelText('Key') as HTMLInputElement
+    expect(key.disabled).toBe(true)
+    expect(key.value).toBe('nic')
+    await ue.type(within(dialog).getByLabelText('Name'), ' v2')
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0]).toMatchObject({ method: 'PUT', path: '/api/integrations/nic' })
+    expect(calls[0]!.body).toEqual({ name: 'NIC v2', prefix: '/nic', description: 'Civil registry' })
   })
 
   it('offers edit and delete of the integration to any signed-in user', async () => {
