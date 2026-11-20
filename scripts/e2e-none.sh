@@ -83,7 +83,10 @@ echo "Signing in and reading the config..."
 code=$(curl -s -o /dev/null -w '%{http_code}' -c "$COOKIES" -H 'Content-Type: application/json' -X POST "$UI/api/session" \
   -d "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASS\"}")
 [ "$code" = "200" ] || { echo "FAIL: sign-in returned $code"; exit 1; }
-[ "$(curl -s -b "$COOKIES" "$UI/api/config")" = '{"storeDriver":"none"}' ] || { echo "FAIL: /api/config does not say none"; exit 1; }
+case "$(curl -s -b "$COOKIES" "$UI/api/config")" in
+  *'"storeDriver":"none"'*'"seedPrune":false'*) ;;
+  *) echo "FAIL: /api/config does not say none"; exit 1 ;;
+esac
 [ "$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" "$UI/mocks")" = "200" ] || { echo "FAIL: the mocks page did not render"; exit 1; }
 
 echo "Listing mocks through the UI..."
