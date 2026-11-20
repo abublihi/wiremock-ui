@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { CatalogPage } from '@/routes/_app/catalog.index'
+import { CatalogPage } from '@/routes/_app/integrations.index'
 import { MocksPage, type MocksSearch } from '@/routes/_app/mocks.index'
 import { ImportPage } from '@/routes/_app/import'
 import { UsersPage } from '@/routes/_app/users'
@@ -101,14 +101,14 @@ describe('WireMock-only mode (STORE_DRIVER=none)', () => {
     expect(screen.queryByRole('menuitem', { name: 'Change password' })).toBeNull()
   })
 
-  it('Catalog warns that changes are kept in memory; the banner can be dismissed', async () => {
+  it('Integrations warns that changes are kept in memory; the banner can be dismissed', async () => {
     server.use(
       http.get(`${BASE}/api/integrations`, () => HttpResponse.json([])),
     )
     const user = userEvent.setup()
     await renderApp(none(<CatalogPage />))
     const banner = await screen.findByRole('status')
-    expect(banner.textContent).toContain('Catalog changes are kept in memory and lost on restart (WireMock-only mode)')
+    expect(banner.textContent).toContain('Integration changes are kept in memory and lost on restart (WireMock-only mode)')
     await user.click(screen.getByRole('button', { name: 'Dismiss' }))
     await waitFor(() => expect(screen.queryByText(/kept in memory/)).toBeNull())
   })

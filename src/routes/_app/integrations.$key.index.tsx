@@ -13,7 +13,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { useT } from '@/ui/i18n'
 
-export const Route = createFileRoute('/_app/catalog/$key/')({ component: IntegrationRoute })
+export const Route = createFileRoute('/_app/integrations/$key/')({ component: IntegrationRoute })
 
 function IntegrationRoute() {
   const { key } = Route.useParams()
@@ -32,7 +32,7 @@ export function IntegrationPage({ integrationKey }: { integrationKey: string }) 
   const integration = integrations.data?.find((i) => i.key === integrationKey)
   const back = (
     <Button asChild variant="ghost" size="sm" className="w-fit">
-      <Link to="/catalog">
+      <Link to="/integrations">
         <ArrowLeftIcon data-icon="inline-start" className="rtl:rotate-180" />
         {t('catalog.back')}
       </Link>
@@ -64,7 +64,7 @@ export function IntegrationPage({ integrationKey }: { integrationKey: string }) 
   const count = endpoints.data?.length ?? 0
   const addEndpoint = (
     <Button asChild>
-      <Link to="/catalog/$key/endpoints/new" params={{ key: integration.key }}>
+      <Link to="/integrations/$key/endpoints/new" params={{ key: integration.key }}>
         <PlusIcon data-icon="inline-start" />
         {t('catalog.endpoints.add')}
       </Link>
@@ -100,7 +100,7 @@ export function IntegrationPage({ integrationKey }: { integrationKey: string }) 
             onConfirm={async () => {
               await removeIntegration.mutateAsync(integration.key)
               toast.success(t('catalog.integration.deleted', { name: integration.name }))
-              await navigate({ to: '/catalog' })
+              await navigate({ to: '/integrations' })
               await forgetIntegration(queryClient, integration.key)
             }}
           />

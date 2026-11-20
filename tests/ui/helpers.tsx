@@ -16,7 +16,7 @@ export const testUser: PublicUser = {
 export const testSession: SessionData = { user: testUser, csrfToken: 'csrf-1' }
 
 /**
- * Renders `ui` at "/" inside a router that also has "/login", "/mocks", "/mocks/new", "/scenarios", "/scenarios/$name/edit" and "/catalog/$key" pages that print
+ * Renders `ui` at "/" inside a router that also has "/login", "/mocks", "/mocks/new", "/scenarios", "/scenarios/$name/edit" and "/integrations/$key" pages that print
  * their search or params,
  * so tests can see where navigation ended up. Pass `session` to prime the query cache (and CSRF token).
  */
@@ -65,7 +65,7 @@ export async function renderApp(ui: ReactNode, opts: { path?: string; session?: 
   })
   const integrationPage = createRoute({
     getParentRoute: () => root,
-    path: '/catalog/$key',
+    path: '/integrations/$key',
     component: () => <main>integration page {(integrationPage.useParams() as { key: string }).key}</main>,
   })
   const router = createRouter({

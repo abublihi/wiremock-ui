@@ -52,3 +52,17 @@ test('test-request and scenario routes resolve to their own files', () => {
 test('the scenario name reaches the handler decoded', () => {
   expect(router.matchRoutes('/api/scenarios/order%20flow/state').at(-1)?.params).toMatchObject({ name: 'order flow' })
 })
+
+test('the quick-mock preview is not captured by /api/mocks/$id', () => {
+  expect(leaf('/api/mocks/preview')).toBe('/api/mocks/preview')
+})
+
+test('Integrations pages resolve under /integrations; old /catalog URLs land on the redirect routes', () => {
+  expect(leaf('/integrations')).toBe('/_app/integrations/')
+  expect(leaf('/integrations/nic')).toBe('/_app/integrations/$key/')
+  expect(leaf('/integrations/nic/endpoints/new')).toBe('/_app/integrations/$key/endpoints/new')
+  expect(leaf('/integrations/nic/endpoints/fetch/edit')).toBe('/_app/integrations/$key/endpoints/$endpoint/edit')
+  expect(leaf('/catalog')).toBe('/catalog/')
+  expect(leaf('/catalog/nic')).toBe('/catalog/$')
+  expect(leaf('/catalog/nic/endpoints/fetch/edit')).toBe('/catalog/$')
+})

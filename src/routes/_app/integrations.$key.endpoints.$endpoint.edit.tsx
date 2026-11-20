@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { EndpointPage } from '@/ui/components/catalog/EndpointPage'
 
-export const Route = createFileRoute('/_app/catalog/$key/endpoints/$endpoint/edit')({ component: EditEndpointRoute })
+export const Route = createFileRoute('/_app/integrations/$key/endpoints/$endpoint/edit')({ component: EditEndpointRoute })
 
 function EditEndpointRoute() {
   const { key, endpoint } = Route.useParams()

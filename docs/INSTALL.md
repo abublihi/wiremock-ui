@@ -88,7 +88,7 @@ What you give up, because nothing is stored:
 
 - **One account only**, the `ADMIN_USER` one: the Users page only explains this, and its password is changed by changing `ADMIN_PASSWORD` and restarting.
 - **No history**, so no restore and no Undo after a delete.
-- **The catalog, the audit log (last 500 entries) and sign-in sessions live in memory** and are gone after a restart (everyone signs in again). `SEED_PATH` still loads a catalog on every start; its mocks are written into WireMock. `SEED_PRUNE` is ignored (with a warning in the log) and the Import page offers no prune (the API answers 400): the UI never deletes stubs from your WireMock in bulk.
+- **Integrations, the audit log (last 500 entries) and sign-in sessions live in memory** and are gone after a restart (everyone signs in again). `SEED_PATH` still loads integrations on every start; its mocks are written into WireMock. `SEED_PRUNE` is ignored (with a warning in the log) and the Import page offers no prune (the API answers 400): the UI never deletes stubs from your WireMock in bulk.
 - **Edits made while WireMock is down fail** (there is no copy to fall back to), and a WireMock restart keeps only what WireMock itself persists: a stub that came from WireMock's `mappings` folder stays persistent when you edit it; mocks you create in the UI are not written to WireMock's files.
 - **Two people saving the same mock at the same moment**: the version check catches most conflicts, but two saves within the same instant can both land (the later one wins).
 
@@ -128,7 +128,7 @@ Compose-only variables (read from `.env` by the compose files):
 
 ### How the stores compare
 
-Both stores keep the same data and behave the same: accounts and sessions, the sign-in rate limit, mocks with their history (last 20 versions, kept 7 days after a delete), the catalog and the 30-day audit log.
+Both stores keep the same data and behave the same: accounts and sessions, the sign-in rate limit, mocks with their history (last 20 versions, kept 7 days after a delete), integrations and the 30-day audit log.
 
 - **SQLite** uses Node's built-in `node:sqlite` (no native build) in one file in WAL mode. Keep the file on a volume and run **one** UI instance per file.
 - **Redis** lets several UI instances share the data. Run it with persistence (`--appendonly yes`, as `compose.yaml` does).
@@ -189,7 +189,7 @@ Data on the volume is kept. From source: `git pull && npm ci --ignore-scripts &&
 
 - Anyone who can sign in can reset another person's password on the **Users** page (**Reset password**).
 - You can change your own from the account menu (**Change password**).
-- If nobody can sign in, delete the accounts; the next start creates the first account again from `ADMIN_USER` / `ADMIN_PASSWORD`. Mocks, the catalog and the audit log stay.
+- If nobody can sign in, delete the accounts; the next start creates the first account again from `ADMIN_USER` / `ADMIN_PASSWORD`. Mocks, integrations and the audit log stay.
 
   SQLite (Compose):
 

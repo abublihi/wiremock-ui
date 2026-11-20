@@ -36,10 +36,11 @@ for (const theme of ['dark', 'light'] as const) {
         ['/mocks/new?integration=nic&endpoint=fetch-citizen', 'New mock'],
         ['/requests', 'Request log'],
         ['/scenarios', 'Scenarios'],
-        ['/catalog', 'Catalog'],
-        ['/catalog/nic', 'NIC'],
-        ['/catalog/nic/endpoints/new', 'Add endpoint'],
-        ['/catalog/nic/endpoints/fetch-citizen/edit', 'Edit endpoint'],
+        ['/integrations', 'Integrations'],
+        ['/catalog', 'Integrations'], // the old URL redirects
+        ['/integrations/nic', 'NIC'],
+        ['/integrations/nic/endpoints/new', 'Add endpoint'],
+        ['/integrations/nic/endpoints/fetch-citizen/edit', 'Edit endpoint'],
         ['/users', 'Users'],
       ]
       for (const [url, heading] of pages) {
@@ -79,7 +80,7 @@ test('closing a dialog returns focus to the button that opened it', async ({ pag
   await signIn(page, USER_A)
   const cases: [string, string, string][] = [
     ['/users', 'Add user', 'Add user'],
-    ['/catalog', 'Add integration', 'Add integration'],
+    ['/integrations', 'Add integration', 'Add integration'],
   ]
   for (const [url, trigger, title] of cases) {
     await test.step(`${url}: ${trigger}`, async () => {

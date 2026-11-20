@@ -1,4 +1,4 @@
-import type { SimpleMockInput } from '@/server/catalog/build'
+import type { QuickMockInput, SimpleMockInput } from '@/server/catalog/build'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
 import {
@@ -91,6 +91,24 @@ export type SimpleForm = {
   proxy: ProxyForm
   webhook: WebhookForm
   scenario: ScenarioForm
+  /** Set for a quick mock of a URL ("Mock a URL directly"): its own request instead of a catalog endpoint and key. */
+  quick?: QuickRequest
+}
+
+/** How a quick mock matches the URL path: exactly, as a template (`/users/{id}`) or as a regular expression. */
+export type QuickUrlType = QuickMockInput['request']['urlType']
+export type QuickMethod = QuickMockInput['request']['method']
+
+/** The request side of a quick mock, plus its response headers (an endpoint mock takes those from the catalog). */
+export type QuickRequest = {
+  method: QuickMethod
+  urlType: QuickUrlType
+  url: string
+  /** Query parameters the request must carry (each value matched exactly). */
+  query: HeaderRow[]
+  /** Request body to match: JSON matches as JSON (extra fields allowed), any other text must be contained. */
+  body: string
+  responseHeaders: HeaderRow[]
 }
 
 export const DEFAULT_SLOW_SECONDS = 3
@@ -480,4 +498,207 @@ export function parseStubJson(text: string): StubJson {
   }
   if (!isRecord(value)) return { ok: false, reason: 'notObject', message: '' }
   return { ok: true, value }
+}
+
+// ── Quick URL mocks ("Mock a URL directly") ─────────────────────────────────────────────────────────────────────
+// Keep in step with the server's buildQuickStub (src/server/catalog/build.ts): what it writes is what we read back.
+
+export const QUICK_METHODS: readonly QuickMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'ANY']
+export const QUICK_URL_TYPES: readonly QuickUrlType[] = ['path', 'template', 'regex']
+const QUICK_URL_FIELD: Record<QuickUrlType, string> = { path: 'urlPath', template: 'urlPathTemplate', regex: 'urlPathPattern' }
+
+/** `application/json`, `application/problem+json; charset=utf-8`… (same rule as the server's isJsonContentType). */
+export const isJsonContentType = (type: string | undefined) => type !== undefined && /^[^;]*[/+]json\s*(;|$)/i.test(type.trim())
+
+/** The name the server gives a quick mock when the form's name is empty. */
+export const quickMockName = (quick: Pick<QuickRequest, 'method' | 'url'>) => `${quick.method} ${quick.url.trim()}`
+
+/** The Content-Type among the rows ('' when none). */
+export const contentTypeOf = (rows: HeaderRow[]) => rows.find((r) => r.name.trim().toLowerCase() === 'content-type')?.value.trim() ?? ''
+
+/** A quick mock has no integration: the Simple form's pieces that need one see this (prefix `/`). */
+export const QUICK_INTEGRATION: Integration = { key: '', name: '', prefix: '/', updatedAt: '', updatedBy: '' }
+
+/** The quick request as an endpoint, so the Simple form's shared parts (presets, body editor, proxy route) work as usual. */
+export function quickEndpoint(quick: QuickRequest): Endpoint {
+  const type = contentTypeOf(quick.responseHeaders).toLowerCase()
+  const contentType: Endpoint['contentType'] = isJsonContentType(type) ? 'json' : type.includes('xml') ? 'xml' : type.includes('html') ? 'html' : 'text'
+  return {
+    integration: '',
+    key: '',
+    name: quickMockName(quick),
+    method: quick.method,
+    path: quick.url.trim() || '/',
+    pathType: quick.urlType === 'path' ? 'exact' : quick.urlType,
+    contentType,
+    exampleResponses: {},
+    allowedStatuses: [],
+    updatedAt: '',
+    updatedBy: '',
+  }
+}
+
+/** A fresh quick form: GET /, answering 200 with a JSON Content-Type and no body. */
+export function emptyQuickForm(seed?: ScenarioSeed): SimpleForm {
+  const quick: QuickRequest = {
+    method: 'GET',
+    urlType: 'path',
+    url: '/',
+    query: [],
+    body: '',
+    responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+  }
+  const form: SimpleForm = { ...emptyForm(quickEndpoint(quick)), integration: '', endpoint: '', isDefault: true, body: '', quick }
+  return seedScenario(form, seed)
+}
+
+/** The body the quick preview accepts: the Simple form's response, the form's own request and response headers. */
+export function toQuickInput(form: SimpleForm): QuickMockInput {
+  const quick = form.quick!
+  const { isDefault: _d, keyValue: _k, headers: _h, ...rest } = toSimpleInput(form)
+  const request: QuickMockInput['request'] = { method: quick.method, urlType: quick.urlType, url: quick.url.trim() }
+  const query = headerMap(quick.query)
+  if (query) request.query = query
+  if (quick.body.trim() !== '') request.body = quick.body
+  const input: QuickMockInput = { request, ...rest }
+  if (form.answer !== 'proxy' && !form.fault) {
+    // A binary body brings its own Content-Type; any typed one gives way to it.
+    const rows = form.binary ? quick.responseHeaders.filter((r) => r.name.trim().toLowerCase() !== 'content-type') : quick.responseHeaders
+    const headers = { ...headerMap(rows), ...(form.binary ? { 'Content-Type': form.binary.contentType } : {}) }
+    if (Object.keys(headers).length > 0) input.headers = headers
+  }
+  return input
+}
+
+const isText = (v: unknown): v is string => typeof v === 'string'
+const parsesAsJson = (text: string) => {
+  try {
+    JSON.parse(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** The quick request the builder writes, or null for anything else. */
+function readQuickRequest(request: Record<string, unknown>): Omit<QuickRequest, 'responseHeaders'> | null {
+  const method = request.method
+  if (!QUICK_METHODS.includes(method as QuickMethod)) return null
+  const types = QUICK_URL_TYPES.filter((type) => QUICK_URL_FIELD[type] in request)
+  if (types.length !== 1) return null
+  const urlType = types[0]!
+  const urlField = QUICK_URL_FIELD[urlType]
+  if (!onlyKeys(request, ['method', urlField, 'queryParameters', 'bodyPatterns'])) return null
+  const url = request[urlField]
+  if (!isText(url) || url === '' || /\s/.test(url)) return null
+  if (urlType !== 'regex' && (!url.startsWith('/') || url.includes('?'))) return null
+
+  const query: HeaderRow[] = []
+  if (request.queryParameters !== undefined) {
+    const params = request.queryParameters
+    if (!isRecord(params) || Object.keys(params).length === 0) return null
+    for (const [name, matcher] of Object.entries(params)) {
+      if (name.trim() !== name || name === '' || !isRecord(matcher) || !onlyKeys(matcher, ['equalTo']) || !isText(matcher.equalTo)) return null
+      query.push({ name, value: matcher.equalTo })
+    }
+  }
+  let body = ''
+  if (request.bodyPatterns !== undefined) {
+    const patterns = request.bodyPatterns
+    if (!Array.isArray(patterns) || patterns.length !== 1 || !isRecord(patterns[0])) return null
+    const p = patterns[0]
+    if (onlyKeys(p, ['equalToJson', 'ignoreExtraElements']) && p.ignoreExtraElements === true && isText(p.equalToJson) && parsesAsJson(p.equalToJson)) {
+      body = p.equalToJson
+    } else if (onlyKeys(p, ['contains']) && isText(p.contains) && p.contains.trim() !== '' && !parsesAsJson(p.contains)) {
+      body = p.contains
+    } else return null
+  }
+  return { method: method as QuickMethod, urlType, url, query, body }
+}
+
+/**
+ * Turns a free-form stub back into the quick form, or null when it holds anything the form cannot show
+ * (a catalog link, a priority, other matchers or response fields…): like fromStub, the form never drops fields.
+ */
+export function fromQuickStub(stub: StubMapping): SimpleForm | null {
+  if (!onlyKeys(stub, ['id', 'uuid', 'name', 'persistent', 'request', 'response', 'metadata', 'serveEventListeners', ...SCENARIO_KEYS])) return null
+  if (stub.name !== undefined && !isText(stub.name)) return null
+  const meta = stub.metadata
+  if (meta !== undefined) {
+    if (!isRecord(meta) || !onlyKeys(meta, ['wiremockUi'])) return null
+    if (meta.wiremockUi?.integration !== undefined || meta.wiremockUi?.endpoint !== undefined) return null
+  }
+  const { request, response } = stub
+  if (!isRecord(request) || !isRecord(response)) return null
+  const read = readQuickRequest(request)
+  if (!read) return null
+
+  const form = emptyQuickForm()
+  // A proxy or a fault sends no headers of ours: the form keeps its default ones (unused until it answers itself).
+  const quick: QuickRequest = { ...read, responseHeaders: form.quick!.responseHeaders }
+  form.quick = quick
+  if (stub.scenarioName !== undefined || stub.requiredScenarioState !== undefined || stub.newScenarioState !== undefined) {
+    const scenario = readScenario(stub)
+    if (!scenario) return null
+    form.scenario = scenario
+  }
+  if (stub.serveEventListeners !== undefined) {
+    const webhook = readWebhook(stub.serveEventListeners, form.webhook)
+    if (!webhook) return null
+    form.webhook = webhook
+  }
+
+  const delay = response.fixedDelayMilliseconds
+  if (delay !== undefined && typeof delay !== 'number') return null
+  if (response.proxyBaseUrl !== undefined) {
+    const proxy = readProxy(response)
+    if (!proxy) return null
+    form.answer = 'proxy'
+    form.proxy = proxy
+  } else if (response.fault !== undefined) {
+    if (!isFault(response.fault) || !onlyKeys(response, ['fault', 'fixedDelayMilliseconds'])) return null
+    form.fault = response.fault
+  } else {
+    if (!onlyKeys(response, ['status', 'headers', 'body', 'jsonBody', 'base64Body', 'fixedDelayMilliseconds'])) return null
+    const bodies = ['body', 'jsonBody', 'base64Body'].filter((k) => k in response)
+    if (bodies.length > 1) return null
+    const { status, headers } = response
+    if (typeof status !== 'number') return null
+    if (headers !== undefined && !isStringMap(headers)) return null
+    const rows = headers ? rowsOf(headers as Record<string, string>) : []
+    const type = contentTypeOf(rows)
+    if (response.base64Body !== undefined) {
+      // The builder writes the file's type as `Content-Type`, next to any other headers.
+      const contentType = headers ? (headers as Record<string, string>)['Content-Type'] : undefined
+      if (!isText(response.base64Body) || !contentType) return null
+      form.binary = { base64: response.base64Body, name: '', size: base64Size(response.base64Body), contentType }
+      quick.responseHeaders = rows.filter((r) => r.name !== 'Content-Type')
+    } else {
+      if (response.jsonBody !== undefined) {
+        if (!isJsonContentType(type)) return null
+        form.body = JSON.stringify(response.jsonBody, null, 2)
+      } else if (response.body !== undefined) {
+        if (!isText(response.body) || response.body === '' || isJsonContentType(type)) return null
+        form.body = response.body
+      }
+      quick.responseHeaders = rows
+    }
+    form.status = status
+    form.preset = presetForStatus(status, delay)
+    if (form.preset === 'timeout') return finishQuick(stub, form)
+  }
+
+  if (delay !== undefined) {
+    const seconds = delay / 1000
+    if (!Number.isInteger(seconds) || seconds < SLOW_MIN_SECONDS || seconds > SLOW_MAX_SECONDS) return null
+    form.slow = true
+    form.delaySeconds = seconds
+  }
+  return finishQuick(stub, form)
+}
+
+function finishQuick(stub: StubMapping, form: SimpleForm): SimpleForm {
+  const name = typeof stub.name === 'string' ? stub.name : ''
+  form.name = name === quickMockName(form.quick!) ? '' : name
+  return form
 }

@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
 import { ApiError } from '@/ui/api/client'
-import { type BuiltStub, useCreateCatalogMock, usePreviewMock, useScenarios, useUpdateMock } from '@/ui/api/queries'
+import { type BuiltStub, type PreviewArgs, useCreateCatalogMock, useCreateMock, usePreviewMock, useScenarios, useUpdateMock } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/ui/components/ui/field'
@@ -19,15 +19,21 @@ import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useT } from '@/ui/i18n'
 import {
   type ProxyForm,
+  type QuickRequest,
   type ScenarioForm,
   type ScenarioSeed,
   type SimpleForm,
   type WebhookForm,
+  QUICK_INTEGRATION,
   emptyForm,
+  emptyQuickForm,
   exampleFor,
   generatedName,
   isHttpUrl,
+  quickEndpoint,
+  quickMockName,
   seedScenario,
+  toQuickInput,
   toSimpleInput,
 } from '@/ui/lib/editor-sync'
 import {
@@ -46,13 +52,19 @@ import { BodyFileButton } from './BodyFileButton'
 import { CodeEditor } from './CodeEditor'
 import { Eyebrow } from './EditorShell'
 import { keyLabel } from './EndpointPicker'
-import { hasUnnamedRow } from './HeaderRows'
+import { HeaderRows, hasUnnamedRow } from './HeaderRows'
 import { ProxySection } from './ProxySection'
+import { QuickRequestFields, quickRequestErrors } from './QuickRequestFields'
 import { ScenarioSection } from './ScenarioSection'
 import { WebhookSection } from './WebhookSection'
 
 type FieldName =
   | 'keyValue'
+  | 'method'
+  | 'url'
+  | 'query'
+  | 'bodyMatch'
+  | 'headers'
   | 'status'
   | 'body'
   | 'delay'
@@ -73,6 +85,13 @@ type Errors = Partial<Record<FieldName, string>>
 
 const SERVER_FIELD = new Map<string, FieldName>([
   ['keyValue', 'keyValue'],
+  ['request', 'url'],
+  ['request.method', 'method'],
+  ['request.url', 'url'],
+  ['request.urlType', 'url'],
+  ['request.query', 'query'],
+  ['request.body', 'bodyMatch'],
+  ['headers', 'headers'],
   ['isDefault', 'keyValue'],
   ['status', 'status'],
   ['body', 'body'],
@@ -111,13 +130,15 @@ const ON = 'data-[state=on]:border-signal/50 data-[state=on]:bg-signal/10 data-[
 
 /**
  * The catalog-first Simple editor: answers for one endpoint, built by the server's builder (preview/create),
- * or saved over an existing mock with `PUT { stub, version }` when `mock` is given.
+ * or saved over an existing mock with `PUT { stub, version }` when `mock` is given. Without an integration and
+ * endpoint it is the quick form ("Mock a URL directly"): the same response parts plus a method and URL of its own,
+ * built by the server's quick builder and saved as a free-form mock.
  * `onChange` reports every form change; `onSaved` takes over after a save (default: open the mock);
  * `onConflict` takes over a 409 (default: an inline message).
  */
 export function SimpleEditor({
-  integration,
-  endpoint,
+  integration: catalogIntegration,
+  endpoint: catalogEndpoint,
   initial,
   mock,
   scenarioSeed,
@@ -125,8 +146,8 @@ export function SimpleEditor({
   onSaved,
   onConflict,
 }: {
-  integration: Integration
-  endpoint: Endpoint
+  integration?: Integration
+  endpoint?: Endpoint
   initial?: SimpleForm
   mock?: StubMapping
   /** A new mock's scenario (when `initial` is not given): the Scenario section starts on and filled in. */
@@ -140,9 +161,17 @@ export function SimpleEditor({
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
 
-  const [form, setForm] = useState<SimpleForm>(() => initial ?? seedScenario(emptyForm(endpoint), scenarioSeed))
-  // An existing mock's body is the user's; a new form's body follows the example until the user types.
-  const [bodyTouched, setBodyTouched] = useState(Boolean(initial))
+  const catalog = catalogIntegration && catalogEndpoint ? { integration: catalogIntegration, endpoint: catalogEndpoint } : undefined
+  const [form, setForm] = useState<SimpleForm>(
+    () => initial ?? (catalog ? seedScenario(emptyForm(catalog.endpoint), scenarioSeed) : emptyQuickForm(scenarioSeed)),
+  )
+  // A quick mock: its request (method, URL, …) is part of the form and stands in for the endpoint below.
+  const quick = form.quick
+  const endpoint = catalog?.endpoint ?? quickEndpoint(quick!)
+  const integration = catalog?.integration ?? QUICK_INTEGRATION
+  // An existing mock's body is the user's; a new form's body follows the example until the user types (a quick
+  // mock has no examples).
+  const [bodyTouched, setBodyTouched] = useState(Boolean(initial) || !catalog)
   // The status whose catalog example is in the body (shown in the "prefilled from" caption).
   const [exampleStatus, setExampleStatus] = useState(form.status)
   const [customText, setCustomText] = useState(String(form.status))
@@ -156,6 +185,7 @@ export function SimpleEditor({
   const scenarios = useScenarios({ enabled: form.scenario.enabled, live: true })
   const previewMock = usePreviewMock()
   const createMock = useCreateCatalogMock()
+  const createFreeMock = useCreateMock()
   const updateMock = useUpdateMock()
   const [saving, setSaving] = useState(false)
 
@@ -202,6 +232,10 @@ export function SimpleEditor({
     }
   }
   if (form.scenario.enabled && attempted && form.scenario.name.trim() === '') clientErrors.scenarioName = t('editor.scenario.nameRequired')
+  if (quick) {
+    Object.assign(clientErrors, quickRequestErrors(t, quick, attempted))
+    if (!proxied && !broken && hasUnnamedRow(quick.responseHeaders)) clientErrors.headers = t('editor.headers.unnamed')
+  }
   const errors: Errors = { ...serverErrors, ...clientErrors }
 
   const update = (patch: Partial<SimpleForm>, clears: FieldName[] = []) => {
@@ -219,6 +253,10 @@ export function SimpleEditor({
     setForm((f) => ({ ...f, webhook: { ...f.webhook, ...patch } }))
     clear(['webhookMethod', 'webhookUrl', 'webhookHeaders', 'webhookBody', 'webhookDelay'])
   }
+  const updateQuick = (patch: Partial<QuickRequest>, clears: FieldName[]) => {
+    setForm((f) => ({ ...f, quick: { ...f.quick!, ...patch } }))
+    clear(clears)
+  }
   const updateScenario = (patch: Partial<ScenarioForm>) => {
     setForm((f) => ({ ...f, scenario: { ...f.scenario, ...patch } }))
     clear(['scenarioName', 'scenarioRequiredState', 'scenarioNewState'])
@@ -234,7 +272,12 @@ export function SimpleEditor({
   const onBodyFile = (file: BodyFile) => {
     setBodyTouched(true)
     if (file.kind === 'text') update({ body: file.text, binary: null }, ['body'])
-    else update({ body: '', binary: { base64: file.base64, name: file.name, size: file.size, contentType: file.contentType } }, ['body'])
+    else {
+      const binary = { base64: file.base64, name: file.name, size: file.size, contentType: file.contentType }
+      // A quick mock's typed Content-Type gives way to the file's own.
+      const headers = quick?.responseHeaders.filter((r) => r.name.trim().toLowerCase() !== 'content-type')
+      update({ body: '', binary, ...(quick ? { quick: { ...quick, responseHeaders: headers! } } : {}) }, ['body', 'headers'])
+    }
     toast.success(t('editor.bodyFile.loaded', { name: file.name }))
   }
   const onPreset = (value: string) => {
@@ -262,7 +305,8 @@ export function SimpleEditor({
     if (field) setServerErrors({ [field]: message })
     else setFormError({ title, message })
   }
-  const args = () => ({ integration: integration.key, endpoint: endpoint.key, input: toSimpleInput(form) })
+  const args = (): PreviewArgs =>
+    quick ? { quick: toQuickInput(form) } : { integration: integration.key, endpoint: endpoint.key, input: toSimpleInput(form) }
   const blocked = Object.keys(clientErrors).length > 0
   const reset = () => {
     setServerErrors({})
@@ -276,7 +320,8 @@ export function SimpleEditor({
       blocked ||
       (proxied && !isHttpUrl(form.proxy.baseUrl)) ||
       (form.webhook.enabled && !isHttpUrl(form.webhook.url, { templated: true })) ||
-      (form.scenario.enabled && form.scenario.name.trim() === '')
+      (form.scenario.enabled && form.scenario.name.trim() === '') ||
+      (quick !== undefined && Object.keys(quickRequestErrors(t, quick, true)).length > 0)
     )
   }
 
@@ -301,7 +346,10 @@ export function SimpleEditor({
         // The server's builder stays the single source of the stub; the PUT carries the version we opened.
         const stub = await previewMock.mutateAsync(args())
         saved = await updateMock.mutateAsync({ id: mock.id, stub, version: mock.metadata?.wiremockUi?.version ?? 0 })
-      } else saved = await createMock.mutateAsync(args())
+      } else if (quick) {
+        // Free-form: the quick builder makes the stub, the normal create checks and saves it.
+        saved = await createFreeMock.mutateAsync(await previewMock.mutateAsync(args()))
+      } else saved = await createMock.mutateAsync({ integration: integration.key, endpoint: endpoint.key, input: toSimpleInput(form) })
       toast.success(t('editor.saved'))
       if (onSaved) await onSaved(saved)
       else await navigate({ to: '/mocks/$id', params: { id: saved.id } })
@@ -318,8 +366,11 @@ export function SimpleEditor({
     errors[field] ? <FieldError id={id(`${field}-error`)}>{errors[field]}</FieldError> : null
 
   const bodyLanguage = endpoint.contentType === 'json' || endpoint.contentType === 'xml' ? endpoint.contentType : null
-  const namePlaceholder =
-    form.isDefault || form.keyValue.trim() ? generatedName(endpoint, form) : `${endpoint.name} — …`
+  const namePlaceholder = quick
+    ? quickMockName(quick)
+    : form.isDefault || form.keyValue.trim()
+      ? generatedName(endpoint, form)
+      : `${endpoint.name} — …`
 
   return (
     <form noValidate onSubmit={onSave} className="flex flex-col gap-4">
@@ -332,37 +383,47 @@ export function SimpleEditor({
       )}
 
       <Section title={t('editor.section.match')}>
-        <Field orientation="horizontal">
-          <Switch
-            id={id('default')}
-            checked={form.isDefault}
-            disabled={!endpoint.lookup}
-            onCheckedChange={(isDefault) => update({ isDefault }, ['keyValue'])}
+        {quick ? (
+          <QuickRequestFields
+            quick={quick}
+            errors={{ method: errors.method, url: errors.url, query: errors.query, body: errors.bodyMatch }}
+            onChange={updateQuick}
           />
-          <div className="flex flex-col gap-0.5">
-            <FieldLabel htmlFor={id('default')}>{t('editor.default')}</FieldLabel>
-            <FieldDescription className="text-xs">
-              {endpoint.lookup ? t('editor.defaultHint') : t('editor.noLookup')}
-            </FieldDescription>
-          </div>
-        </Field>
-        {!form.isDefault && endpoint.lookup && (
-          <Field data-invalid={Boolean(errors.keyValue)}>
-            <FieldLabel htmlFor={id('key')}>{keyLabel(t, endpoint)}</FieldLabel>
-            <Input
-              id={id('key')}
-              dir="ltr"
-              className="font-mono"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={t('editor.keyPlaceholder')}
-              value={form.keyValue}
-              aria-invalid={Boolean(errors.keyValue)}
-              aria-describedby={described('keyValue')}
-              onChange={(e) => update({ keyValue: e.target.value }, ['keyValue'])}
-            />
-            {fieldError('keyValue')}
-          </Field>
+        ) : (
+          <>
+            <Field orientation="horizontal">
+              <Switch
+                id={id('default')}
+                checked={form.isDefault}
+                disabled={!endpoint.lookup}
+                onCheckedChange={(isDefault) => update({ isDefault }, ['keyValue'])}
+              />
+              <div className="flex flex-col gap-0.5">
+                <FieldLabel htmlFor={id('default')}>{t('editor.default')}</FieldLabel>
+                <FieldDescription className="text-xs">
+                  {endpoint.lookup ? t('editor.defaultHint') : t('editor.noLookup')}
+                </FieldDescription>
+              </div>
+            </Field>
+            {!form.isDefault && endpoint.lookup && (
+              <Field data-invalid={Boolean(errors.keyValue)}>
+                <FieldLabel htmlFor={id('key')}>{keyLabel(t, endpoint)}</FieldLabel>
+                <Input
+                  id={id('key')}
+                  dir="ltr"
+                  className="font-mono"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={t('editor.keyPlaceholder')}
+                  value={form.keyValue}
+                  aria-invalid={Boolean(errors.keyValue)}
+                  aria-describedby={described('keyValue')}
+                  onChange={(e) => update({ keyValue: e.target.value }, ['keyValue'])}
+                />
+                {fieldError('keyValue')}
+              </Field>
+            )}
+          </>
         )}
       </Section>
 
@@ -461,6 +522,23 @@ export function SimpleEditor({
               )}
               {fieldError('status')}
             </FieldSet>
+
+            {quick && !broken && (
+              <Field data-invalid={Boolean(errors.headers)}>
+                <FieldLabel id={id('headers-label')}>{t('editor.quick.responseHeaders')}</FieldLabel>
+                <HeaderRows
+                  label={t('editor.quick.responseHeaders')}
+                  rows={quick.responseHeaders}
+                  invalid={Boolean(errors.headers)}
+                  describedBy={described('headers', id('headers-hint'))}
+                  onChange={(responseHeaders) => updateQuick({ responseHeaders }, ['headers', 'body'])}
+                />
+                <FieldDescription id={id('headers-hint')} className="text-xs">
+                  {form.binary ? t('editor.quick.headersBinaryHint', { type: form.binary.contentType }) : t('editor.quick.headersHint')}
+                </FieldDescription>
+                {fieldError('headers')}
+              </Field>
+            )}
 
             <Field data-invalid={Boolean(errors.body)}>
               <div className="flex flex-wrap items-baseline justify-between gap-2">

@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/ui
 import { useT } from '@/ui/i18n'
 import { THEMES, isTheme, useTheme, type Theme } from '@/ui/theme'
 import { Brand } from './Brand'
-import { Rail, type NavItem } from './Rail'
+import { Rail, type NavCounts, type NavItem } from './Rail'
 import { UserMenu } from './UserMenu'
 
 export { Brand } from './Brand'
@@ -50,17 +50,19 @@ export function ThemeMenu() {
 /** Brand, navigation and the signed-in user: the desktop sidebar and the mobile nav sheet. */
 export function SidebarContent({
   nav,
+  counts,
   user,
   onNavigate,
 }: {
   nav: NavItem[]
+  counts?: NavCounts
   user: PublicUser | null
   onNavigate?: () => void
 }) {
   return (
     <>
       <div className="flex-1 overflow-y-auto">
-        <Rail nav={nav} onNavigate={onNavigate} />
+        <Rail nav={nav} counts={counts} onNavigate={onNavigate} />
       </div>
       {user && (
         <div className="border-t border-line/60 p-3">
@@ -71,7 +73,7 @@ export function SidebarContent({
   )
 }
 
-export function TopBar({ nav, user }: { nav: NavItem[]; user: PublicUser | null }) {
+export function TopBar({ nav, counts, user }: { nav: NavItem[]; counts?: NavCounts; user: PublicUser | null }) {
   const t = useT()
   const [navOpen, setNavOpen] = useState(false)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
@@ -89,7 +91,7 @@ export function TopBar({ nav, user }: { nav: NavItem[]; user: PublicUser | null 
               <Brand caption />
             </SheetTitle>
           </SheetHeader>
-          <SidebarContent nav={nav} user={user} onNavigate={() => setNavOpen(false)} />
+          <SidebarContent nav={nav} counts={counts} user={user} onNavigate={() => setNavOpen(false)} />
         </SheetContent>
       </Sheet>
       <span className="md:hidden">

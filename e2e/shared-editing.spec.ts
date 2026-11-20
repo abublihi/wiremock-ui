@@ -78,7 +78,7 @@ test('anyone can edit the baseline mock', async ({ page }) => {
 test('every signed-in user sees the whole navigation', async ({ page }) => {
   await signIn(page, USER_A)
   const nav = page.getByRole('navigation', { name: 'Main navigation' })
-  for (const item of ['Mocks', 'Request log', 'Scenarios', 'Catalog', 'Users', 'Audit', 'Import']) {
+  for (const item of ['Mocks', 'Scenarios', 'Request log', 'Integrations', 'Import & export', 'Users', 'Audit']) {
     await expect(nav.getByRole('link', { name: item })).toBeVisible()
   }
   await expect(page.getByRole('link', { name: 'New mock' }).first()).toBeVisible()

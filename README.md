@@ -1,11 +1,11 @@
 # wiremock-ui
 
-A web console for [WireMock](https://wiremock.org) built for testers. Describe the systems your application calls in a catalog, create mocks in a few clicks (or as raw stub JSON), point your application at WireMock, and see every request it received, with a plain explanation of why a request matched no mock.
+A web console for [WireMock](https://wiremock.org) built for testers. Describe the systems your application calls as integrations, create mocks in a few clicks (or as raw stub JSON), point your application at WireMock, and see every request it received, with a plain explanation of why a request matched no mock.
 
 ![The mocks list](docs/screenshots/mocks-dark.png)
 
-- **A catalog** of the systems your application calls: each **integration** (NIC at `/nic`) has **endpoints** (`POST /nic/citizens/fetch`, key `$.idNo`), and each **mock** answers one key value. The Catalog page explains this in one glance.
-- **Simple mode** builds a mock from a catalog endpoint: a key value, a status preset and a body prefilled from the catalog's example. **Advanced mode** edits the full stub JSON.
+- **Integrations**: the systems your application calls. Each **integration** (NIC at `/nic`) has **endpoints** (`POST /nic/citizens/fetch`, key `$.idNo`), and each **mock** answers one key value. The Integrations page explains this in one glance.
+- **Simple mode** builds a mock from an integration endpoint: a key value, a status preset and a body prefilled from the endpoint's example. **Mock a URL directly** does the same for a method and URL without an integration. **Advanced mode** edits the full stub JSON.
 - **Test a mock** from the editor (or **Try it** on an endpoint) and see which mock answered; **Copy as curl** for any mock or logged request.
 - **Forward to a real service** (proxy), **call back after responding** (webhooks) and **scenarios** ("pending" first, "approved" after), built step by step on one page, with a live state view.
 - **Request log** updates live and stamps unmatched requests **No match**, with the closest mocks and the fields that differed.
@@ -33,7 +33,7 @@ Other ways to run it: with Redis, from source, or **against a WireMock you alrea
 ## Documentation
 
 - [Installing](docs/INSTALL.md): the ways to run it (Compose without Redis, Compose with Redis, from source, or against an existing WireMock with no storage), every setting, Kubernetes, backups, upgrades and troubleshooting.
-- [Using it](docs/USAGE.md): the concepts (integration → endpoint → mock), a walkthrough from the catalog to the request log, testing and curl, proxies, webhooks, scenarios, WireMock-only mode, Advanced mode and history, users and audit, import from files and Postman collections, export, seeding, and the API for scripts and CI.
+- [Using it](docs/USAGE.md): the concepts (integration → endpoint → mock), a walkthrough from integrations to the request log, testing and curl, proxies, webhooks, scenarios, WireMock-only mode, Advanced mode and history, users and audit, import from files and Postman collections, export, seeding, and the API for scripts and CI.
 
 ## Development
 
@@ -49,7 +49,7 @@ npm run typecheck
 npm run build && npm start
 ```
 
-`npm run test:e2e` starts its own stack: a WireMock container with admin auth (through Testcontainers) and the built app on a temporary SQLite file at http://127.0.0.1:3417 (`E2E_UI_PORT` changes the port), seeded from `tests/fixtures/e2e-seed/`. It covers the tester's flow from the catalog to the near-miss explanation, two people editing each other's mocks, the test panel and a curl command run in a shell, Try it, a scenario (and one made with the scenario builder and run step by step in the test panel), a proxy mock, adding an endpoint on its page, and an axe-core accessibility pass in light and dark themes.
+`npm run test:e2e` starts its own stack: a WireMock container with admin auth (through Testcontainers) and the built app on a temporary SQLite file at http://127.0.0.1:3417 (`E2E_UI_PORT` changes the port), seeded from `tests/fixtures/e2e-seed/`. It covers the tester's flow from integrations to the near-miss explanation, two people editing each other's mocks, the test panel and a curl command run in a shell, Try it, a scenario (and one made with the scenario builder and run step by step in the test panel), a proxy mock, adding an endpoint on its page, a fresh install going from New mock to an integration, an endpoint and a mock, and an axe-core accessibility pass in light and dark themes.
 
 The restart scripts use host ports 8080 and 3000; set `WIREMOCK_PORT` and `UI_PORT` to use others.
 

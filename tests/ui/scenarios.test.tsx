@@ -358,7 +358,7 @@ describe('mock editor — adding a step to a scenario', () => {
     const required = screen.getByRole('textbox', { name: 'Only answers when the scenario is in state' }) as HTMLInputElement
     expect(required.value).toBe('step-3')
     // The body still follows the catalog example, as for any new mock.
-    expect(screen.getByText('// prefilled from the catalog example for 200')).toBeTruthy()
+    expect(screen.getByText('// prefilled from the endpoint example for 200')).toBeTruthy()
     // The checkbox is on by default and follows the state typed in the form.
     expect(screen.getByRole('checkbox', { name: 'Make the current last step move to step-3' }).getAttribute('aria-checked')).toBe('true')
     await ue.clear(required)

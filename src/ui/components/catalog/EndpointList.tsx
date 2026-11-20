@@ -64,7 +64,7 @@ export function EndpointList({ integration, endpoints }: { integration: Integrat
                     {t('catalog.endpoints.try')}
                   </Button>
                   <Button asChild variant="ghost" size="icon-sm" aria-label={t('catalog.endpoints.editFor', { name: endpoint.name })}>
-                    <Link to="/catalog/$key/endpoints/$endpoint/edit" params={{ key: integration.key, endpoint: endpoint.key }}>
+                    <Link to="/integrations/$key/endpoints/$endpoint/edit" params={{ key: integration.key, endpoint: endpoint.key }}>
                       <PencilIcon />
                     </Link>
                   </Button>

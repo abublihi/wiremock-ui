@@ -5,7 +5,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { renderToString } from 'react-dom/server'
 import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } from '@tanstack/react-router'
 import type { PublicUser } from '@/server/users/types'
-import { AppShell, APP_NAV } from '@/ui/components/shell/AppShell'
+import { AppShell, APP_NAV, type NavCounts } from '@/ui/components/shell/AppShell'
 import { HazardStrip } from '@/ui/components/shell/HazardStrip'
 import { PrefsProvider, usePrefsState, type Prefs } from '@/ui/i18n'
 import { RootDocument, prefsFromRequest } from '@/routes/__root'
@@ -18,19 +18,19 @@ const user = (_label = 'user'): PublicUser => ({
 const queryClient = new QueryClient()
 const enPrefs: Prefs = { theme: 'system' }
 
-async function renderShell(u: PublicUser | null, prefs: Prefs = enPrefs) {
+async function renderShell(u: PublicUser | null, prefs: Prefs = enPrefs, opts: { path?: string; counts?: NavCounts } = {}) {
   const rootRoute = createRootRoute({
     component: () => (
       <QueryClientProvider client={queryClient}>
         <PrefsProvider prefs={prefs} onThemeChange={() => {}}>
-          <AppShell nav={APP_NAV} user={u}>
+          <AppShell nav={APP_NAV} counts={opts.counts} user={u}>
             <p>page content</p>
           </AppShell>
         </PrefsProvider>
       </QueryClientProvider>
     ),
   })
-  const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/'] }) })
+  const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: [opts.path ?? '/'] }) })
   render(<RouterProvider router={router} />)
   await screen.findByText('page content')
 }
@@ -55,7 +55,47 @@ describe('HazardStrip', () => {
 describe('AppShell', () => {
   it('shows every nav item to a signed-in user', async () => {
     await renderShell(user())
-    expect(navLabels()).toEqual(['Mocks', 'Request log', 'Scenarios', 'Catalog', 'Users', 'Audit', 'Import'])
+    expect(navLabels()).toEqual(['Mocks', 'Scenarios', 'Request log', 'Integrations', 'Import & export', 'Users', 'Audit'])
+  })
+
+  it('groups the nav by how people work: Work, Setup, Admin (Import is not under Admin)', async () => {
+    await renderShell(user())
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' })
+    const group = (name: string) => within(within(nav).getByRole('group', { name })).getAllByRole('link').map((a) => a.textContent?.trim())
+    expect(within(nav).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Work', 'Setup', 'Admin'])
+    expect(group('Work')).toEqual(['Mocks', 'Scenarios', 'Request log'])
+    expect(group('Setup')).toEqual(['Integrations', 'Import & export'])
+    expect(group('Admin')).toEqual(['Users', 'Audit'])
+    expect(within(nav).getByText('// Work')).toBeTruthy()
+    expect(within(nav).getByText('// Setup')).toBeTruthy()
+    expect(within(nav).getByText('// Admin')).toBeTruthy()
+  })
+
+  it.each([
+    ['/integrations/blog/endpoints/new', 'Integrations'],
+    ['/integrations', 'Integrations'],
+    ['/scenarios/new', 'Scenarios'],
+    ['/scenarios/flow/edit', 'Scenarios'],
+    ['/mocks/new', 'Mocks'],
+    ['/import', 'Import & export'],
+  ])('on %s the %s item is the active one', async (path, label) => {
+    await renderShell(user(), enPrefs, { path })
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' })
+    const active = within(nav).getAllByRole('link').filter((a) => a.getAttribute('data-status') === 'active')
+    expect(active.map((a) => a.textContent?.trim())).toEqual([label])
+  })
+
+  it('the Request log item shows the recent unmatched count when there is one', async () => {
+    await renderShell(user(), enPrefs, { counts: { '/requests': 3 } })
+    const link = within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('link', { name: /Request log/ })
+    expect(link.textContent).toContain('3')
+    expect(within(link).getByText('3 unmatched in the last 15 min')).toBeTruthy()
+  })
+
+  it('no count when there are no unmatched requests', async () => {
+    await renderShell(user(), enPrefs, { counts: { '/requests': 0 } })
+    const link = within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('link', { name: 'Request log' })
+    expect(link.textContent?.trim()).toBe('Request log')
   })
 
   it('shows the hazard strip, the user and labelled icon-only controls', async () => {
@@ -74,12 +114,6 @@ describe('AppShell', () => {
     expect(screen.getAllByText('// WireMock mock console').length).toBeGreaterThan(0)
   })
 
-  it('groups the nav under Control and Admin eyebrows', async () => {
-    await renderShell(user())
-    const nav = screen.getByRole('navigation', { name: 'Main navigation' })
-    expect(within(nav).getByText('— Control')).toBeTruthy()
-    expect(within(nav).getByText('— Admin')).toBeTruthy()
-  })
 })
 
 describe('root document', () => {

@@ -109,23 +109,32 @@ export function endpointFieldOf(message: string): string | undefined {
 
 const prefixOf = (integration: Pick<Integration, 'prefix'>) => (integration.prefix === '/' ? '' : integration.prefix)
 
+/** `next: 'mock'`: the page was opened from the new-mock page, which saving (or leaving) goes back to. */
+export type EndpointPageSearch = { next?: 'mock' }
+
 /**
  * Add (no `endpointKey`) or edit one endpoint of an integration, on its own page:
- * `/catalog/$key/endpoints/new` and `/catalog/$key/endpoints/$endpoint/edit`.
+ * `/integrations/$key/endpoints/new` and `/integrations/$key/endpoints/$endpoint/edit`.
  */
-export function EndpointPage({ integrationKey, endpointKey }: { integrationKey: string; endpointKey?: string }) {
+export function EndpointPage({ integrationKey, endpointKey, next }: { integrationKey: string; endpointKey?: string; next?: 'mock' }) {
   const t = useT()
   const integrations = useIntegrations()
   const endpoints = useEndpoints(integrationKey)
   const integration = integrations.data?.find((i) => i.key === integrationKey)
   const endpoint = endpointKey ? endpoints.data?.find((e) => e.key === endpointKey) : undefined
   const title = t(endpointKey ? 'catalog.endpoint.editTitle' : 'catalog.endpoint.addTitle')
-  const back = (
-    <Link to="/catalog/$key" params={{ key: integrationKey }} className={backLinkClass}>
-      <ArrowLeftIcon aria-hidden className="size-3.5 rtl:rotate-180" />
-      {t('catalog.endpoint.backTo', { name: integration?.name ?? integrationKey })}
-    </Link>
-  )
+  const back =
+    next === 'mock' ? (
+      <Link to="/mocks/new" className={backLinkClass}>
+        <ArrowLeftIcon aria-hidden className="size-3.5 rtl:rotate-180" />
+        {t('catalog.endpoint.backToNewMock')}
+      </Link>
+    ) : (
+      <Link to="/integrations/$key" params={{ key: integrationKey }} className={backLinkClass}>
+        <ArrowLeftIcon aria-hidden className="size-3.5 rtl:rotate-180" />
+        {t('catalog.endpoint.backTo', { name: integration?.name ?? integrationKey })}
+      </Link>
+    )
 
   // A new endpoint only waits for the integration; an edit also needs the stored endpoint.
   if (integrations.isPending || (endpointKey && endpoints.isPending)) {
@@ -153,10 +162,22 @@ export function EndpointPage({ integrationKey, endpointKey }: { integrationKey: 
       </EditorShell>
     )
   }
-  return <EndpointEditor key={endpoint?.key ?? '+new'} integration={integration} endpoint={endpoint} title={title} back={back} />
+  return <EndpointEditor key={endpoint?.key ?? '+new'} integration={integration} endpoint={endpoint} title={title} back={back} next={next} />
 }
 
-function EndpointEditor({ integration, endpoint, title, back }: { integration: Integration; endpoint?: Endpoint; title: string; back: ReactNode }) {
+function EndpointEditor({
+  integration,
+  endpoint,
+  title,
+  back,
+  next,
+}: {
+  integration: Integration
+  endpoint?: Endpoint
+  title: string
+  back: ReactNode
+  next?: 'mock'
+}) {
   const t = useT()
   const navigate = useNavigate()
   const ids = useId()
@@ -236,13 +257,19 @@ function EndpointEditor({ integration, endpoint, title, back }: { integration: I
       })
       leaving.current = true
       const name = saved?.name || form.name.trim()
+      if (next === 'mock') {
+        // Back to the new mock, with this endpoint picked.
+        toast.success(t('catalog.endpoint.saved', { name }))
+        await navigate({ to: '/mocks/new', search: { integration: integration.key, endpoint: key } })
+        return
+      }
       toast.success(t('catalog.endpoint.saved', { name }), {
         action: {
           label: t('catalog.endpoint.newMockAction'),
           onClick: () => void navigate({ to: '/mocks/new', search: { integration: integration.key, endpoint: key } }),
         },
       })
-      await navigate({ to: '/catalog/$key', params: { key: integration.key } })
+      await navigate({ to: '/integrations/$key', params: { key: integration.key } })
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : t('error.generic')
       if (!endpoint && error instanceof ApiError && error.status === 409) {
@@ -582,9 +609,13 @@ function EndpointEditor({ integration, endpoint, title, back }: { integration: I
 
         <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-2 border-t border-line bg-canvas/85 px-1 py-3 backdrop-blur">
           <Button asChild variant="outline">
-            <Link to="/catalog/$key" params={{ key: integration.key }}>
-              {t('common.cancel')}
-            </Link>
+            {next === 'mock' ? (
+              <Link to="/mocks/new">{t('common.cancel')}</Link>
+            ) : (
+              <Link to="/integrations/$key" params={{ key: integration.key }}>
+                {t('common.cancel')}
+              </Link>
+            )}
           </Button>
           <Button type="submit" disabled={upsert.isPending}>
             {upsert.isPending ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}

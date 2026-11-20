@@ -367,7 +367,7 @@ describe('mock list', () => {
     )
     await renderApp(<Harness />)
     await screen.findByText('Start by describing an endpoint')
-    expect(screen.getByRole('link', { name: 'Open the catalog' }).getAttribute('href')).toBe('/catalog')
+    expect(screen.getByRole('link', { name: 'Open integrations' }).getAttribute('href')).toBe('/integrations')
   })
 
   it('empty state with filters offers Clear filters', async () => {

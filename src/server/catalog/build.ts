@@ -240,3 +240,108 @@ export function buildStub(
     metadata: { wiremockUi: { integration: integration.key, endpoint: endpoint.key } },
   }
 }
+
+// ── Quick URL mocks ("Mock a URL directly"): the Simple form without an integration ──────────────────────────────
+
+/** The methods the quick form offers (`ANY` matches every method), as the endpoint form does. */
+export const QUICK_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'ANY'] as const
+/** How the URL matches: the exact path, a path template (`/users/{id}`) or a regular expression over the path. */
+export const QUICK_URL_TYPES = ['path', 'template', 'regex'] as const
+export const QUICK_URL_FIELD = { path: 'urlPath', template: 'urlPathTemplate', regex: 'urlPathPattern' } as const
+
+const quickRequestSchema = z.strictObject(
+  {
+    method: z.enum(QUICK_METHODS, { error: `request.method must be one of ${QUICK_METHODS.join(', ')}` }),
+    urlType: z.enum(QUICK_URL_TYPES, { error: `request.urlType must be one of ${QUICK_URL_TYPES.join(', ')}` }),
+    url: z.string({ error: 'request.url must be a string' }),
+    /** Query parameters the request must carry, each matched with equalTo. */
+    query: headerMap('request.query').optional(),
+    /** Request body to match: JSON → equalToJson (extra fields ignored), any other text → contains. */
+    body: z.string({ error: 'request.body must be a string' }).optional(),
+  },
+  { error: (iss) => unknownKeys(iss, 'request must be an object') },
+)
+
+/** The Simple form's response fields with a method and URL of its own instead of a catalog endpoint and key. */
+export const quickMockSchema = simpleMockSchema.omit({ keyValue: true, isDefault: true }).extend({ request: quickRequestSchema })
+
+export type QuickMockInput = z.infer<typeof quickMockSchema>
+
+/** `application/json`, `application/problem+json; charset=utf-8`… */
+export const isJsonContentType = (type: string | undefined) => type !== undefined && /^[^;]*[/+]json\s*(;|$)/i.test(type.trim())
+
+/** The name a quick mock gets when none is given. */
+export const quickMockName = (request: Pick<QuickMockInput['request'], 'method' | 'url'>) => `${request.method} ${request.url.trim()}`
+
+function quickRequest(r: QuickMockInput['request']): Record<string, unknown> {
+  const url = r.url.trim()
+  if (url === '') throw new ValidationError('request.url is required')
+  if (/\s/.test(url)) throw new ValidationError('request.url must not contain spaces')
+  if (r.urlType !== 'regex') {
+    if (!url.startsWith('/')) throw new ValidationError('request.url must start with /')
+    if (url.includes('?')) throw new ValidationError('request.url must not contain a query string; add the query parameters to match instead')
+  }
+  const request: Record<string, unknown> = { method: r.method, [QUICK_URL_FIELD[r.urlType]]: url }
+  if (r.query && Object.keys(r.query).length > 0) {
+    request.queryParameters = Object.fromEntries(Object.entries(r.query).map(([name, value]) => [name, { equalTo: value }]))
+  }
+  if (r.body !== undefined && r.body.trim() !== '') {
+    let json = true
+    try {
+      JSON.parse(r.body)
+    } catch {
+      json = false
+    }
+    request.bodyPatterns = [json ? { equalToJson: r.body, ignoreExtraElements: true } : { contains: r.body }]
+  }
+  return request
+}
+
+/** A status with the headers as given; under a JSON Content-Type the body must be JSON and is sent as jsonBody. */
+function quickResponse(input: QuickMockInput): Record<string, unknown> {
+  if (input.proxy) return proxyResponse(input.proxy)
+  if (input.fault) return { fault: input.fault }
+  const response: Record<string, unknown> = { status: input.status }
+  const headers: Record<string, string> = { ...input.headers }
+  const typeName = Object.keys(headers).find((h) => h.toLowerCase() === 'content-type')
+  if (input.base64Body !== undefined) {
+    if (input.body) throw new ValidationError('body and base64Body cannot be combined')
+    assertBase64Body(input.base64Body, 'base64Body')
+    if (!typeName) headers['Content-Type'] = BINARY_MIME
+  }
+  if (Object.keys(headers).length > 0) response.headers = headers
+  if (input.base64Body !== undefined) response.base64Body = input.base64Body
+  else if (input.body) {
+    if (isJsonContentType(typeName && headers[typeName])) {
+      try {
+        response.jsonBody = JSON.parse(input.body)
+      } catch {
+        throw new ValidationError('body is not valid JSON')
+      }
+    } else response.body = input.body
+  }
+  return response
+}
+
+/**
+ * Turns the quick form into a WireMock stub: a free-form mock (no catalog link, WireMock's default priority) that
+ * the editor reads back into the same form.
+ */
+export function buildQuickStub(input: QuickMockInput): MockInput & { serveEventListeners?: WebhookListener[] } & Partial<ScenarioFields> {
+  const name = input.name?.trim()
+  if (name === '') throw new ValidationError('name must not be empty')
+  if (input.proxy && input.fault) {
+    throw new ValidationError("proxy and fault cannot be combined: a proxied mock answers with the real service's response")
+  }
+  if (!input.fault && !input.proxy && input.status === undefined) throw new ValidationError('status is required')
+  const request = quickRequest(input.request)
+  const response = quickResponse(input)
+  if (input.delayMs !== undefined) response.fixedDelayMilliseconds = input.delayMs
+  return {
+    name: name ?? quickMockName(input.request),
+    request,
+    response,
+    ...(input.webhook ? { serveEventListeners: [webhookListener(input.webhook)] } : {}),
+    ...(input.scenario ? scenarioFields(input.scenario) : {}),
+  }
+}

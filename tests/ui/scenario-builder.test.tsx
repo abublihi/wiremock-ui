@@ -127,7 +127,7 @@ describe('scenario builder', () => {
     const ue = userEvent.setup()
     await ue.click(screen.getByRole('button', { name: 'Create scenario' }))
     expect(screen.getByText('Enter a scenario name.')).toBeTruthy()
-    expect(screen.getByText('Pick an endpoint from the catalog, or switch to Method and URL.')).toBeTruthy()
+    expect(screen.getByText('Pick an endpoint of an integration, or switch to Method and URL.')).toBeTruthy()
     expect(screen.getByText("Name this step's state.")).toBeTruthy()
     expect(textbox('Step 2 state').getAttribute('aria-invalid')).toBe('true')
     expect(screen.getByText('Fix the highlighted fields, then create the scenario.')).toBeTruthy()
@@ -160,7 +160,7 @@ describe('scenario builder', () => {
     await pickEndpoint(ue)
     // Bodies start from the catalog example for their status.
     expect(textbox('Step 1 response body').value).toBe('pending')
-    expect(screen.getAllByText('// prefilled from the catalog example for 200')).toHaveLength(2)
+    expect(screen.getAllByText('// prefilled from the endpoint example for 200')).toHaveLength(2)
     await ue.type(textbox('Step 2 state'), 'approved')
     await ue.clear(textbox('Step 2 response body'))
     await ue.type(textbox('Step 2 response body'), 'approved')

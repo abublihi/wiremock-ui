@@ -5,8 +5,8 @@ import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { Endpoint, Integration } from '@/server/catalog/types'
-import { CatalogPage } from '@/routes/_app/catalog.index'
-import { IntegrationPage } from '@/routes/_app/catalog.$key.index'
+import { CatalogPage } from '@/routes/_app/integrations.index'
+import { IntegrationPage } from '@/routes/_app/integrations.$key.index'
 import { EndpointPage } from '@/ui/components/catalog/EndpointPage'
 import { EndpointInfo } from '@/ui/components/editor/EndpointPicker'
 import { renderApp } from './helpers'
@@ -66,7 +66,7 @@ describe('catalog index', () => {
     mockApi({ endpoints: [endpoint(), endpoint({ key: 'b' })] })
     await renderApp(<CatalogPage />)
     const link = await screen.findByRole('link', { name: /NIC/ })
-    expect(link.getAttribute('href')).toBe('/catalog/nic')
+    expect(link.getAttribute('href')).toBe('/integrations/nic')
     expect(within(link).getByText('nic')).toBeTruthy()
     expect(within(link).getByText('/nic')).toBeTruthy()
     await within(link).findByText('2 endpoints')
@@ -282,8 +282,8 @@ describe('integration page endpoint actions', () => {
     mockApi()
     await renderApp(<IntegrationPage integrationKey="nic" />)
     await screen.findByText('Fetch citizen')
-    expect(screen.getByRole('link', { name: 'Add endpoint' }).getAttribute('href')).toBe('/catalog/nic/endpoints/new')
-    expect(screen.getByRole('link', { name: 'Edit Fetch citizen' }).getAttribute('href')).toBe('/catalog/nic/endpoints/get-citizen/edit')
+    expect(screen.getByRole('link', { name: 'Add endpoint' }).getAttribute('href')).toBe('/integrations/nic/endpoints/new')
+    expect(screen.getByRole('link', { name: 'Edit Fetch citizen' }).getAttribute('href')).toBe('/integrations/nic/endpoints/get-citizen/edit')
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 

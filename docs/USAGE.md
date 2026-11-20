@@ -6,7 +6,7 @@ The examples use a made-up citizen lookup: `POST /nic/citizens/fetch` with a bod
 
 > **Test environments only.** Never put real personal data in a mock.
 
-Every signed-in user can do everything: create, edit and delete any mock, manage the catalog, users and imports. Each mock still records its owner, so "my mocks" stays useful.
+Every signed-in user can do everything: create, edit and delete any mock, manage integrations, users and imports. Each mock still records its owner, so "my mocks" stays useful.
 
 ## Concepts: integration → endpoint → mock
 
@@ -20,11 +20,11 @@ Three words carry the whole UI. Using the citizen lookup as the example:
 
 **The key** is the value in each request that tells one mock from another. Your application calls `POST /nic/citizens/fetch` for every citizen; only the `idNo` in the body changes. So the endpoint says "the key is `$.idNo`", and each mock answers one `idNo`. A **default mock** answers every request whose key no other mock has.
 
-Why the catalog: someone (often a developer or lead tester) describes each system and endpoint **once**, with example requests and responses. After that, anyone makes a mock in a few clicks: pick the endpoint, type a key value, pick a status. The catalog is not a list of mocks and does not answer requests itself; only mocks do.
+Why integrations: someone (often a developer or lead tester) describes each system and endpoint **once**, with example requests and responses. After that, anyone makes a mock in a few clicks: pick the endpoint, type a key value, pick a status. Integrations are not a list of mocks and do not answer requests themselves; only mocks do. For a one-off, **Mock a URL directly** on the New mock page skips the integration: a method, a URL and the answer.
 
 The **endpoint ID** (`fetch-citizen`) is just the endpoint's name in URLs and the API. It is not the key.
 
-The Catalog page shows this as a "How it fits together" strip. Hide it with **×**; **How it fits together** in the page header brings it back.
+The Integrations page shows this as a "How it fits together" strip. Hide it with **×**; **How it fits together** in the page header brings it back.
 
 ## Sign in
 
@@ -36,13 +36,13 @@ After 10 failed attempts in 15 minutes from one network, sign-in is blocked for 
 
 Change your password from the account menu at the bottom of the sidebar (**Change password**). The theme toggle (light, dark or system) is in the top bar.
 
-## Describe your systems in the catalog
+## Describe your systems as integrations
 
-The catalog lists the external systems your application calls (integrations) and their operations (endpoints). Mocks built from the catalog are quick to make and easy to read.
+The Integrations page lists the external systems your application calls (integrations) and their operations (endpoints). Mocks built from an endpoint are quick to make and easy to read.
 
-![Catalog](screenshots/catalog-dark.png)
+![Integrations](screenshots/catalog-dark.png)
 
-**Add an integration.** Go to **Catalog** → **Add integration**:
+**Add an integration.** Go to **Integrations** (under Setup in the sidebar) → **Add integration**:
 
 - **Key:** `nic` (lowercase letters, digits and dashes; cannot change later)
 - **Name:** `NIC`
@@ -77,14 +77,16 @@ The catalog lists the external systems your application calls (integrations) and
 
 ## Create a mock in Simple mode
 
-Go to **Mocks** → **New mock**, search for `fetch citizen` and pick the endpoint (or use **New mock** on the endpoint's row in the catalog).
+Go to **Mocks** → **New mock**, search for `fetch citizen` and pick the endpoint (or use **New mock** on the endpoint's row on its integration's page). With no integrations yet, **New mock** offers **Add an integration** (then its first endpoint, then back with it picked), **Mock a URL directly** and **Start from blank JSON**.
+
+![New mock with no integrations yet](screenshots/new-mock-empty-dark.png)
 
 ![Simple editor](screenshots/editor-dark.png)
 
 **A key mock** answers one specific request:
 
 1. **Value of $.idNo in the request body:** `1012345678`
-2. **Response status:** **Success** (200). The body is prefilled from the catalog example; edit it as you like.
+2. **Response status:** **Success** (200). The body is prefilled from the endpoint's example; edit it as you like.
 3. Optional: a **Slow response** delay, **Break the connection** (empty response, garbled chunk, random data, connection reset) or a **Name**.
 4. **Save mock.**
 
@@ -143,7 +145,7 @@ For the request above you would see the key mock `Fetch citizen — 1012345678` 
 
 ## Test a mock and copy it as curl
 
-**Test** in the header of a saved mock opens the test panel with a request that mock should match: its method, a concrete path, the key value where the endpoint looks for it, and the catalog example body. Edit anything, then **Send**. The UI sends the request to WireMock (the stub port only) and shows the status, the time it took, the headers and the body, and a stamp:
+**Test** in the header of a saved mock opens the test panel with a request that mock should match: its method, a concrete path, the key value where the endpoint looks for it, and the endpoint's example body. Edit anything, then **Send**. The UI sends the request to WireMock (the stub port only) and shows the status, the time it took, the headers and the body, and a stamp:
 
 - **Matched this mock**: the saved version answered.
 - **Matched another mock: <name>**: another mock won (a link opens it).
@@ -192,10 +194,10 @@ Some flows need the same request to get a different answer the second time: "pen
 Go to **Scenarios → New scenario** (or **Build a scenario** when there are none yet). One page holds the whole scenario:
 
 1. **Scenario name**: letters, digits and `- _ .` (for example `order-status`), so the Scenarios page can move and reset it. If the name is already in use you get a warning and an **Open it** link; new steps would join that scenario and share its state.
-2. **Request**: every step answers the same request. Pick a **Catalog endpoint** (the same picker as **New mock**, then the key value or the default answer), or switch to **Method and URL** for a request that is not in the catalog (a path starting with `/`; add `?name=value` to match a query too).
+2. **Request**: every step answers the same request. Pick an **Integration endpoint** (the same picker as **New mock**, then the key value or the default answer), or switch to **Method and URL** for a request that no integration describes (a path starting with `/`; add `?name=value` to match a query too).
 3. **Steps**, in the order calls get them. For each step:
    - **State**: the state it answers in. Step 1 is always `Started`.
-   - **Status**, **Headers**, **Body** and an optional **Delay (seconds)**, 1 to 120 like the editor's **Slow response**. For a catalog endpoint the body starts from the catalog example for the status. Every step of a catalog request opens again in the editor's Simple mode, unless you add custom headers: those make the step editable in Advanced mode only.
+   - **Status**, **Headers**, **Body** and an optional **Delay (seconds)**, 1 to 120 like the editor's **Slow response**. For an integration endpoint the body starts from the endpoint's example for the status. Every step of an endpoint request opens again in the editor's Simple mode, unless you add custom headers: those make the step editable in Advanced mode only.
    - **Then move to**: by default the next step's state; the last step stays where it is. You can also stay, or jump to any other step (for example back to step 1 to start over).
 
    **Add step** adds one at the end; the arrow buttons move a step up or down and the bin removes it (all work from the keyboard). A step moved into first place answers in `Started` and hands its old state name to the step it displaced.
@@ -223,7 +225,7 @@ You can also put any mock in a scenario by hand: in the mock editor, turn on **A
 **Edit scenario** on a scenario's card (or in the Mocks list, or **Edit the whole scenario** in the mock editor of any of its mocks) opens the builder over the scenario's mocks, one step per state in the order the scenario runs:
 
 - Rename the scenario, rename states, change each step's status, headers, body and delay, change where a step moves the scenario, and add, remove or reorder steps, as when building one.
-- The request is shown read-only: every step keeps the request its mock matches. If the steps match different requests, each step shows its own; a step you add uses the request (and catalog endpoint) of the step before it. To change a request, open that mock in the mock editor.
+- The request is shown read-only: every step keeps the request its mock matches. If the steps match different requests, each step shows its own; a step you add uses the request (and integration endpoint) of the step before it. To change a request, open that mock in the mock editor.
 - Mocks the builder can't show as a step are listed under **Kept as is** with the reason, and saving leaves them untouched: mocks that answer in any state, answers the builder has no field for (proxy, webhook, fault, file body, a delay that is not whole seconds…), and a second mock answering in a state another step already answers in. Renaming the scenario does not rename them, and renaming or removing a state one of them answers in or moves to leaves it hanging; the page warns you about both.
 - **Save scenario** writes only the difference: new steps are created, changed steps updated (with their versions, so someone else's newer edit is refused, not overwritten), removed steps deleted. Mock names of the form `<scenario> — <state>` follow a rename; names you chose stay. It is all or nothing: if a write is refused, the ones before it are undone (created mocks deleted, changed and deleted ones restored to the version you opened; in WireMock-only mode, which keeps no history, put back as they were under the same id) and the page says which step failed. The page then reads the scenario again, so trying again works: your edits stay, and a step whose mock someone else changed meanwhile is marked (fields you had not edited show their version). Every write is in the audit log as usual (a mock put back in WireMock-only mode shows as an import).
 - If the scenario is currently in a state your edit renamed or removed, nothing would answer the next call, so saving resets that scenario to `Started` and the message says so.
@@ -244,7 +246,7 @@ In **Mocks**, the mocks of a scenario show as one row, **Scenario: name · N ste
 When the UI runs with `STORE_DRIVER=none` (see [Installing](INSTALL.md#run-against-an-existing-wiremock-no-storage)), it works directly on a WireMock you already have: the mock list is WireMock's own stubs, and your edits go straight into WireMock. Nothing is kept by the UI, so:
 
 - there is one account (`ADMIN_USER`), no **Users** management, no **History** or restore, and no My/All mocks switch (everything is listed);
-- the catalog lives in memory: the Catalog page says "Catalog changes are kept in memory and lost on restart (WireMock-only mode)". Put the catalog in a `SEED_PATH` file to keep it;
+- integrations live in memory: the Integrations page says "Integration changes are kept in memory and lost on restart (WireMock-only mode)". Put them in a `SEED_PATH` file to keep them;
 - the request log, test panel, curl, proxies, webhooks and scenarios work as usual.
 
 ## Advanced JSON mode, history and conflicts
@@ -283,13 +285,13 @@ To write a stub from scratch, choose **New mock** → **Start from blank JSON**.
 
 ![Users](screenshots/users-dark.png)
 
-**Audit** lists who changed what: mocks, the catalog, users, imports, cleared request logs and syncs, newest first, kept 30 days. **Load more** goes further back.
+**Audit** lists who changed what: mocks, integrations, users, imports, cleared request logs and syncs, newest first, kept 30 days. **Load more** goes further back.
 
 ![Audit log](screenshots/audit-dark.png)
 
 ## Import from files
 
-**Import** reads mocks and catalog entries from:
+**Import & export** (under Setup in the sidebar) reads mocks and integrations from:
 
 - one or more `.json` files (**Choose files**, or drop them on the page);
 - a folder (**Choose folder**, or drop it): every `.json` file inside, sub-folders included; hidden files and folders (`.git`, `.DS_Store`) and other file types are skipped, so a WireMock `mappings/` folder works as is;
@@ -313,7 +315,7 @@ What it becomes:
 
 Each row says **New**, or **Key exists** when the integration already has an endpoint with that key; choose **Create new** (imported as `key-2`), **Overwrite** (replaces that endpoint; its other mocks stay) or **Skip**. Importing never deletes anything, and importing the same collection again leaves its mocks unchanged.
 
-Left out, and listed under **Left out of the import**: auth helpers (the mocks answer without checking credentials), pre-request and test scripts, GraphQL and file bodies (those mocks answer any body), requests with a method the catalog has no place for, and path variables with no value.
+Left out, and listed under **Left out of the import**: auth helpers (the mocks answer without checking credentials), pre-request and test scripts, GraphQL and file bodies (those mocks answer any body), requests with a method an endpoint has no place for, and path variables with no value.
 
 In WireMock-only mode the mocks go straight into WireMock; the integration and endpoints are kept in memory and are lost when the UI restarts.
 
@@ -327,17 +329,17 @@ In WireMock-only mode the mocks go straight into WireMock; the integration and e
 |---|---|
 | an integration picked | that integration, its endpoints and its mocks |
 | **My mocks** | your mocks, and the integrations and endpoints they belong to |
-| **All mocks** (or WireMock-only mode) | every mock and the whole catalog |
+| **All mocks** (or WireMock-only mode) | every mock and every integration |
 
 The status and text filters do not narrow an export. The **Import** page has the same **Export** menu, always for everything. Pick a format:
 
 ![Export](screenshots/export-dark.png)
 
 
-- **Bundle (.json)**: `{ "integrations", "catalog", "mocks", "oidcIdentities": [] }`, ready to import here again (into another environment, say). Mocks keep their id, owner and catalog link.
+- **Bundle (.json)**: `{ "integrations", "catalog", "mocks", "oidcIdentities": [] }`, ready to import here again (into another environment, say). Mocks keep their id, owner and integration link.
 - **WireMock mappings (.zip)**: `mappings/<name>-<id>.json`, one stub per file, to commit or to put in a WireMock `mappings` folder. The zip imports here again too.
 
-Exports work on every store and in WireMock-only mode, where the mocks are read from WireMock and the catalog is the one in memory: export a bundle to keep catalog changes you made there.
+Exports work on every store and in WireMock-only mode, where the mocks are read from WireMock and the integrations are the ones in memory: export a bundle to keep integration changes you made there.
 
 ## Bundle files and seeding baseline mocks
 
@@ -409,7 +411,7 @@ WM=http://localhost:8080
 AUTH=ci-bot:its-password
 JSON='Content-Type: application/json'
 
-# Catalog: an integration and an endpoint. PUT creates or replaces; add If-None-Match: * to only create
+# Integrations: an integration and an endpoint. PUT creates or replaces; add If-None-Match: * to only create
 curl -u $AUTH -X PUT $UI/api/integrations/nic -H 'If-None-Match: *' -H "$JSON" -d '{"name":"NIC","prefix":"/nic"}'
 curl -u $AUTH -X PUT $UI/api/integrations/nic/endpoints/fetch-citizen -H "$JSON" -d '{
   "name": "Fetch citizen", "method": "POST", "path": "/citizens/fetch", "pathType": "exact",
@@ -423,6 +425,10 @@ curl -u $AUTH -X POST $UI/api/integrations/nic/endpoints/fetch-citizen/mocks -H 
   -d '{"keyValue":"1012345678","status":200,"body":"{\"name\":\"Test Citizen\"}"}'
 curl -u $AUTH -X POST $UI/api/integrations/nic/endpoints/fetch-citizen/mocks -H "$JSON" \
   -d '{"isDefault":true,"status":404,"body":"{\"error\":\"not found\"}"}'
+
+# A quick URL mock ("Mock a URL directly"): build the stub (urlType path | template | regex), then save it as below
+curl -u $AUTH -X POST $UI/api/mocks/preview -H "$JSON" \
+  -d '{"request":{"method":"GET","urlType":"path","url":"/health"},"status":200,"body":"ok"}'
 
 # Raw WireMock stubs
 curl -u $AUTH -X POST $UI/api/mocks -H "$JSON" \
@@ -484,10 +490,10 @@ curl -b jar -X POST $UI/api/mocks/reset-mine -H 'X-CSRF-Token: <token>'
 - **Accounts:** `POST /api/users` takes `username`, `password` and an optional `displayName`. `POST /api/session/password` with `{ "current", "next" }` changes your own password. Resetting your own password through `/api/users` keeps the session you did it from and ends your other sessions.
 - **Rate limit:** browser sign-in and Basic auth share one limit of 10 failed attempts per 15 minutes per client IP; after that every attempt from that IP gets `429`, even with the right password, until the window ends. No `WWW-Authenticate` challenge is sent, so browsers never pop up a login dialog.
 - **Cookies** are `Secure` when `PUBLIC_UI_URL` is https, or when `TRUST_PROXY` is on and the proxy sends `X-Forwarded-Proto: https`.
-- **Create-only catalog writes:** `PUT /api/integrations/<key>` and `PUT /api/integrations/<key>/endpoints/<endpoint>` replace what is there. Send `If-None-Match: *` to create only: when the key already exists the answer is `409` (`An integration with this key already exists` / `An endpoint with this key already exists`) and nothing changes. The UI uses this when you add an integration or an endpoint, so two people adding the same key cannot overwrite each other.
-- **Catalog:** endpoints with `pathType: regex` are matched by WireMock, so the pattern uses Java's regex dialect; the UI only checks that it parses as a JavaScript regex. An endpoint cannot be deleted while mocks built from it exist, and an integration cannot be deleted while it has mocks (`409`).
+- **Create-only integration writes:** `PUT /api/integrations/<key>` and `PUT /api/integrations/<key>/endpoints/<endpoint>` replace what is there. Send `If-None-Match: *` to create only: when the key already exists the answer is `409` (`An integration with this key already exists` / `An endpoint with this key already exists`) and nothing changes. The UI uses this when you add an integration or an endpoint, so two people adding the same key cannot overwrite each other.
+- **Integrations:** endpoints with `pathType: regex` are matched by WireMock, so the pattern uses Java's regex dialect; the UI only checks that it parses as a JavaScript regex. An endpoint cannot be deleted while mocks built from it exist, and an integration cannot be deleted while it has mocks (`409`).
 - **Imports** over 10 MB get `413`. The API takes one JSON body; merging files, folders and zips happens in the browser.
-- **Export** (`GET /api/export`) answers with `Content-Disposition: attachment`: a JSON bundle (`application/json`) or, with `format=mappings`, a zip (`application/zip`) of `mappings/<name>-<id>.json`. `scope` defaults to `all` and `format` to `bundle`; an unknown value, or `scope=integration` without `integration`, is `400`, an unknown integration `404`. Catalog entries come without `updatedAt`/`updatedBy`, so a bundle imports as it is.
+- **Export** (`GET /api/export`) answers with `Content-Disposition: attachment`: a JSON bundle (`application/json`) or, with `format=mappings`, a zip (`application/zip`) of `mappings/<name>-<id>.json`. `scope` defaults to `all` and `format` to `bundle`; an unknown value, or `scope=integration` without `integration`, is `400`, an unknown integration `404`. Integrations and endpoints come without `updatedAt`/`updatedBy`, so a bundle imports as it is.
 - **Binary bodies:** `response.base64Body` must be standard base64 with padding (`400 response.base64Body must be valid base64` otherwise). Simple-mode mocks take `base64Body` (with `headers: { "Content-Type": … }`, else `application/octet-stream`) instead of `body`; both together are `400`.
 - **Test requests** (`POST /api/test-request`) go only to `WIREMOCK_URL`'s stub port, without WireMock's admin credentials, and never follow redirects. Paths must start with `/`; absolute URLs, `/__admin`, `.`/`..` segments and encoded slashes are refused (`400`). `Host`, `Content-Length` and hop-by-hop headers are dropped; line breaks or characters beyond Latin-1 in header values are refused. `Accept-Encoding: identity` is sent unless you set it, so the headers shown describe the body. Bodies are limited to 1 MB each way (a longer response comes back cut, with `bodyTruncated: true`); binary responses come back base64 (`bodyIsBase64: true`). The relay waits 30 s.
 - **Proxy mocks** (`response.proxyBaseUrl`) need an http(s) base URL; `proxyUrlPrefixToRemove` starts with `/`. `removeProxyRequestHeaders` is stored lower-cased, because WireMock 3.13.1 only removes headers listed that way.

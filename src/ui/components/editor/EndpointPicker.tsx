@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
-import { AlertCircleIcon, BracesIcon, ExternalLinkIcon } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { AlertCircleIcon, BracesIcon, ExternalLinkIcon, LinkIcon, PlusIcon } from 'lucide-react'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import { endpointsQueryOptions, useIntegrations } from '@/ui/api/queries'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
@@ -29,15 +30,22 @@ export function matchesSearch(integration: Integration, endpoint: Endpoint, sear
 }
 
 /**
- * A searchable list of catalog endpoints grouped by integration, with a way out to a blank free-form stub. Shows at
- * most PICKER_LIMIT matches (a footer says how many more there are); integrations without endpoints are left out.
+ * A searchable list of catalog endpoints grouped by integration, with ways out to a quick URL mock and a blank
+ * free-form stub. Shows at most PICKER_LIMIT matches (a footer says how many more there are); an integration without
+ * endpoints shows "No endpoints yet — Add one" instead of an empty heading (while not searching).
  */
 export function EndpointPicker({
   onPick,
   onBlank,
+  onQuick,
+  addReturnsHere,
 }: {
   onPick: (integration: string, endpoint: string) => void
   onBlank?: () => void
+  /** "Not in the list? Mock a URL directly". */
+  onQuick?: () => void
+  /** "Add one" comes back to the new-mock page with the new endpoint picked. */
+  addReturnsHere?: boolean
 }) {
   const t = useT()
   const integrations = useIntegrations()
@@ -65,8 +73,19 @@ export function EndpointPicker({
     })
     return { groups: out, shown: count, total: all }
   })()
-  const noEndpoints = !loading && !search && total === 0
+  // Integrations whose (loaded) endpoint list is empty: offered an "Add one" link instead of an empty heading.
+  const empty = search ? [] : (integrations.data ?? []).filter((_, i) => endpointLists[i]?.data?.length === 0)
 
+  const quick = onQuick && (
+    <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <span>{t('editor.pickNotListed')}</span>
+      <Button variant="link" size="sm" className="h-auto px-0 text-signal-fg" onClick={onQuick}>
+        <LinkIcon data-icon="inline-start" />
+        {t('editor.mockUrl')}
+      </Button>
+      <span>{t('editor.mockUrlHint')}</span>
+    </p>
+  )
   const blank = onBlank && (
     <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       <Button variant="link" size="sm" className="h-auto px-0" onClick={onBlank}>
@@ -85,6 +104,7 @@ export function EndpointPicker({
           <AlertTitle>{t('editor.pickLoadFailed')}</AlertTitle>
           <AlertDescription>{error.message}</AlertDescription>
         </Alert>
+        {quick}
         {blank}
       </div>
     )
@@ -99,14 +119,18 @@ export function EndpointPicker({
           {integrations.data === undefined ? (
             <PickerSkeleton />
           ) : integrations.data.length === 0 ? (
-            <p className="px-3 py-6 text-center text-xs text-muted-foreground">{t('editor.pickNoCatalog')}</p>
-          ) : noEndpoints ? (
-            <p className="px-3 py-6 text-center text-xs text-muted-foreground">{t('editor.pickNoEndpoints')}</p>
+            <p className="px-3 py-6 text-center text-xs text-muted-foreground">{t('editor.pickNoIntegrations')}</p>
           ) : (
             <>
-              {!loading && <CommandEmpty className="py-6 text-center text-xs text-muted-foreground">{t('editor.pickEmpty')}</CommandEmpty>}
+              {/* With only empty integrations (and no search) their "Add one" rows say it all. */}
+              {!loading && (search !== '' || total > 0) && (
+                <CommandEmpty className="py-6 text-center text-xs text-muted-foreground">{t('editor.pickEmpty')}</CommandEmpty>
+              )}
               {groups.map(({ integration, endpoints }) => (
                 <IntegrationGroup key={integration.key} integration={integration} endpoints={endpoints} onPick={onPick} />
+              ))}
+              {empty.map((integration) => (
+                <EmptyIntegration key={integration.key} integration={integration} returnHere={addReturnsHere} />
               ))}
               {loading && <Skeleton className="m-1 h-9" />}
             </>
@@ -118,8 +142,35 @@ export function EndpointPicker({
           </p>
         )}
       </Command>
+      {quick}
       {blank}
     </section>
+  )
+}
+
+/** An integration with no endpoints yet: its name and a way to add the first one. */
+function EmptyIntegration({ integration, returnHere }: { integration: Integration; returnHere?: boolean }) {
+  const t = useT()
+  return (
+    <div role="group" aria-label={integration.name} className="overflow-hidden p-1 text-foreground">
+      <p aria-hidden className="px-2 py-1.5 text-[10px] font-medium tracking-[0.16em] text-muted-foreground uppercase">
+        {integration.name}
+      </p>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-dashed border-line px-2 py-2 text-xs text-muted-foreground">
+        <span>{t('editor.pickNoEndpointsYet')}</span>
+        <span aria-hidden>—</span>
+        <Link
+          to="/integrations/$key/endpoints/new"
+          params={{ key: integration.key }}
+          search={returnHere ? { next: 'mock' } : {}}
+          aria-label={t('editor.pickAddOneTo', { name: integration.name })}
+          className="inline-flex items-center gap-1 text-signal-fg hover:underline"
+        >
+          <PlusIcon aria-hidden className="size-3" />
+          {t('editor.pickAddOne')}
+        </Link>
+      </p>
+    </div>
   )
 }
 

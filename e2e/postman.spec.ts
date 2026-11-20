@@ -32,7 +32,7 @@ test('a Postman collection is previewed, imported as one integration and served 
   const shipped = await fetch(`${wiremockUrl()}/${KEY}/api/orders?status=shipped`)
   expect(await shipped.json()).toEqual([{ id: 2 }])
 
-  await report.getByRole('link', { name: 'Open Shop API in the catalog' }).click()
-  await expect(page).toHaveURL(new RegExp(`/catalog/${KEY}$`))
+  await report.getByRole('link', { name: 'Open Shop API' }).click()
+  await expect(page).toHaveURL(new RegExp(`/integrations/${KEY}$`))
   await expect(page.getByText('Get order', { exact: true })).toBeVisible()
 })

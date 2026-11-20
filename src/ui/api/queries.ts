@@ -3,7 +3,7 @@ import { keepPreviousData, queryOptions, type QueryClient, useInfiniteQuery, use
 import { useRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useT } from '@/ui/i18n'
-import type { SimpleMockInput } from '@/server/catalog/build'
+import type { QuickMockInput, SimpleMockInput } from '@/server/catalog/build'
 import type { AuditPage } from '@/server/audit/log'
 import type { ImportReport } from '@/server/bundle/importer'
 import type { PublicConfig } from '@/server/http/handlers/config'
@@ -45,6 +45,7 @@ export const queryKeys = {
   requestList: (filter: RequestFilter) => ['requests', 'list', filter] as const,
   request: (id: string) => ['requests', 'detail', id] as const,
   nearMisses: (id: string) => ['requests', 'near-misses', id] as const,
+  recentUnmatched: ['requests', 'recent-unmatched'] as const,
   users: ['users'] as const,
   audit: ['audit'] as const,
   scenarios: ['scenarios'] as const,
@@ -204,11 +205,16 @@ export type BuiltStub = Omit<StubMapping, 'id'>
 const catalogMockPath = ({ integration, endpoint }: CatalogMockInput) =>
   `/api/integrations/${encodeURIComponent(integration)}/endpoints/${encodeURIComponent(endpoint)}`
 
+/** What the Simple form previews: an endpoint mock, or a quick mock of a URL ("Mock a URL directly"). */
+export type PreviewArgs = CatalogMockInput | { quick: QuickMockInput }
+
 /** Builds the stub for a Simple form on the server without saving it. */
 export function usePreviewMock() {
   return useMutation({
-    mutationFn: (args: CatalogMockInput) =>
-      apiFetch<BuiltStub>(`${catalogMockPath(args)}/preview`, { method: 'POST', body: args.input }),
+    mutationFn: (args: PreviewArgs) =>
+      'quick' in args
+        ? apiFetch<BuiltStub>('/api/mocks/preview', { method: 'POST', body: args.quick })
+        : apiFetch<BuiltStub>(`${catalogMockPath(args)}/preview`, { method: 'POST', body: args.input }),
   })
 }
 
@@ -366,7 +372,33 @@ export function useClearRequests() {
       const lists = { queryKey: [...queryKeys.requests, 'list'] }
       queryClient.setQueriesData<RequestSummary[]>(lists, [])
       await queryClient.invalidateQueries(lists)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.recentUnmatched })
     },
+  })
+}
+
+/** The window and refresh rate of the sidebar's unmatched-requests count. */
+export const RECENT_UNMATCHED_MINUTES = 15
+export const RECENT_UNMATCHED_POLL_MS = 15_000
+
+/**
+ * How many requests matched no mock in the last RECENT_UNMATCHED_MINUTES (the same request-log query the
+ * Request log page uses, filtered to unmatched). Refreshed every RECENT_UNMATCHED_POLL_MS only while the tab is
+ * visible; a failure just shows no count.
+ */
+export function useRecentUnmatchedCount(options: { enabled?: boolean } = {}) {
+  const visible = useDocumentVisible()
+  return useQuery({
+    queryKey: queryKeys.recentUnmatched,
+    queryFn: async () => {
+      const since = new Date(Date.now() - RECENT_UNMATCHED_MINUTES * 60_000).toISOString()
+      const rows = await apiFetch<RequestSummary[]>('/api/requests', { query: { matched: 'false', since, limit: MAX_REQUEST_ROWS } })
+      return rows.length
+    },
+    enabled: options.enabled ?? true,
+    refetchInterval: visible ? RECENT_UNMATCHED_POLL_MS : false,
+    refetchIntervalInBackground: false,
+    retry: false,
   })
 }
 

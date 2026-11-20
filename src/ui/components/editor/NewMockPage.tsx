@@ -2,13 +2,16 @@ import { useId, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { AlertCircleIcon, ArrowLeftRightIcon, WorkflowIcon } from 'lucide-react'
+import { AlertCircleIcon, ArrowLeftRightIcon, BracesIcon, DatabaseIcon, LinkIcon, PlusIcon, WorkflowIcon } from 'lucide-react'
+import type { Integration } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
 import { apiFetch } from '@/ui/api/client'
 import { queryKeys, useEndpoints, useIntegrations, useMocks, useRequest, useUpdateMock } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Checkbox } from '@/ui/components/ui/checkbox'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
+import { IntegrationForm } from '@/ui/components/catalog/IntegrationForm'
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { useT } from '@/ui/i18n'
 import { type ScenarioSeed, isScenarioNameSettable, linkOf } from '@/ui/lib/editor-sync'
@@ -26,14 +29,18 @@ import { MockEditor } from './MockEditor'
 export type NewMockSearch = {
   integration?: string
   endpoint?: string
-  mode?: 'json'
+  /** `json`: a blank free-form stub; `url`: a quick mock of a URL, without an integration. */
+  mode?: 'json' | 'url'
   from?: string
   scenario?: string
   state?: string
   after?: string
 }
 
-/** New mock: pick a catalog endpoint (kept in the URL) and fill the Simple form, or start from blank JSON. */
+/**
+ * New mock: pick an integration endpoint (kept in the URL) and fill the Simple form, mock a URL directly (the quick
+ * form), or start from blank JSON. With no integrations yet, an empty state offers all three.
+ */
 export function NewMockPage({ search, onSearchChange: setSearch }: { search: NewMockSearch; onSearchChange: (next: NewMockSearch) => void }) {
   const t = useT()
   const navigate = useNavigate()
@@ -124,10 +131,32 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
     )
   }
 
+  if (search.mode === 'url') {
+    return (
+      <EditorShell title={t('editor.newTitle')} caption={t('editor.quickCaption')} actions={change(t('editor.pickInstead'))} notice={notice}>
+        <MockEditor quick scenarioSeed={seed} onFormChange={seed ? onFormChange : undefined} onSaved={open} />
+      </EditorShell>
+    )
+  }
+
   if (!search.integration || !search.endpoint) {
+    const toQuick = () => onSearchChange({ mode: 'url' })
+    const toBlank = () => onSearchChange({ mode: 'json' })
+    if (integrations.data?.length === 0) {
+      return (
+        <EditorShell title={t('editor.newTitle')} caption={t('editor.noIntegrations.caption')} notice={notice}>
+          <NoIntegrations onQuick={toQuick} onBlank={toBlank} />
+        </EditorShell>
+      )
+    }
     return (
       <EditorShell title={t('editor.newTitle')} caption={t('editor.newCaption')} notice={notice}>
-        <EndpointPicker onPick={(i, e) => onSearchChange({ integration: i, endpoint: e })} onBlank={() => onSearchChange({ mode: 'json' })} />
+        <EndpointPicker
+          onPick={(i, e) => onSearchChange({ integration: i, endpoint: e })}
+          onQuick={toQuick}
+          onBlank={toBlank}
+          addReturnsHere
+        />
       </EditorShell>
     )
   }
@@ -171,6 +200,60 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
         onSaved={open}
       />
     </EditorShell>
+  )
+}
+
+/**
+ * The new-mock page before any integration exists: what an integration is for, and three ways on — add one (then its
+ * first endpoint, then back here with it picked), mock a URL directly, or write the stub JSON by hand.
+ */
+function NoIntegrations({ onQuick, onBlank }: { onQuick: () => void; onBlank: () => void }) {
+  const t = useT()
+  const navigate = useNavigate()
+  const [adding, setAdding] = useState(false)
+  const added = (integration: Integration) =>
+    void navigate({ to: '/integrations/$key/endpoints/new', params: { key: integration.key }, search: { next: 'mock' } })
+  return (
+    <Empty className="rounded-md border border-dashed border-line">
+      <EmptyHeader className="max-w-md">
+        <EmptyMedia variant="icon">
+          <DatabaseIcon />
+        </EmptyMedia>
+        <EmptyTitle>{t('editor.noIntegrations.title')}</EmptyTitle>
+        <EmptyDescription>{t('editor.noIntegrations.body')}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent className="max-w-lg gap-3">
+        <div className="flex flex-col items-center gap-1">
+          <Button onClick={() => setAdding(true)}>
+            <PlusIcon data-icon="inline-start" />
+            {t('editor.noIntegrations.add')}
+          </Button>
+          <span className="text-[11px] text-muted-foreground">{t('editor.noIntegrations.addHint')}</span>
+        </div>
+        <div className="grid w-full gap-2 sm:grid-cols-2">
+          <ChoiceButton icon={<LinkIcon />} title={t('editor.noIntegrations.url')} hint={t('editor.noIntegrations.urlHint')} onClick={onQuick} />
+          <ChoiceButton icon={<BracesIcon />} title={t('editor.noIntegrations.blank')} hint={t('editor.noIntegrations.blankHint')} onClick={onBlank} />
+        </div>
+      </EmptyContent>
+      <IntegrationForm open={adding} onOpenChange={setAdding} onSaved={added} />
+    </Empty>
+  )
+}
+
+/** A secondary way on: a bordered button with a title and one line of hint. */
+function ChoiceButton({ icon, title, hint, onClick }: { icon: React.ReactNode; title: string; hint: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="glow-border flex flex-col items-start gap-1 rounded-md border border-line bg-surface px-3 py-2.5 text-start outline-none transition-colors hover:border-signal/40 focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
+      <span className="flex items-center gap-2 text-sm font-medium [&>svg]:size-3.5 [&>svg]:text-signal-fg">
+        {icon}
+        {title}
+      </span>
+      <span className="text-xs text-muted-foreground">{hint}</span>
+    </button>
   )
 }
 

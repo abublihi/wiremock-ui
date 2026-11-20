@@ -12,7 +12,7 @@ import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 import type { Integration } from '@/server/catalog/types'
 
-export const Route = createFileRoute('/_app/catalog/')({ component: CatalogPage })
+export const Route = createFileRoute('/_app/integrations/')({ component: CatalogPage })
 
 export function CatalogPage() {
   const t = useT()
@@ -125,7 +125,7 @@ function IntegrationCard({ integration }: { integration: Integration }) {
   return (
     <li>
       <Link
-        to="/catalog/$key"
+        to="/integrations/$key"
         params={{ key: integration.key }}
         className="glow-border group flex h-full flex-col gap-2 rounded-md border border-line bg-surface p-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >

@@ -1,5 +1,5 @@
 import userEvent from '@testing-library/user-event'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -68,18 +68,40 @@ describe('endpoint picker', () => {
     await waitFor(() => expect(options().map((o) => o.textContent)).toEqual([expect.stringContaining('beta endpoint 12')]))
   })
 
-  it('hides integrations that have no endpoints', async () => {
+  it('an integration with no endpoints shows "No endpoints yet — Add one" instead of an empty heading', async () => {
     mockCatalog({ alpha: 2, empty: 0 })
-    await renderApp(<EndpointPicker onPick={() => {}} />)
+    await renderApp(<EndpointPicker onPick={() => {}} addReturnsHere />)
     await waitFor(() => expect(options()).toHaveLength(2))
-    expect(screen.queryByText('EMPTY')).toBeNull()
+    const group = await screen.findByRole('group', { name: 'EMPTY' })
+    expect(within(group).getByText('No endpoints yet')).toBeTruthy()
+    const add = within(group).getByRole('link', { name: 'Add an endpoint to EMPTY' })
+    expect(add.getAttribute('href')).toBe('/integrations/empty/endpoints/new?next=mock')
+    expect(add.textContent).toBe('Add one')
+
+    // While searching only matches show.
+    await userEvent.setup().type(screen.getByRole('combobox', { name: 'Search endpoints' }), 'alpha')
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'EMPTY' })).toBeNull())
   })
 
-  it('says so when no integration has an endpoint yet', async () => {
+  it('with no endpoints anywhere, each integration offers "Add one" and nothing says "no match"', async () => {
     mockCatalog({ empty: 0, bare: 0 })
     await renderApp(<EndpointPicker onPick={() => {}} />)
-    await screen.findByText('// no endpoints yet — add one to an integration in the catalog')
-    expect(screen.queryByText('EMPTY')).toBeNull()
+    await screen.findByRole('group', { name: 'BARE' })
+    expect(screen.getAllByRole('link', { name: /^Add an endpoint to / }).map((a) => a.getAttribute('href'))).toEqual([
+      '/integrations/empty/endpoints/new',
+      '/integrations/bare/endpoints/new',
+    ])
+    expect(screen.queryByText('// no endpoint matches')).toBeNull()
+  })
+
+  it('"Not in the list? Mock a URL directly" sits under the list', async () => {
+    mockCatalog({ alpha: 1 })
+    const onQuick = vi.fn()
+    await renderApp(<EndpointPicker onPick={() => {}} onQuick={onQuick} />)
+    await waitFor(() => expect(options()).toHaveLength(1))
+    expect(screen.getByText('Not in the list?')).toBeTruthy()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Mock a URL directly' }))
+    expect(onQuick).toHaveBeenCalledOnce()
   })
 
   it('keyboard: the first match is selected, arrows move, Enter picks', async () => {

@@ -51,9 +51,9 @@ test('the test panel matches a mock and its curl command works in a shell', asyn
   expect(JSON.parse(output)).toEqual({ idNo: '3000000003', name: 'Curl citizen' })
 })
 
-test('Try it on a catalog endpoint sends its example request', async ({ page }) => {
+test('Try it on an integration endpoint sends its example request', async ({ page }) => {
   await signIn(page, USER_A)
-  await page.goto('/catalog/nic')
+  await page.goto('/integrations/nic')
   await page.getByRole('button', { name: 'Try it: Fetch citizen' }).click()
   const panel = page.getByRole('dialog', { name: 'Try this endpoint' })
   await expect(panel.getByRole('textbox', { name: 'Body' })).toHaveValue('{"idNo":"1012345678"}')
@@ -203,7 +203,7 @@ test('a proxy mock made in Simple mode forwards to the real service', async ({ p
 
 test('an endpoint added on its own page is ready for a new mock', async ({ page, request }) => {
   await signIn(page, USER_A)
-  await page.goto('/catalog/nic')
+  await page.goto('/integrations/nic')
   await page.getByRole('link', { name: 'Add endpoint' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Add endpoint' })).toBeVisible()
   await page.getByLabel('Name').fill('Citizen photo')
@@ -217,7 +217,7 @@ test('an endpoint added on its own page is ready for a new mock', async ({ page,
   await expect(preview).toContainText('Citizen photo')
   await expect(preview).toContainText('Value of path parameter id')
   await page.getByRole('button', { name: 'Save endpoint' }).click()
-  await expect(page).toHaveURL(/\/catalog\/nic$/)
+  await expect(page).toHaveURL(/\/integrations\/nic$/)
   await page.getByRole('button', { name: 'New mock from this endpoint' }).click()
   await expect(page).toHaveURL(/\/mocks\/new\?.*endpoint=citizen-photo/)
   await expect(page.getByLabel('Value of path parameter id')).toBeVisible()

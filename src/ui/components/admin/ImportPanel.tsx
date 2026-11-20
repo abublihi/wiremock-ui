@@ -339,7 +339,7 @@ function ReportCard({ report, name, integration, onAgain }: { report: ImportRepo
       <div className="flex flex-wrap gap-2">
         {integration && (
           <Button asChild>
-            <Link to="/catalog/$key" params={{ key: integration.key }}>
+            <Link to="/integrations/$key" params={{ key: integration.key }}>
               {t('import.reportOpenIntegration', { name: integration.name })}
             </Link>
           </Button>

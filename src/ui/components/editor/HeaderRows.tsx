@@ -10,9 +10,12 @@ export function HeaderRows({
   rows,
   invalid,
   describedBy,
+  addLabel,
   onChange,
 }: {
   label: string
+  /** The add button's text (default "Add header"). */
+  addLabel?: string
   rows: HeaderRow[]
   invalid?: boolean
   describedBy?: string
@@ -70,7 +73,7 @@ export function HeaderRows({
         onClick={() => onChange([...rows, { name: '', value: '' }])}
       >
         <PlusIcon data-icon="inline-start" />
-        {t('editor.headers.add')}
+        {addLabel ?? t('editor.headers.add')}
       </Button>
     </div>
   )

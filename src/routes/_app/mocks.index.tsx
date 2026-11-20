@@ -155,9 +155,14 @@ export function MocksPage({
             <EmptyTitle>{t('mocks.startTitle')}</EmptyTitle>
             <EmptyDescription>{t('mocks.startBody')}</EmptyDescription>
           </EmptyHeader>
-          <EmptyContent>
+          <EmptyContent className="flex-row flex-wrap justify-center">
             <Button asChild>
-              <Link to="/catalog">{t('mocks.openCatalog')}</Link>
+              <Link to="/integrations">{t('mocks.openCatalog')}</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/mocks/new" search={{ mode: 'url' }}>
+                {t('editor.mockUrl')}
+              </Link>
             </Button>
           </EmptyContent>
         </Empty>
