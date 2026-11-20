@@ -25,7 +25,7 @@ function reducedMotionBlocks(source: string): string {
 describe('styles.css', () => {
   it('defines the visual-direction tokens (dark default on :root)', () => {
     expect(css).toMatch(/--canvas:\s*#070b14/i)
-    expect(css).toMatch(/--signal:\s*#00cc92/i)
+    expect(css).toMatch(/--signal:\s*#0fb2ef/i)
     expect(css).toMatch(/--canvas:\s*#f4f7fa/i)
     expect(css).toMatch(/--radius:\s*6px/)
   })

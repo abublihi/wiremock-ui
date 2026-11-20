@@ -36,8 +36,8 @@
   --line: #1c2535;
   --ink: #cdd6e2;
   --muted-ink: #556579;
-  --signal: #00cc92;
-  --hazard: #f5b82e;
+  --signal: #0fb2ef;
+  --hazard: #ff9505;
   --mismatch: #e5484d;
   --match: #00cc92;
 
@@ -47,8 +47,8 @@
   /* Signal / hazard as text on the canvas (the fills are already AA in dark). */
   --signal-fg: var(--signal);
   --hazard-fg: var(--hazard);
-  /* Dark text on signal fills: 9:1 (dark) / 6:1 (light). */
-  --on-signal: #04140e;
+  /* WireMock brand: signal = logo blue #0FB2EF, hazard = logo orange #FF9505. Dark text on signal fills: 7.8:1 (dark) / 5.3:1 (light). */
+  --on-signal: #04121a;
   --grid-dot: rgb(38 50 72 / 0.6);
   --glass: rgb(11 17 28 / 0.62);
   --glass-line: rgb(37 49 69 / 0.7);
@@ -63,15 +63,15 @@
   --line: #d9e1ea;
   --ink: #0b111c;
   --muted-ink: #5b6676;
-  --signal: #00a676;
-  --hazard: #e09a00;
+  --signal: #0891c9;
+  --hazard: #f08a00;
   --mismatch: #d13438;
   --match: #00a676;
 
   --muted-text: var(--muted-ink);
-  --signal-fg: #006f4f;
-  --hazard-fg: #8a5a00;
-  --on-signal: #04140e;
+  --signal-fg: #036f9b;
+  --hazard-fg: #9a5200;
+  --on-signal: #04121a;
   --grid-dot: rgb(140 156 178 / 0.45);
   --glass: rgb(255 255 255 / 0.72);
   --glass-line: rgb(205 216 228 / 0.9);
@@ -87,15 +87,15 @@
     --line: #d9e1ea;
     --ink: #0b111c;
     --muted-ink: #5b6676;
-    --signal: #00a676;
-    --hazard: #e09a00;
+    --signal: #0891c9;
+    --hazard: #f08a00;
     --mismatch: #d13438;
     --match: #00a676;
 
     --muted-text: var(--muted-ink);
-    --signal-fg: #006f4f;
-    --hazard-fg: #8a5a00;
-    --on-signal: #04140e;
+    --signal-fg: #036f9b;
+    --hazard-fg: #9a5200;
+    --on-signal: #04121a;
     --grid-dot: rgb(140 156 178 / 0.45);
     --glass: rgb(255 255 255 / 0.72);
     --glass-line: rgb(205 216 228 / 0.9);
