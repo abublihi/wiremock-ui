@@ -48,6 +48,8 @@ The first step of the Orders example:
 
 **Watch and control.** The Scenarios page draws each scenario as a small state machine with WireMock's **live state** (refreshed every 2 seconds). **Set as current** moves a scenario to a state; **Reset** puts one back to `Started`; **Reset all** resets every scenario.
 
+**Find one.** **Search scenarios** looks at scenario names, state names, and the names and paths of their mocks (case does not matter). The page shows 20 scenarios at a time; the search and the page are in the URL, so a link or the browser's back button brings you to the same view. **Reset all** still resets every scenario, not only the ones shown.
+
 ## Tips and limits
 
 - A step is one mock because WireMock answers one response per stub; the UI lets you edit them as one, and the Mocks list folds them into one row.

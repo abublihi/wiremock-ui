@@ -213,6 +213,7 @@ export function MocksPage({
             size={size}
             total={mocks.data.total}
             totalMocks={mocks.data.totalMocks}
+            loading={mocks.isPlaceholderData}
             onPage={goTo}
             onSize={(next) => {
               setSize(next)

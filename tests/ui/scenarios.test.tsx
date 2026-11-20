@@ -438,3 +438,67 @@ describe('mock editor — adding a step to a scenario', () => {
     expect(json.textContent).toContain('"requiredScenarioState": "step-3"')
   })
 })
+
+describe('Scenarios page: search and pages', () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      loan({
+        name: `flow-${String(i + 1).padStart(2, '0')}`,
+        mocks: [{ id: `m${i}`, name: i === 30 ? 'Refund issued' : `Step ${i}`, method: 'GET', url: i === 31 ? '/shop/refunds' : `/x/${i}`, requiredState: 'Started' }],
+      }),
+    )
+
+  it('shows 20 cards a page with the Mocks pager; the page is in the URL (page 1 left out) and back/forward work', async () => {
+    mockScenarios([many(45)])
+    const { router } = await renderApp(<ScenariosPage />)
+    await screen.findByText('Showing 1–20 of 45')
+    expect(screen.getAllByRole('button', { name: 'Reset' })).toHaveLength(20)
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('button', { name: 'Next page' }))
+    await screen.findByText('Showing 21–40 of 45')
+    expect(router.state.location.search).toMatchObject({ page: 2 })
+    await ue.click(screen.getByRole('button', { name: 'Next page' }))
+    await screen.findByText('Showing 41–45 of 45')
+    act(() => router.history.back())
+    await screen.findByText('Showing 21–40 of 45')
+    act(() => router.history.back())
+    await screen.findByText('Showing 1–20 of 45')
+    expect(router.state.location.search).not.toHaveProperty('page')
+    act(() => router.history.forward())
+    await screen.findByText('Showing 21–40 of 45')
+  })
+
+  it('searches names, states and mock names and paths (case-insensitive), back on page 1, with an empty state', async () => {
+    mockScenarios([many(45)])
+    const { router } = await renderApp(<ScenariosPage />, { path: '/?page=2' })
+    await screen.findByText('Showing 21–40 of 45')
+    const ue = userEvent.setup()
+    const box = screen.getByRole('searchbox', { name: 'Search scenarios' })
+    await ue.type(box, 'REFUND')
+    await waitFor(() => expect(router.state.location.search).toEqual({ q: 'REFUND' }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Reset' })).toHaveLength(2))
+    expect(screen.getByText('flow-31')).toBeTruthy()
+    expect(screen.getByText('flow-32')).toBeTruthy()
+    expect(screen.queryByRole('navigation', { name: 'Pages' })).toBeNull()
+    await ue.clear(box)
+    await ue.type(box, 'nothing-like-this')
+    expect(await screen.findByText('No scenario matches “nothing-like-this”')).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Clear the search' }))
+    await screen.findByText('Showing 1–20 of 45')
+  })
+
+  it('?scenario= lands on the page holding it, clearing a search that hides it', async () => {
+    mockScenarios([many(45)])
+    const { router } = await renderApp(<ScenariosPage />, { path: '/?scenario=flow-27&q=flow-0' })
+    await screen.findByText('Showing 21–40 of 45')
+    expect(router.state.location.search).toEqual({ scenario: 'flow-27', page: 2 })
+    expect(screen.getByText('flow-27')).toBeTruthy()
+  })
+
+  it('a page past the end goes to the last page', async () => {
+    mockScenarios([many(45)])
+    const { router } = await renderApp(<ScenariosPage />, { path: '/?page=9' })
+    await screen.findByText('Showing 41–45 of 45')
+    expect(router.state.location.search).toEqual({ page: 3 })
+  })
+})

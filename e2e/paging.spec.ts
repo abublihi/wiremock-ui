@@ -56,7 +56,7 @@ test('the mocks list pages: Next, the page in the URL, Back, and a scenario kept
   await expect(page.getByRole('link', { name: 'pg-e2e mock 59' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'pg-e2e mock 9', exact: true })).toHaveCount(0)
 
-  await pager.getByRole('button', { name: 'Next' }).click()
+  await pager.getByRole('button', { name: 'Next page' }).click()
   await expect(page).toHaveURL(/[?&]page=2/)
   await expect(pager.getByText('Showing 51–61 of 61 rows (63 mocks — a scenario is one row)')).toBeVisible()
   // A search is set, so the scenario group is open: all three steps on this page.

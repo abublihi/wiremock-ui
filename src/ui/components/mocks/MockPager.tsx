@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { Button } from '@/ui/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
@@ -40,29 +40,43 @@ export function MockPager({
   page,
   size,
   total,
-  totalMocks,
+  totalMocks = total,
   onPage,
   onSize,
+  loading = false,
 }: {
   page: number
   size: number
   total: number
-  totalMocks: number
+  /** Mocks behind the rows (the mocks list, where a scenario is one row); leave out where a row is one item. */
+  totalMocks?: number
   onPage: (page: number) => void
-  onSize: (size: number) => void
+  /** Leave out for a fixed page size (no "Per page" select). */
+  onSize?: (size: number) => void
+  /** The next page is still loading: the line is dimmed until it arrives. */
+  loading?: boolean
 }) {
   const t = useT()
+  const previous = useRef<HTMLButtonElement>(null)
+  const next = useRef<HTMLButtonElement>(null)
+  // Paging scrolls back to the top of the list; landing on the first or last page keeps focus on the button still usable.
+  const go = (to: number) => {
+    onPage(to)
+    if (to <= 1) next.current?.focus()
+    else if (to >= Math.max(1, Math.ceil(total / size))) previous.current?.focus()
+    globalThis.scrollTo?.({ top: 0 })
+  }
   const pages = Math.max(1, Math.ceil(total / size))
   const from = total === 0 ? 0 : (page - 1) * size + 1
   const to = Math.min(total, page * size)
   const vars = { from: fmt(from), to: fmt(to), total: fmt(total), mocks: fmt(totalMocks) }
   return (
     <nav aria-label={t('pager.label')} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs">
-      <p aria-live="polite" className="text-muted-foreground">
+      <p aria-live="polite" className={loading ? 'text-muted-foreground opacity-60' : 'text-muted-foreground'}>
         {t(total === totalMocks ? 'pager.showing' : 'pager.showingRows', vars)}
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 text-muted-foreground">
+        {onSize && <label className="flex items-center gap-2 text-muted-foreground">
           <span>{t('pager.size')}</span>
           <Select value={String(size)} onValueChange={(v) => onSize(Number(v))}>
             <SelectTrigger size="sm" className="w-20" aria-label={t('pager.size')}>
@@ -76,13 +90,13 @@ export function MockPager({
               ))}
             </SelectContent>
           </Select>
-        </label>
+        </label>}
         <span className="text-muted-foreground tabular-nums">{t('pager.page', { page: fmt(page), pages: fmt(pages) })}</span>
-        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+        <Button ref={previous} variant="outline" size="sm" aria-label={t('pager.previousPage')} disabled={page <= 1} onClick={() => go(page - 1)}>
           <ChevronLeftIcon data-icon="inline-start" />
           {t('pager.previous')}
         </Button>
-        <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+        <Button ref={next} variant="outline" size="sm" aria-label={t('pager.nextPage')} disabled={page >= pages} onClick={() => go(page + 1)}>
           {t('pager.next')}
           <ChevronRightIcon data-icon="inline-end" />
         </Button>
