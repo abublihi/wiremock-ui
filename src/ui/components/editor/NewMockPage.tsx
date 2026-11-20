@@ -11,6 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Checkbox } from '@/ui/components/ui/checkbox'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
+import type { ScenarioReturn } from '@/ui/components/catalog/EndpointPage'
 import { IntegrationForm } from '@/ui/components/catalog/IntegrationForm'
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { useT } from '@/ui/i18n'
@@ -49,8 +50,9 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
   const seed: ScenarioSeed | undefined = search.scenario ? { name: search.scenario, requiredState: search.state ?? 'Started' } : undefined
   const after = seed ? search.after : undefined
   // Picking or changing the endpoint keeps the scenario the mock is being added to.
-  const onSearchChange = (next: NewMockSearch) =>
-    setSearch(seed ? { ...next, scenario: seed.name, state: seed.requiredState, ...(after ? { after } : {}) } : next)
+  // The scenario context as search params, carried through every way out and back (an endpoint added on its page).
+  const scenarioSearch = seed ? { scenario: seed.name, state: seed.requiredState, ...(after ? { after } : {}) } : {}
+  const onSearchChange = (next: NewMockSearch) => setSearch({ ...next, ...scenarioSearch })
   // The state the new step answers in, as the Simple form has it now (editable there).
   const [target, setTarget] = useState(seed?.requiredState ?? '')
   const [linkLast, setLinkLast] = useState(true)
@@ -145,7 +147,7 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
     if (integrations.data?.length === 0) {
       return (
         <EditorShell title={t('editor.newTitle')} caption={t('editor.noIntegrations.caption')} notice={notice}>
-          <NoIntegrations onQuick={toQuick} onBlank={toBlank} />
+          <NoIntegrations onQuick={toQuick} onBlank={toBlank} scenario={scenarioSearch} />
         </EditorShell>
       )
     }
@@ -155,7 +157,7 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
           onPick={(i, e) => onSearchChange({ integration: i, endpoint: e })}
           onQuick={toQuick}
           onBlank={toBlank}
-          addReturnsHere
+          addReturnsHere={scenarioSearch}
         />
       </EditorShell>
     )
@@ -207,12 +209,13 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
  * The new-mock page before any integration exists: what an integration is for, and three ways on — add one (then its
  * first endpoint, then back here with it picked), mock a URL directly, or write the stub JSON by hand.
  */
-function NoIntegrations({ onQuick, onBlank }: { onQuick: () => void; onBlank: () => void }) {
+function NoIntegrations({ onQuick, onBlank, scenario }: { onQuick: () => void; onBlank: () => void; scenario: ScenarioReturn }) {
   const t = useT()
   const navigate = useNavigate()
   const [adding, setAdding] = useState(false)
+  const hintId = useId()
   const added = (integration: Integration) =>
-    void navigate({ to: '/integrations/$key/endpoints/new', params: { key: integration.key }, search: { next: 'mock' } })
+    void navigate({ to: '/integrations/$key/endpoints/new', params: { key: integration.key }, search: { next: 'mock', ...scenario } })
   return (
     <Empty className="rounded-md border border-dashed border-line">
       <EmptyHeader className="max-w-md">
@@ -224,11 +227,13 @@ function NoIntegrations({ onQuick, onBlank }: { onQuick: () => void; onBlank: ()
       </EmptyHeader>
       <EmptyContent className="max-w-lg gap-3">
         <div className="flex flex-col items-center gap-1">
-          <Button onClick={() => setAdding(true)}>
+          <Button onClick={() => setAdding(true)} aria-describedby={hintId}>
             <PlusIcon data-icon="inline-start" />
             {t('editor.noIntegrations.add')}
           </Button>
-          <span className="text-[11px] text-muted-foreground">{t('editor.noIntegrations.addHint')}</span>
+          <span id={hintId} className="text-[11px] text-muted-foreground">
+            {t('editor.noIntegrations.addHint')}
+          </span>
         </div>
         <div className="grid w-full gap-2 sm:grid-cols-2">
           <ChoiceButton icon={<LinkIcon />} title={t('editor.noIntegrations.url')} hint={t('editor.noIntegrations.urlHint')} onClick={onQuick} />

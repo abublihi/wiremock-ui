@@ -50,6 +50,7 @@ describe('quick URL mocks: the form round-trips through the server builder (from
       ),
     ],
     ['a regex URL with a text body match and a text body', form({ body: 'pong' }, { method: 'ANY', urlType: 'regex', url: '/files/[0-9]+', body: 'hello', responseHeaders: [{ name: 'Content-Type', value: 'text/plain' }] })],
+    ['a JSON scalar body match (plain text to look for)', form({}, { method: 'POST', url: '/pay', body: '12345' })],
     ['no headers and no body', form({ status: 204, preset: 'custom' }, { method: 'DELETE', url: '/items/1', responseHeaders: [] })],
     ['a slow answer with a custom name', form({ slow: true, delaySeconds: 5, name: 'Slow health' })],
     ['the timeout preset', form({ preset: 'timeout', status: 504 })],
@@ -107,6 +108,8 @@ describe('quick URL mocks: what stays in Advanced', () => {
     ['a jsonBody under a text type', (s) => ({ ...s, response: { status: 200, headers: { 'Content-Type': 'text/plain' }, jsonBody: {} } })],
     ['transformers', (s) => ({ ...s, response: { ...s.response, transformers: ['response-template'] } })],
     ['an unknown method', (s) => ({ ...s, request: { ...s.request, method: 'TRACE' } })],
+    ['equalToJson with a scalar', (s) => ({ ...s, request: { ...s.request, bodyPatterns: [{ equalToJson: '12345', ignoreExtraElements: true }] } })],
+    ['a regex the browser cannot parse', (s) => ({ ...s, request: { method: 'GET', urlPathPattern: '/users/(' } })],
     ['a query string in the path', (s) => ({ ...s, request: { method: 'GET', urlPath: '/a?b=1' } })],
   ]
   it.each(variants)('%s', (_, change) => {

@@ -145,7 +145,7 @@ describe('new mock with integrations', () => {
     await renderApp(<NewHarness />)
     expect(await screen.findByText('Not in the list?')).toBeTruthy()
     // NIC has no endpoints: the picker says so and links to adding one, coming back here after.
-    const add = await screen.findByRole('link', { name: 'Add an endpoint to NIC' })
+    const add = await screen.findByRole('link', { name: 'Add one endpoint to NIC' })
     expect(add.getAttribute('href')).toBe('/integrations/nic/endpoints/new?next=mock')
     await userEvent.setup().click(screen.getByRole('button', { name: 'Mock a URL directly' }))
     await screen.findByRole('textbox', { name: 'URL' })
@@ -196,5 +196,84 @@ describe('endpoint page opened from the new-mock page', () => {
     await ue.click(screen.getByRole('button', { name: 'Save endpoint' }))
     await screen.findByText(/new mock page/)
     expect(router.state.location.search).toEqual({ integration: 'blog', endpoint: 'list-posts' })
+  })
+})
+
+describe('quick form: regex URLs', () => {
+  it('an unparsable regex is flagged before anything is sent', async () => {
+    const calls = mockEmptyCatalog()
+    await renderApp(<NewHarness initial={{ mode: 'url' }} />)
+    const ue = userEvent.setup()
+    await ue.click(await screen.findByRole('radio', { name: 'Regex' }))
+    const url = screen.getByRole('textbox', { name: 'URL' })
+    await ue.clear(url)
+    await ue.type(url, '/users/(')
+    expect(await screen.findByText(/This is not a valid regular expression/)).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    expect(calls).toHaveLength(0)
+  })
+})
+
+describe('the scenario a mock is added to survives adding an integration or endpoint first', () => {
+  const scenario = { scenario: 'flow', state: 'approved', after: 'pending' }
+
+  it('Add an integration carries scenario, state and after to the endpoint page', async () => {
+    mockEmptyCatalog()
+    server.use(
+      http.get(`${BASE}/api/mocks`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/scenarios`, () => HttpResponse.json([])),
+      http.put(`${BASE}/api/integrations/:key`, async ({ request, params }) =>
+        HttpResponse.json({ ...((await request.json()) as object), key: params.key, updatedAt: '', updatedBy: 'sara' }),
+      ),
+    )
+    const { router } = await renderApp(<NewHarness initial={scenario} />)
+    const ue = userEvent.setup()
+    const add = await screen.findByRole('button', { name: 'Add an integration' })
+    expect(add.getAttribute('aria-describedby')).toBeTruthy()
+    expect(document.getElementById(add.getAttribute('aria-describedby')!)?.textContent).toMatch(/Then describe one of its endpoints/)
+    await ue.click(add)
+    const dialog = await screen.findByRole('dialog', { name: 'Add integration' })
+    await ue.type(within(dialog).getByLabelText('Key'), 'blog')
+    await ue.type(within(dialog).getByLabelText('Name'), 'Blog')
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/integrations/blog/endpoints/new'))
+    expect(router.state.location.search).toEqual({ next: 'mock', ...scenario })
+  })
+
+  it('"Add one" in the picker carries it too, and sits outside the listbox', async () => {
+    const integration: Integration = { key: 'nic', name: 'NIC', prefix: '/nic', updatedAt: '', updatedBy: '' }
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
+      http.get(`${BASE}/api/integrations/nic/endpoints`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/mocks`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/scenarios`, () => HttpResponse.json([])),
+    )
+    await renderApp(<NewHarness initial={scenario} />)
+    const add = await screen.findByRole('link', { name: 'Add one endpoint to NIC' })
+    const href = new URL(add.getAttribute('href')!, BASE)
+    expect(href.pathname).toBe('/integrations/nic/endpoints/new')
+    expect(Object.fromEntries(href.searchParams)).toEqual({ next: 'mock', ...scenario })
+    expect(add.closest('[role="listbox"]')).toBeNull()
+    expect(screen.queryByRole('listbox')).toBeNull() // nothing to pick: no empty listbox either
+  })
+
+  it('the endpoint page goes back to the new mock with the endpoint and the scenario', async () => {
+    const integration: Integration = { key: 'blog', name: 'Blog', prefix: '/blog', updatedAt: '', updatedBy: '' }
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
+      http.get(`${BASE}/api/integrations/blog/endpoints`, () => HttpResponse.json([])),
+      http.put(`${BASE}/api/integrations/blog/endpoints/:key`, async ({ request, params }) =>
+        HttpResponse.json({ ...((await request.json()) as object), integration: 'blog', key: params.key, updatedAt: '', updatedBy: 'sara' }),
+      ),
+    )
+    const { router } = await renderApp(<EndpointPage integrationKey="blog" next="mock" scenario={scenario} />)
+    const ue = userEvent.setup()
+    const back = await screen.findByRole('link', { name: 'Back to the new mock' })
+    expect(new URL(back.getAttribute('href')!, BASE).searchParams.get('scenario')).toBe('flow')
+    await ue.type(screen.getByLabelText('Endpoint ID'), 'list-posts')
+    await ue.type(screen.getByLabelText('Name'), 'List posts')
+    await ue.click(screen.getByRole('button', { name: 'Save endpoint' }))
+    await screen.findByText(/new mock page/)
+    expect(router.state.location.search).toEqual({ integration: 'blog', endpoint: 'list-posts', ...scenario })
   })
 })

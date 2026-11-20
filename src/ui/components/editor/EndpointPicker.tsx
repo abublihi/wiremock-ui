@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { AlertCircleIcon, BracesIcon, ExternalLinkIcon, LinkIcon, PlusIcon } from 'lucide-react'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import { endpointsQueryOptions, useIntegrations } from '@/ui/api/queries'
+import type { ScenarioReturn } from '@/ui/components/catalog/EndpointPage'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
@@ -44,8 +45,8 @@ export function EndpointPicker({
   onBlank?: () => void
   /** "Not in the list? Mock a URL directly". */
   onQuick?: () => void
-  /** "Add one" comes back to the new-mock page with the new endpoint picked. */
-  addReturnsHere?: boolean
+  /** Set: "Add one" comes back to the new-mock page with the new endpoint picked, keeping this scenario context. */
+  addReturnsHere?: ScenarioReturn
 }) {
   const t = useT()
   const integrations = useIntegrations()
@@ -75,6 +76,9 @@ export function EndpointPicker({
   })()
   // Integrations whose (loaded) endpoint list is empty: offered an "Add one" link instead of an empty heading.
   const empty = search ? [] : (integrations.data ?? []).filter((_, i) => endpointLists[i]?.data?.length === 0)
+
+  // Only integrations without endpoints (and no search): their "Add one" rows replace the (empty) list.
+  const onlyEmpty = !loading && search === '' && total === 0 && empty.length > 0
 
   const quick = onQuick && (
     <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -112,36 +116,47 @@ export function EndpointPicker({
   return (
     <section aria-labelledby="pick-title" className="flex flex-col gap-2">
       <Eyebrow id="pick-title">{t('editor.pickTitle')}</Eyebrow>
-      {/* Matching and the cap happen here, so cmdk only renders (and moves the selection over) what is shown. */}
-      <Command label={t('editor.pickSearch')} shouldFilter={false} className="rounded-md border border-line bg-surface p-1">
-        <CommandInput placeholder={t('editor.pickPlaceholder')} value={search} onValueChange={setSearch} autoFocus />
-        <CommandList className="max-h-[min(32rem,60vh)]">
-          {integrations.data === undefined ? (
-            <PickerSkeleton />
-          ) : integrations.data.length === 0 ? (
-            <p className="px-3 py-6 text-center text-xs text-muted-foreground">{t('editor.pickNoIntegrations')}</p>
-          ) : (
-            <>
-              {/* With only empty integrations (and no search) their "Add one" rows say it all. */}
-              {!loading && (search !== '' || total > 0) && (
-                <CommandEmpty className="py-6 text-center text-xs text-muted-foreground">{t('editor.pickEmpty')}</CommandEmpty>
-              )}
-              {groups.map(({ integration, endpoints }) => (
-                <IntegrationGroup key={integration.key} integration={integration} endpoints={endpoints} onPick={onPick} />
-              ))}
+      {onlyEmpty ? (
+        // Nothing to pick or search yet: no search box and no (empty) listbox, only a way to add the first endpoint.
+        <div className="rounded-md border border-line bg-surface p-1">
+          {empty.map((integration) => (
+            <EmptyIntegration key={integration.key} integration={integration} returnHere={addReturnsHere} />
+          ))}
+        </div>
+      ) : (
+        /* Matching and the cap happen here, so cmdk only renders (and moves the selection over) what is shown. */
+        <Command label={t('editor.pickSearch')} shouldFilter={false} className="rounded-md border border-line bg-surface p-1">
+          <CommandInput placeholder={t('editor.pickPlaceholder')} value={search} onValueChange={setSearch} autoFocus />
+          <CommandList className="max-h-[min(32rem,60vh)]">
+            {integrations.data === undefined ? (
+              <PickerSkeleton />
+            ) : integrations.data.length === 0 ? (
+              <p className="px-3 py-6 text-center text-xs text-muted-foreground">{t('editor.pickNoIntegrations')}</p>
+            ) : (
+              <>
+                {!loading && <CommandEmpty className="py-6 text-center text-xs text-muted-foreground">{t('editor.pickEmpty')}</CommandEmpty>}
+                {groups.map(({ integration, endpoints }) => (
+                  <IntegrationGroup key={integration.key} integration={integration} endpoints={endpoints} onPick={onPick} />
+                ))}
+                {loading && <Skeleton className="m-1 h-9" />}
+              </>
+            )}
+          </CommandList>
+          {/* Outside the listbox: these are links, not options. Tab reaches them; arrow keys stay on the endpoints. */}
+          {empty.length > 0 && (
+            <div className="mt-1 border-t border-line pt-1">
               {empty.map((integration) => (
                 <EmptyIntegration key={integration.key} integration={integration} returnHere={addReturnsHere} />
               ))}
-              {loading && <Skeleton className="m-1 h-9" />}
-            </>
+            </div>
           )}
-        </CommandList>
-        {!loading && total > shown && (
-          <p role="status" className="border-t border-line px-3 py-2 text-[11px] text-muted-foreground">
-            {t('editor.pickCapped', { shown: shown.toLocaleString('en'), total: total.toLocaleString('en') })}
-          </p>
-        )}
-      </Command>
+          {!loading && total > shown && (
+            <p role="status" className="border-t border-line px-3 py-2 text-[11px] text-muted-foreground">
+              {t('editor.pickCapped', { shown: shown.toLocaleString('en'), total: total.toLocaleString('en') })}
+            </p>
+          )}
+        </Command>
+      )}
       {quick}
       {blank}
     </section>
@@ -149,7 +164,7 @@ export function EndpointPicker({
 }
 
 /** An integration with no endpoints yet: its name and a way to add the first one. */
-function EmptyIntegration({ integration, returnHere }: { integration: Integration; returnHere?: boolean }) {
+function EmptyIntegration({ integration, returnHere }: { integration: Integration; returnHere?: ScenarioReturn }) {
   const t = useT()
   return (
     <div role="group" aria-label={integration.name} className="overflow-hidden p-1 text-foreground">
@@ -162,7 +177,7 @@ function EmptyIntegration({ integration, returnHere }: { integration: Integratio
         <Link
           to="/integrations/$key/endpoints/new"
           params={{ key: integration.key }}
-          search={returnHere ? { next: 'mock' } : {}}
+          search={returnHere ? { next: 'mock', ...returnHere } : {}}
           aria-label={t('editor.pickAddOneTo', { name: integration.name })}
           className="inline-flex items-center gap-1 text-signal-fg hover:underline"
         >

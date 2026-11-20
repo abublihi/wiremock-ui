@@ -53,6 +53,21 @@ for (const theme of ['dark', 'light'] as const) {
       }
     })
 
+    test('the new-mock page with no integrations, and with one that has no endpoints yet', async ({ page }) => {
+      await signIn(page, USER_A)
+      await page.route('**/api/integrations', (r) => (r.request().method() === 'GET' ? r.fulfill({ json: [] }) : r.fallback()))
+      await page.goto('/mocks/new')
+      await expect(page.getByText('No integrations yet')).toBeVisible()
+      await expectNoSeriousViolations(page)
+      await page.unroute('**/api/integrations')
+      // NIC answers with no endpoints: the picker shows "No endpoints yet — Add one" instead of a list.
+      await page.route('**/api/integrations/nic/endpoints', (r) => r.fulfill({ json: [] }))
+      await page.goto('/mocks/new')
+      await expect(page.getByRole('link', { name: 'Add one endpoint to NIC' })).toBeVisible()
+      await page.waitForLoadState('networkidle')
+      await expectNoSeriousViolations(page)
+    })
+
     test('the mock editor of an existing mock', async ({ page }) => {
       await signIn(page, USER_A)
       await page.goto('/mocks?owner=all')

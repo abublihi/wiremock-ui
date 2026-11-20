@@ -1,6 +1,6 @@
 import { AppError, ConfigError, NotFoundError, UpstreamError, ValidationError } from '../errors'
 import { decodeRelayBody, readLimited, relayHeaders, relayTarget, RELAY_TIMEOUT_MS, type TestRequestInput, type TestRequestResult } from './relay'
-import type { LoggedEvent, NearMiss, ScenarioState, StubMapping } from './types'
+import type { LoggedEvent, LoggedRequest, NearMiss, ScenarioState, StubMapping } from './types'
 
 const PAGE = 1000
 
@@ -153,6 +153,13 @@ export class WireMockClient {
     const res = await this.request(`/__admin/requests?${q}`)
     if (!res.ok) await this.fail(res, 'list requests')
     return (await this.json<{ requests: LoggedEvent[] }>(res)).requests
+  }
+
+  /** Every journal request that matched no stub (WireMock filters the whole journal, newest first). */
+  async listUnmatchedRequests(): Promise<LoggedRequest[]> {
+    const res = await this.request('/__admin/requests/unmatched')
+    if (!res.ok) await this.fail(res, 'list unmatched requests')
+    return (await this.json<{ requests: LoggedRequest[] }>(res)).requests
   }
 
   async getRequest(id: string): Promise<LoggedEvent | null> {

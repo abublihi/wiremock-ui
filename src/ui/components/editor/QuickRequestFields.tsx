@@ -5,10 +5,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/ui/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useT } from '@/ui/i18n'
-import { QUICK_METHODS, QUICK_URL_TYPES, type QuickMethod, type QuickRequest, type QuickUrlType } from '@/ui/lib/editor-sync'
+import { QUICK_METHODS, QUICK_URL_TYPES, isRegex, type QuickMethod, type QuickRequest, type QuickUrlType } from '@/ui/lib/editor-sync'
 import { HeaderRows, hasUnnamedRow } from './HeaderRows'
 
-export type QuickErrors = Partial<Record<'method' | 'url' | 'query' | 'body', string>>
+export type QuickErrors = Partial<Record<'url' | 'query', string>>
 
 const ON = 'data-[state=on]:border-signal/50 data-[state=on]:bg-signal/10 data-[state=on]:text-signal-fg'
 
@@ -21,6 +21,7 @@ export function quickRequestErrors(t: ReturnType<typeof useT>, quick: QuickReque
   } else if (/\s/.test(url)) out.url = t('editor.quick.urlSpaces')
   else if (quick.urlType !== 'regex' && !url.startsWith('/')) out.url = t('editor.quick.urlSlash')
   else if (quick.urlType !== 'regex' && url.includes('?')) out.url = t('editor.quick.urlQuery')
+  else if (quick.urlType === 'regex' && !isRegex(url)) out.url = t('editor.quick.urlRegex')
   if (hasUnnamedRow(quick.query)) out.query = t('editor.quick.queryUnnamed')
   return out
 }
@@ -33,7 +34,7 @@ export function QuickRequestFields({
 }: {
   quick: QuickRequest
   errors: QuickErrors
-  onChange: (patch: Partial<QuickRequest>, clears: ('method' | 'url' | 'query' | 'bodyMatch')[]) => void
+  onChange: (patch: Partial<QuickRequest>, clears: ('url' | 'query')[]) => void
 }) {
   const t = useT()
   const ids = useId()
@@ -44,10 +45,10 @@ export function QuickRequestFields({
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)]">
-        <Field data-invalid={Boolean(errors.method)}>
+        <Field>
           <FieldLabel htmlFor={id('method')}>{t('editor.quick.method')}</FieldLabel>
-          <Select value={quick.method} onValueChange={(method) => onChange({ method: method as QuickMethod }, ['method'])}>
-            <SelectTrigger id={id('method')} className="w-full font-mono" aria-invalid={Boolean(errors.method)} aria-describedby={described('method')}>
+          <Select value={quick.method} onValueChange={(method) => onChange({ method: method as QuickMethod }, [])}>
+            <SelectTrigger id={id('method')} className="w-full font-mono">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -58,7 +59,6 @@ export function QuickRequestFields({
               ))}
             </SelectContent>
           </Select>
-          {error('method')}
         </Field>
 
         <Field data-invalid={Boolean(errors.url)}>
@@ -123,7 +123,7 @@ export function QuickRequestFields({
         {error('query')}
       </Field>
 
-      <Field data-invalid={Boolean(errors.body)}>
+      <Field>
         <FieldLabel htmlFor={id('body')}>
           {t('editor.quick.bodyMatch')} <span className="font-normal text-muted-foreground">({t('editor.nameOptional')})</span>
         </FieldLabel>
@@ -135,14 +135,12 @@ export function QuickRequestFields({
           spellCheck={false}
           placeholder='{"idNo": "1012345678"}'
           value={quick.body}
-          aria-invalid={Boolean(errors.body)}
-          aria-describedby={described('body', id('body-hint'))}
-          onChange={(e) => onChange({ body: e.target.value }, ['bodyMatch'])}
+          aria-describedby={id('body-hint')}
+          onChange={(e) => onChange({ body: e.target.value }, [])}
         />
         <FieldDescription id={id('body-hint')} className="text-xs">
           {t('editor.quick.bodyMatchHint')}
         </FieldDescription>
-        {error('body')}
       </Field>
     </>
   )

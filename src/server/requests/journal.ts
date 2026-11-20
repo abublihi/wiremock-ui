@@ -111,6 +111,21 @@ export class RequestJournal {
     await safeRecord(this.deps.audit, { actor, action: 'requests.clear' })
   }
 
+  /**
+   * How many requests matched no mock since `since` (ms), up to `cap`: WireMock filters the whole journal for
+   * unmatched requests first, so heavy matched traffic cannot push them out of a limited page.
+   */
+  async countUnmatchedSince(since: number, cap: number): Promise<{ count: number; capped: boolean }> {
+    const requests = await this.deps.wiremock.listUnmatchedRequests()
+    let count = 0
+    for (const r of requests) {
+      const at = typeof r.loggedDate === 'number' ? r.loggedDate : Date.parse(r.loggedDateString ?? '')
+      if (!(at >= since) || pathOf(r.url) === MARKER_PATH) continue
+      if (++count > cap) return { count: cap, capped: true }
+    }
+    return { count, capped: false }
+  }
+
   count(pattern: Record<string, unknown>): Promise<number> {
     return this.deps.wiremock.countRequests(pattern)
   }

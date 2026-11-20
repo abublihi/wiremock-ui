@@ -36,6 +36,12 @@ describe('quick URL mocks: request', () => {
     ])
     expect(buildQuickStub(input({}, { method: 'POST', body: '<id>1</id>' })).request.bodyPatterns).toEqual([{ contains: '<id>1</id>' }])
     expect(buildQuickStub(input({}, { method: 'POST', body: '   ' })).request.bodyPatterns).toBeUndefined()
+    expect(buildQuickStub(input({}, { method: 'POST', body: '[1, 2]' })).request.bodyPatterns).toEqual([{ equalToJson: '[1, 2]', ignoreExtraElements: true }])
+  })
+  test('a JSON scalar (number, true, a quoted string) is plain text to look for, not equalToJson', () => {
+    for (const body of ['12345', 'true', '"abc"', 'null']) {
+      expect(buildQuickStub(input({}, { method: 'POST', body })).request.bodyPatterns).toEqual([{ contains: body }])
+    }
   })
   test('the URL is checked: required, starts with / (not regex), no query string, no spaces', () => {
     expect(failure(() => buildQuickStub(input({}, { url: ' ' }))).message).toBe('request.url is required')
@@ -43,6 +49,8 @@ describe('quick URL mocks: request', () => {
     expect(failure(() => buildQuickStub(input({}, { url: '/a?b=1' }))).message).toMatch(/^request\.url must not contain a query string/)
     expect(failure(() => buildQuickStub(input({}, { url: '/a b' }))).message).toBe('request.url must not contain spaces')
     expect(buildQuickStub(input({}, { urlType: 'regex', url: '.*/health' })).request.urlPathPattern).toBe('.*/health')
+    expect(failure(() => buildQuickStub(input({}, { urlType: 'regex', url: '/users/(' }))).message).toBe('request.url must be a valid regular expression')
+    expect(failure(() => buildQuickStub(input({}, { urlType: 'regex', url: '/a[' }))).status).toBe(400)
   })
   test('the schema refuses unknown methods, URL types and fields', () => {
     expect(quickMockSchema.safeParse({ request: { method: 'FETCH', urlType: 'path', url: '/' } }).success).toBe(false)

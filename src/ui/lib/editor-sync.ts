@@ -571,9 +571,20 @@ export function toQuickInput(form: SimpleForm): QuickMockInput {
 }
 
 const isText = (v: unknown): v is string => typeof v === 'string'
-const parsesAsJson = (text: string) => {
+/** A JSON object or array (same rule as the server's isJsonDocument): only those match with equalToJson. */
+const isJsonDocument = (text: string) => {
   try {
-    JSON.parse(text)
+    const value: unknown = JSON.parse(text)
+    return typeof value === 'object' && value !== null
+  } catch {
+    return false
+  }
+}
+
+/** Whether JavaScript can parse the pattern (the server's check for regex URLs). */
+export function isRegex(pattern: string): boolean {
+  try {
+    new RegExp(pattern)
     return true
   } catch {
     return false
@@ -592,6 +603,7 @@ function readQuickRequest(request: Record<string, unknown>): Omit<QuickRequest, 
   const url = request[urlField]
   if (!isText(url) || url === '' || /\s/.test(url)) return null
   if (urlType !== 'regex' && (!url.startsWith('/') || url.includes('?'))) return null
+  if (urlType === 'regex' && !isRegex(url)) return null
 
   const query: HeaderRow[] = []
   if (request.queryParameters !== undefined) {
@@ -607,9 +619,9 @@ function readQuickRequest(request: Record<string, unknown>): Omit<QuickRequest, 
     const patterns = request.bodyPatterns
     if (!Array.isArray(patterns) || patterns.length !== 1 || !isRecord(patterns[0])) return null
     const p = patterns[0]
-    if (onlyKeys(p, ['equalToJson', 'ignoreExtraElements']) && p.ignoreExtraElements === true && isText(p.equalToJson) && parsesAsJson(p.equalToJson)) {
+    if (onlyKeys(p, ['equalToJson', 'ignoreExtraElements']) && p.ignoreExtraElements === true && isText(p.equalToJson) && isJsonDocument(p.equalToJson)) {
       body = p.equalToJson
-    } else if (onlyKeys(p, ['contains']) && isText(p.contains) && p.contains.trim() !== '' && !parsesAsJson(p.contains)) {
+    } else if (onlyKeys(p, ['contains']) && isText(p.contains) && p.contains.trim() !== '' && !isJsonDocument(p.contains)) {
       body = p.contains
     } else return null
   }

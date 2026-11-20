@@ -388,19 +388,17 @@ export const RECENT_UNMATCHED_MINUTES = 15
 export const RECENT_UNMATCHED_POLL_MS = 15_000
 
 /**
- * How many requests matched no mock in the last RECENT_UNMATCHED_MINUTES (the same request-log query the
- * Request log page uses, filtered to unmatched). Refreshed every RECENT_UNMATCHED_POLL_MS only while the tab is
- * visible; a failure just shows no count.
+ * How many requests matched no mock in the last RECENT_UNMATCHED_MINUTES (a small count endpoint over WireMock's
+ * unmatched journal, capped at 100 for the "99+" badge). Refreshed every RECENT_UNMATCHED_POLL_MS only while the tab
+ * is visible; a failure just shows no count.
  */
 export function useRecentUnmatchedCount(options: { enabled?: boolean } = {}) {
   const visible = useDocumentVisible()
   return useQuery({
     queryKey: queryKeys.recentUnmatched,
-    queryFn: async () => {
-      const since = new Date(Date.now() - RECENT_UNMATCHED_MINUTES * 60_000).toISOString()
-      const rows = await apiFetch<RequestSummary[]>('/api/requests', { query: { matched: 'false', since, limit: MAX_REQUEST_ROWS } })
-      return rows.length
-    },
+    queryFn: async () =>
+      (await apiFetch<{ count: number; capped: boolean }>('/api/requests/unmatched-count', { query: { minutes: RECENT_UNMATCHED_MINUTES } }))
+        .count,
     enabled: options.enabled ?? true,
     refetchInterval: visible ? RECENT_UNMATCHED_POLL_MS : false,
     refetchIntervalInBackground: false,

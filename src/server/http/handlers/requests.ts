@@ -41,6 +41,16 @@ export const clearRequests = withAuth('requests.clear', async ({ rt, principal }
   return new Response(null, { status: 204 })
 })
 
+/** The sidebar badge shows at most "99+", so counting stops past this. */
+export const UNMATCHED_COUNT_CAP = 100
+
+/** `GET /api/requests/unmatched-count?minutes=15` → `{ count, capped }`: requests that matched no mock lately. */
+export const recentUnmatchedCount = withAuth('requests.read', async ({ rt, request }) => {
+  const raw = new URL(request.url).searchParams.get('minutes') ?? '15'
+  const minutes = int(raw, 'minutes', 1, 1440)
+  return json(await rt.requests.countUnmatchedSince(Date.now() - minutes * 60_000, UNMATCHED_COUNT_CAP))
+})
+
 const countBody = z.object(
   {
     pattern: z.record(z.string(), z.unknown(), { error: 'pattern must be an object' }).refine((v) => !Array.isArray(v), {

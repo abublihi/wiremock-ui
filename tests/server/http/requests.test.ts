@@ -60,3 +60,19 @@ test('clear: an ordinary user clears the log', async () => {
   expect(await rt.requests.list({})).toEqual([])
   expect((await listRequests(rt, req('/api/requests', 'GET', undefined, {}))).status).toBe(401)
 })
+
+test('recent unmatched count: only unmatched requests in the window, counted over the whole journal and capped', async () => {
+  const { recentUnmatchedCount } = await import('../../../src/server/http/handlers/requests')
+  await rt.requests.clear('ui-admin')
+  // Many matched requests after the unmatched ones: a list with a small limit would never reach these.
+  await rt.wiremock.importStubs([{ id: '7d1d5a0e-1b8a-4a52-9a37-5d3c3c1f0a01', request: { method: 'GET', urlPath: '/um/ok' }, response: { status: 200 } }], { deleteAllNotInImport: false })
+  for (let i = 0; i < 3; i++) await hit(`/um/miss/${i}`)
+  for (let i = 0; i < 30; i++) await hit('/um/ok')
+  const res = await recentUnmatchedCount(rt, req('/api/requests/unmatched-count?minutes=15'))
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual({ count: 3, capped: false })
+
+  for (let i = 0; i < 100; i++) await hit(`/um/more/${i}`)
+  expect(await (await recentUnmatchedCount(rt, req('/api/requests/unmatched-count?minutes=15'))).json()).toEqual({ count: 100, capped: true })
+  expect(await (await recentUnmatchedCount(rt, req('/api/requests/unmatched-count?minutes=0'))).status).toBe(400)
+})

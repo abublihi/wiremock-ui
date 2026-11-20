@@ -70,11 +70,11 @@ describe('endpoint picker', () => {
 
   it('an integration with no endpoints shows "No endpoints yet — Add one" instead of an empty heading', async () => {
     mockCatalog({ alpha: 2, empty: 0 })
-    await renderApp(<EndpointPicker onPick={() => {}} addReturnsHere />)
+    await renderApp(<EndpointPicker onPick={() => {}} addReturnsHere={{}} />)
     await waitFor(() => expect(options()).toHaveLength(2))
     const group = await screen.findByRole('group', { name: 'EMPTY' })
     expect(within(group).getByText('No endpoints yet')).toBeTruthy()
-    const add = within(group).getByRole('link', { name: 'Add an endpoint to EMPTY' })
+    const add = within(group).getByRole('link', { name: 'Add one endpoint to EMPTY' })
     expect(add.getAttribute('href')).toBe('/integrations/empty/endpoints/new?next=mock')
     expect(add.textContent).toBe('Add one')
 
@@ -87,7 +87,7 @@ describe('endpoint picker', () => {
     mockCatalog({ empty: 0, bare: 0 })
     await renderApp(<EndpointPicker onPick={() => {}} />)
     await screen.findByRole('group', { name: 'BARE' })
-    expect(screen.getAllByRole('link', { name: /^Add an endpoint to / }).map((a) => a.getAttribute('href'))).toEqual([
+    expect(screen.getAllByRole('link', { name: /^Add one endpoint to / }).map((a) => a.getAttribute('href'))).toEqual([
       '/integrations/empty/endpoints/new',
       '/integrations/bare/endpoints/new',
     ])

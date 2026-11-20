@@ -49,6 +49,7 @@ import { Route as ApiRecordingsStatusRouteImport } from './routes/api/recordings
 import { Route as ApiRecordingsStopRouteImport } from './routes/api/recordings.stop'
 import { Route as ApiRequestsIdRouteImport } from './routes/api/requests.$id'
 import { Route as ApiRequestsCountRouteImport } from './routes/api/requests.count'
+import { Route as ApiRequestsUnmatchedCountRouteImport } from './routes/api/requests.unmatched-count'
 import { Route as ApiScenariosResetRouteImport } from './routes/api/scenarios.reset'
 import { Route as ApiSessionPasswordRouteImport } from './routes/api/session.password'
 import { Route as ApiUsersIdRouteImport } from './routes/api/users.$id'
@@ -267,6 +268,12 @@ const ApiRequestsCountRoute = ApiRequestsCountRouteImport.update({
   path: '/count',
   getParentRoute: () => ApiRequestsRoute,
 } as any)
+const ApiRequestsUnmatchedCountRoute =
+  ApiRequestsUnmatchedCountRouteImport.update({
+    id: '/unmatched-count',
+    path: '/unmatched-count',
+    getParentRoute: () => ApiRequestsRoute,
+  } as any)
 const ApiScenariosResetRoute = ApiScenariosResetRouteImport.update({
   id: '/reset',
   path: '/reset',
@@ -401,6 +408,7 @@ export interface FileRoutesByFullPath {
   '/api/recordings/stop': typeof ApiRecordingsStopRoute
   '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
+  '/api/requests/unmatched-count': typeof ApiRequestsUnmatchedCountRoute
   '/api/scenarios/reset': typeof ApiScenariosResetRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
@@ -460,6 +468,7 @@ export interface FileRoutesByTo {
   '/api/recordings/stop': typeof ApiRecordingsStopRoute
   '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
+  '/api/requests/unmatched-count': typeof ApiRequestsUnmatchedCountRoute
   '/api/scenarios/reset': typeof ApiScenariosResetRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
@@ -521,6 +530,7 @@ export interface FileRoutesById {
   '/api/recordings/stop': typeof ApiRecordingsStopRoute
   '/api/requests/$id': typeof ApiRequestsIdRouteWithChildren
   '/api/requests/count': typeof ApiRequestsCountRoute
+  '/api/requests/unmatched-count': typeof ApiRequestsUnmatchedCountRoute
   '/api/scenarios/reset': typeof ApiScenariosResetRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
@@ -582,6 +592,7 @@ export interface FileRouteTypes {
     | '/api/recordings/stop'
     | '/api/requests/$id'
     | '/api/requests/count'
+    | '/api/requests/unmatched-count'
     | '/api/scenarios/reset'
     | '/api/session/password'
     | '/api/users/$id'
@@ -641,6 +652,7 @@ export interface FileRouteTypes {
     | '/api/recordings/stop'
     | '/api/requests/$id'
     | '/api/requests/count'
+    | '/api/requests/unmatched-count'
     | '/api/scenarios/reset'
     | '/api/session/password'
     | '/api/users/$id'
@@ -701,6 +713,7 @@ export interface FileRouteTypes {
     | '/api/recordings/stop'
     | '/api/requests/$id'
     | '/api/requests/count'
+    | '/api/requests/unmatched-count'
     | '/api/scenarios/reset'
     | '/api/session/password'
     | '/api/users/$id'
@@ -1026,6 +1039,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRequestsCountRouteImport
       parentRoute: typeof ApiRequestsRoute
     }
+    '/api/requests/unmatched-count': {
+      id: '/api/requests/unmatched-count'
+      path: '/unmatched-count'
+      fullPath: '/api/requests/unmatched-count'
+      preLoaderRoute: typeof ApiRequestsUnmatchedCountRouteImport
+      parentRoute: typeof ApiRequestsRoute
+    }
     '/api/scenarios/reset': {
       id: '/api/scenarios/reset'
       path: '/reset'
@@ -1334,11 +1354,13 @@ const ApiRequestsIdRouteWithChildren = ApiRequestsIdRoute._addFileChildren(
 interface ApiRequestsRouteChildren {
   ApiRequestsIdRoute: typeof ApiRequestsIdRouteWithChildren
   ApiRequestsCountRoute: typeof ApiRequestsCountRoute
+  ApiRequestsUnmatchedCountRoute: typeof ApiRequestsUnmatchedCountRoute
 }
 
 const ApiRequestsRouteChildren: ApiRequestsRouteChildren = {
   ApiRequestsIdRoute: ApiRequestsIdRouteWithChildren,
   ApiRequestsCountRoute: ApiRequestsCountRoute,
+  ApiRequestsUnmatchedCountRoute: ApiRequestsUnmatchedCountRoute,
 }
 
 const ApiRequestsRouteWithChildren = ApiRequestsRoute._addFileChildren(

@@ -274,6 +274,16 @@ export const isJsonContentType = (type: string | undefined) => type !== undefine
 /** The name a quick mock gets when none is given. */
 export const quickMockName = (request: Pick<QuickMockInput['request'], 'method' | 'url'>) => `${request.method} ${request.url.trim()}`
 
+/** A JSON object or array (what equalToJson with extra fields allowed makes sense for); scalars are plain text. */
+export function isJsonDocument(text: string): boolean {
+  try {
+    const value: unknown = JSON.parse(text)
+    return typeof value === 'object' && value !== null
+  } catch {
+    return false
+  }
+}
+
 function quickRequest(r: QuickMockInput['request']): Record<string, unknown> {
   const url = r.url.trim()
   if (url === '') throw new ValidationError('request.url is required')
@@ -281,19 +291,21 @@ function quickRequest(r: QuickMockInput['request']): Record<string, unknown> {
   if (r.urlType !== 'regex') {
     if (!url.startsWith('/')) throw new ValidationError('request.url must start with /')
     if (url.includes('?')) throw new ValidationError('request.url must not contain a query string; add the query parameters to match instead')
+  } else {
+    // Same check as the endpoint rules: WireMock's (Java) dialect differs a little, but a pattern JS can't parse
+    // would only fail later with a generic WireMock error.
+    try {
+      new RegExp(url)
+    } catch {
+      throw new ValidationError('request.url must be a valid regular expression')
+    }
   }
   const request: Record<string, unknown> = { method: r.method, [QUICK_URL_FIELD[r.urlType]]: url }
   if (r.query && Object.keys(r.query).length > 0) {
     request.queryParameters = Object.fromEntries(Object.entries(r.query).map(([name, value]) => [name, { equalTo: value }]))
   }
   if (r.body !== undefined && r.body.trim() !== '') {
-    let json = true
-    try {
-      JSON.parse(r.body)
-    } catch {
-      json = false
-    }
-    request.bodyPatterns = [json ? { equalToJson: r.body, ignoreExtraElements: true } : { contains: r.body }]
+    request.bodyPatterns = [isJsonDocument(r.body) ? { equalToJson: r.body, ignoreExtraElements: true } : { contains: r.body }]
   }
   return request
 }

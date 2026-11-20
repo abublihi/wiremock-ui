@@ -74,3 +74,7 @@ test('recording routes are not captured by /api/recordings/$id', () => {
   expect(leaf('/api/recordings/abc/accept')).toBe('/api/recordings/$id/accept')
   expect(leaf('/api/recordings/abc/discard')).toBe('/api/recordings/$id/discard')
 })
+
+test('/api/requests/unmatched-count is not captured by /api/requests/$id', () => {
+  expect(leaf('/api/requests/unmatched-count')).toBe('/api/requests/unmatched-count')
+})

@@ -109,14 +109,30 @@ export function endpointFieldOf(message: string): string | undefined {
 
 const prefixOf = (integration: Pick<Integration, 'prefix'>) => (integration.prefix === '/' ? '' : integration.prefix)
 
-/** `next: 'mock'`: the page was opened from the new-mock page, which saving (or leaving) goes back to. */
-export type EndpointPageSearch = { next?: 'mock' }
+/** The scenario a new mock was being added to (the new-mock page's `scenario`, `state` and `after`). */
+export type ScenarioReturn = { scenario?: string; state?: string; after?: string }
+
+/**
+ * `next: 'mock'`: the page was opened from the new-mock page, which saving (or leaving) goes back to, keeping the
+ * scenario the mock is being added to.
+ */
+export type EndpointPageSearch = { next?: 'mock' } & ScenarioReturn
 
 /**
  * Add (no `endpointKey`) or edit one endpoint of an integration, on its own page:
  * `/integrations/$key/endpoints/new` and `/integrations/$key/endpoints/$endpoint/edit`.
  */
-export function EndpointPage({ integrationKey, endpointKey, next }: { integrationKey: string; endpointKey?: string; next?: 'mock' }) {
+export function EndpointPage({
+  integrationKey,
+  endpointKey,
+  next,
+  scenario = {},
+}: {
+  integrationKey: string
+  endpointKey?: string
+  next?: 'mock'
+  scenario?: ScenarioReturn
+}) {
   const t = useT()
   const integrations = useIntegrations()
   const endpoints = useEndpoints(integrationKey)
@@ -125,7 +141,7 @@ export function EndpointPage({ integrationKey, endpointKey, next }: { integratio
   const title = t(endpointKey ? 'catalog.endpoint.editTitle' : 'catalog.endpoint.addTitle')
   const back =
     next === 'mock' ? (
-      <Link to="/mocks/new" className={backLinkClass}>
+      <Link to="/mocks/new" search={scenario} className={backLinkClass}>
         <ArrowLeftIcon aria-hidden className="size-3.5 rtl:rotate-180" />
         {t('catalog.endpoint.backToNewMock')}
       </Link>
@@ -162,7 +178,7 @@ export function EndpointPage({ integrationKey, endpointKey, next }: { integratio
       </EditorShell>
     )
   }
-  return <EndpointEditor key={endpoint?.key ?? '+new'} integration={integration} endpoint={endpoint} title={title} back={back} next={next} />
+  return <EndpointEditor key={endpoint?.key ?? '+new'} integration={integration} endpoint={endpoint} title={title} back={back} next={next} scenario={scenario} />
 }
 
 function EndpointEditor({
@@ -171,12 +187,14 @@ function EndpointEditor({
   title,
   back,
   next,
+  scenario,
 }: {
   integration: Integration
   endpoint?: Endpoint
   title: string
   back: ReactNode
   next?: 'mock'
+  scenario: ScenarioReturn
 }) {
   const t = useT()
   const navigate = useNavigate()
@@ -260,7 +278,7 @@ function EndpointEditor({
       if (next === 'mock') {
         // Back to the new mock, with this endpoint picked.
         toast.success(t('catalog.endpoint.saved', { name }))
-        await navigate({ to: '/mocks/new', search: { integration: integration.key, endpoint: key } })
+        await navigate({ to: '/mocks/new', search: { integration: integration.key, endpoint: key, ...scenario } })
         return
       }
       toast.success(t('catalog.endpoint.saved', { name }), {
@@ -610,7 +628,9 @@ function EndpointEditor({
         <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-2 border-t border-line bg-canvas/85 px-1 py-3 backdrop-blur">
           <Button asChild variant="outline">
             {next === 'mock' ? (
-              <Link to="/mocks/new">{t('common.cancel')}</Link>
+              <Link to="/mocks/new" search={scenario}>
+                {t('common.cancel')}
+              </Link>
             ) : (
               <Link to="/integrations/$key" params={{ key: integration.key }}>
                 {t('common.cancel')}

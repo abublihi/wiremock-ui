@@ -60,10 +60,8 @@ import { WebhookSection } from './WebhookSection'
 
 type FieldName =
   | 'keyValue'
-  | 'method'
   | 'url'
   | 'query'
-  | 'bodyMatch'
   | 'headers'
   | 'status'
   | 'body'
@@ -85,12 +83,9 @@ type Errors = Partial<Record<FieldName, string>>
 
 const SERVER_FIELD = new Map<string, FieldName>([
   ['keyValue', 'keyValue'],
-  ['request', 'url'],
-  ['request.method', 'method'],
   ['request.url', 'url'],
   ['request.urlType', 'url'],
   ['request.query', 'query'],
-  ['request.body', 'bodyMatch'],
   ['headers', 'headers'],
   ['isDefault', 'keyValue'],
   ['status', 'status'],
@@ -386,7 +381,7 @@ export function SimpleEditor({
         {quick ? (
           <QuickRequestFields
             quick={quick}
-            errors={{ method: errors.method, url: errors.url, query: errors.query, body: errors.bodyMatch }}
+            errors={{ url: errors.url, query: errors.query }}
             onChange={updateQuick}
           />
         ) : (
