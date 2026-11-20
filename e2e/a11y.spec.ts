@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
-import { USER_A, wiremockUrl } from './env'
+import { E2E_UI_URL, USER_A, wiremockUrl } from './env'
 import { signIn } from './helpers'
 
 /** Fails on serious or critical axe violations (WCAG 2.x A/AA rules), listing each offending node. */
@@ -17,10 +17,15 @@ test.use({ reducedMotion: 'reduce' })
 for (const theme of ['dark', 'light'] as const) {
   test.describe(`${theme} theme`, () => {
     test.use({ colorScheme: theme })
+    // The app defaults to dark without a cookie, so colorScheme alone would test dark twice.
+    test.beforeEach(async ({ context }) => {
+      await context.addCookies([{ name: 'wmui_theme', value: theme, url: E2E_UI_URL }])
+    })
 
     test('login page', async ({ page }) => {
       await page.goto('/login')
       await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+      await expect(page.locator('html')).toHaveClass(new RegExp(`\\b${theme}\\b`))
       await expectNoSeriousViolations(page)
     })
 
