@@ -43,4 +43,4 @@ A file can be a bundle (`{ "integrations", "catalog", "mocks" }`), a WireMock ex
 - A mock without an integration is assigned to the integration with the longest prefix its URL starts with.
 - Mocks without an `id` get one from their content, so importing the same file twice changes nothing.
 - One import is at most 10 MB; a zip at most 2,000 entries.
-- `SEED_PATH` imports a bundle file or folder as baseline mocks on every start (see `docs/INSTALL.md`).
+- `SEED_PATH` imports a bundle file or folder as baseline mocks on every start (see `docs/INSTALL.md`; `examples/seed.json` in the repository is a ready-made one).

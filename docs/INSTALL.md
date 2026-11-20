@@ -17,8 +17,8 @@ wiremock-ui runs next to a WireMock 3 server. The UI keeps every mock in its own
 UI + WireMock; the UI keeps its data in a SQLite file on the `ui-data` volume.
 
 ```sh
-git clone <this repository> wiremock-ui && cd wiremock-ui
-cp .env.example .env     # set the passwords and SESSION_SECRET (see the table below)
+git clone https://github.com/abublihi/wiremock-ui.git && cd wiremock-ui
+cp .env.example .env     # set the passwords and SESSION_SECRET (see the Configuration reference)
 docker compose -f compose.sqlite.yaml up -d --build
 ```
 
@@ -30,6 +30,8 @@ Check that everything is up:
 curl http://localhost:3000/healthz
 # {"ui":"ok","store":"ok","wiremock":"ok","lastSyncAt":"…","lastSyncError":null}
 ```
+
+**Try it with example data.** Add `SEED_PATH=/app/examples/seed.json` to `.env` and run the `up` command again: the UI loads the Blog API and Orders API from [`examples/seed.json`](../examples/seed.json), with a few mocks and an order scenario (`curl http://localhost:8080/blog/posts/42`). From source, use `SEED_PATH=examples/seed.json`. Seeded mocks are baseline mocks: anyone can edit them, and every start puts them back as the seed has them.
 
 Stop it with `docker compose -f compose.sqlite.yaml down` (add `-v` to also delete the data volume).
 
@@ -96,36 +98,7 @@ To move to a stored setup later, start the UI with `sqlite` or `redis` against t
 
 ## Configuration
 
-Everything is set through environment variables. Empty values count as unset.
-
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `ADMIN_USER` | required | Username of the first account, created on the first start when there are no accounts yet. Changing it later does nothing. |
-| `ADMIN_PASSWORD` | required | Password of that first account (8–72 characters). Changing it later does nothing; see [Resetting a password](#resetting-a-password). |
-| `SESSION_SECRET` | required | Secret for browser sessions. Use a long random string, for example `openssl rand -hex 32`. |
-| `WIREMOCK_URL` | `http://localhost:8080` | Where the UI reaches WireMock. Compose sets it to `http://wiremock:8080`. |
-| `WIREMOCK_PUBLIC_URL` | `WIREMOCK_URL` | Where your applications and testers reach WireMock's stub port, for example `http://localhost:8080` when `WIREMOCK_URL` is a Compose-internal name. Only used to show curl commands; the UI never calls it. |
-| `WIREMOCK_ADMIN_USER` | (none) | WireMock admin API username. Set it together with the password. |
-| `WIREMOCK_ADMIN_PASSWORD` | (none) | WireMock admin API password. Compose passes both to WireMock's `--admin-api-basic-auth`, so they are required there. |
-| `STORE_DRIVER` | `redis` when `REDIS_URL` is set, otherwise `sqlite` | `sqlite`, `redis`, or `none` to work on WireMock's own stubs without storing anything (see [Run against an existing WireMock (no storage)](#run-against-an-existing-wiremock-no-storage)). `none` is never picked for you. |
-| `REDIS_URL` | (none) | Redis connection URL, for example `redis://redis:6379`. Only needed for `redis`. |
-| `SQLITE_PATH` | `./data/wiremock-ui.db` (`/data/wiremock-ui.db` in the image) | The SQLite file. Its folder is created on start. |
-| `SYNC_INTERVAL_SECONDS` | `5` | How often the UI checks that WireMock still has every mock (for example after a WireMock restart) and puts back what is missing. |
-| `BOOT_TIMEOUT_SECONDS` | `60` | How long the UI waits for WireMock and the store on start before giving up. |
-| `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy, so the client IP for the sign-in rate limit comes from `X-Forwarded-For` (the rightmost hop). Leave it off without a proxy. |
-| `PUBLIC_UI_URL` | (none) | The address people use to reach the UI, for example `https://mocks.example.com`. An `https` URL makes session cookies `Secure`. |
-| `SEED_PATH` | (none) | A bundle file or a folder of `*.json` files to import as baseline mocks on every start. See [Import and export](guide/import-export.md). |
-| `SEED_PRUNE` | `false` | With `SEED_PATH`: also delete baseline mocks that are no longer in the seed. People's own mocks are never touched. Ignored with `STORE_DRIVER=none`. |
-| `RECORDING_ALLOWED` | `true` | `false` turns recording and "create mocks from the request log" off on this environment: the Recording page is hidden and the API answers 403. See [Recording and snapshots](guide/recording.md). Recording (like proxy mocks) lets any signed-in user make WireMock connect to any address its network can reach; set `false` where that is not acceptable. |
-| `PORT` | `3000` | Port the UI listens on. |
-| `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. Logs are JSON lines on stdout. |
-
-Compose-only variables (read from `.env` by the compose files):
-
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `UI_PORT` | `3000` | Host port for the UI. |
-| `WIREMOCK_PORT` | `8080` | Host port for WireMock. |
+Everything is set through environment variables (empty values count as unset). The full list, with defaults, allowed values, which store mode each one applies to and an example, is the **[Configuration reference](../README.md#configuration-reference)** in the README, together with the Docker image, the Compose files and their host ports (`UI_PORT`, `WIREMOCK_PORT`), `/healthz` and the settings each browser remembers. How the pieces fit together is in [Architecture](../README.md#architecture).
 
 ### How the stores compare
 

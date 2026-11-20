@@ -63,6 +63,9 @@ const schema = z.object({
   RECORDING_ALLOWED: boolean('RECORDING_ALLOWED', true),
 })
 
+/** Every environment variable loadConfig reads (the README's configuration table is checked against it). */
+export const CONFIG_ENV_VARS: readonly string[] = Object.keys(schema.shape)
+
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value)

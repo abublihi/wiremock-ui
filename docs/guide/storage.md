@@ -36,4 +36,4 @@ In WireMock-only mode:
 
 - To move from WireMock-only mode to a stored setup, start the UI with SQLite or Redis against the same WireMock: on that first start it adopts every stub WireMock has.
 - SQLite: keep the file on a volume and run **one** UI instance per file. Redis: run it with persistence.
-- Installation and every setting: `docs/INSTALL.md` in the repository.
+- Installation: `docs/INSTALL.md` in the repository; every setting: the Configuration reference in the repository's `README.md`.

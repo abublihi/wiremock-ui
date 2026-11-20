@@ -1,6 +1,6 @@
 # Using wiremock-ui
 
-The user guide lives in [`docs/guide/`](guide/), one file per feature. The same files are the in-app **Guide** (Help → Guide in the sidebar, or press `?`), and each page's **How this works** button opens its part of it, so the docs and the app never drift. Installation and configuration are in [INSTALL.md](INSTALL.md).
+The user guide lives in [`docs/guide/`](guide/), one file per feature. The same files are the in-app **Guide** (Help → Guide in the sidebar, or press `?`), and each page's **How this works** button opens its part of it, so the docs and the app never drift. Installation is in [INSTALL.md](INSTALL.md); every setting is in the README's [Configuration reference](../README.md#configuration-reference) and how it works inside in [Architecture](../README.md#architecture). To try the app with these examples already loaded, start it with `SEED_PATH=examples/seed.json` (see [INSTALL](INSTALL.md)).
 
 > **Test environments only.** Never put real personal data in a mock.
 
