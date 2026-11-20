@@ -5,8 +5,9 @@ import type { WireMockClient } from '../wiremock/client'
 import type { StubMapping } from '../wiremock/types'
 import { MARKER_ID, markerStub } from './marker'
 
-const LOCK = 'sync:lock'
-const LOCK_TTL_MS = 60_000
+/** Held by a full sync and by adoption, so the two never run at once (on any instance). */
+export const SYNC_LOCK = 'sync:lock'
+export const SYNC_LOCK_TTL_MS = 60_000
 
 type Deps = {
   wiremock: WireMockClient
@@ -69,7 +70,7 @@ export class Reconciler {
 
   /** `audit` records a `sync` entry on success; only startup and marker-triggered syncs ask for it. */
   async fullSync(opts: { audit?: boolean } = {}): Promise<'synced' | 'skipped'> {
-    const token = await this.store.acquireLock(LOCK, LOCK_TTL_MS)
+    const token = await this.store.acquireLock(SYNC_LOCK, SYNC_LOCK_TTL_MS)
     if (token === null) return 'skipped'
     try {
       const snapshot = precedenceOrder(await this.store.listAll())
@@ -121,7 +122,7 @@ export class Reconciler {
       logger.error({ err }, 'full sync failed')
       throw err
     } finally {
-      await this.store.releaseLock(LOCK, token).catch((err) => logger.warn({ err }, 'sync lock release failed'))
+      await this.store.releaseLock(SYNC_LOCK, token).catch((err) => logger.warn({ err }, 'sync lock release failed'))
     }
   }
 

@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
-import { afterAll, beforeAll, expect, test } from 'vitest'
+import { afterAll, beforeAll, expect, test, vi } from 'vitest'
+import { logger } from '../../src/server/logger'
 import { healthz } from '../../src/server/http/handlers/health'
 import { runImport } from '../../src/server/http/handlers/imports'
 import { deleteMock, getMock, listMocks, mockHistory, restoreMock, updateMock, createMock } from '../../src/server/http/handlers/mocks'
@@ -27,6 +28,7 @@ let wm: WireMockHandle
 let client: WireMockClient
 let rt: Runtime
 let env: Record<string, string>
+let seedPruneWarned = false
 const auth = { Authorization: basic('ui-admin', 'ui-admin-pass') }
 const ids = (list: StubMapping[]) => list.map((s) => s.id).sort()
 
@@ -34,7 +36,7 @@ beforeAll(async () => {
   wm = await startWireMock()
   client = new WireMockClient({ baseUrl: wm.url, user: wm.user, password: wm.password })
   // A marker left behind by an earlier, store-backed UI must not show up as a mock.
-  await client.importStubs([own(1, '/one'), own(2, '/two', { persistent: true }), own(3, '/three'), markerStub()], { deleteAllNotInImport: false })
+  await client.importStubs([own(1, '/one'), own(2, '/two', { persistent: true }), own(3, '/three'), markerStub(), own(4, '/old-baseline', { metadata: { wiremockUi: { owner: 'baseline', version: 1, updatedAt: '', updatedBy: 'x', source: 'seed' } } })], { deleteAllNotInImport: false })
   env = {
     WIREMOCK_URL: wm.url,
     WIREMOCK_ADMIN_USER: wm.user,
@@ -44,9 +46,14 @@ beforeAll(async () => {
     ADMIN_PASSWORD: 'ui-admin-pass',
     SESSION_SECRET: 'x',
     SEED_PATH: resolve('tests/fixtures/bundle'),
+    // Would delete the baseline stub above (not in the seed) from the user's WireMock: ignored in this mode.
+    SEED_PRUNE: 'true',
     TRUST_PROXY: 'true',
   }
+  const warn = vi.spyOn(logger, 'warn')
   rt = await bootRuntime(env)
+  seedPruneWarned = warn.mock.calls.some(([, msg]) => msg === 'SEED_PRUNE is ignored in WireMock-only mode')
+  warn.mockRestore()
 }, 120_000)
 
 afterAll(async () => {
@@ -135,4 +142,10 @@ test('a restarted UI finds the same mocks in WireMock (and nothing deleted)', as
   expect(ids(await client.listStubs())).toEqual(before)
   expect(ids(await again.store.listAll())).toEqual(before.filter((id) => id !== MARKER_ID))
   await again.stores.close()
+})
+
+test("SEED_PRUNE is ignored with a warning: nothing is deleted from the user's WireMock", async () => {
+  expect(seedPruneWarned).toBe(true)
+  expect(await client.getStub(uid(4))).not.toBeNull()
+  expect(await (await fetch(`${wm.url}/old-baseline`)).text()).toBe('own-4')
 })

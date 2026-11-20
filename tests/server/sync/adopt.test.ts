@@ -7,6 +7,10 @@ import { logger } from '../../../src/server/logger'
 import { bootRuntime, type Runtime } from '../../../src/server/runtime'
 import { createStores } from '../../../src/server/store'
 import { MARKER_ID } from '../../../src/server/sync/marker'
+import { CatalogService } from '../../../src/server/catalog/service'
+import { MockService } from '../../../src/server/mocks/service'
+import { adoptStubs, stubsToAdopt } from '../../../src/server/sync/adopt'
+import { SYNC_LOCK } from '../../../src/server/sync/reconciler'
 import { WireMockClient } from '../../../src/server/wiremock/client'
 import type { StubMapping } from '../../../src/server/wiremock/types'
 import { startRedis, startWireMock, type WireMockHandle } from '../../helpers/containers'
@@ -92,7 +96,8 @@ describe.each(drivers)('adopting existing WireMock stubs (%s)', (_name, setup) =
     await client.importStubs(
       [
         existing(1, '/pay/charges'),
-        existing(2, '/orders/1', { persistent: true }),
+        // A stub a store-backed UI made earlier keeps the owner it names.
+        existing(2, '/orders/1', { persistent: true, metadata: { wiremockUi: { owner: 'sara' } as never } }),
         existing(3, '/hello', { metadata: { team: 'qa' } }),
       ],
       { deleteAllNotInImport: false },
@@ -103,7 +108,7 @@ describe.each(drivers)('adopting existing WireMock stubs (%s)', (_name, setup) =
     const adopted = await rt.store.listAll()
     expect(adopted.map((s) => s.id).sort()).toEqual([uid(1), uid(2), uid(3)])
     for (const stub of adopted) {
-      expect(stub.metadata?.wiremockUi).toMatchObject({ owner: 'wiremock', source: 'adopt', version: 1, updatedBy: 'system' })
+      expect(stub.metadata?.wiremockUi).toMatchObject({ owner: stub.id === uid(2) ? 'sara' : 'wiremock', source: 'adopt', version: 1, updatedBy: 'system' })
     }
     expect((await rt.store.get(uid(1)))?.metadata?.wiremockUi?.integration).toBe('pay')
     expect((await rt.store.get(uid(2)))?.metadata?.wiremockUi?.integration).toBeUndefined()
@@ -168,6 +173,41 @@ test('the marker alone is nothing to adopt, and a bodyFileName stub is adopted r
     third.reconciler?.stop()
     await third.stores.close()
   } finally {
+    rmSync(dir, { recursive: true, force: true })
+    await wm.stop().catch(() => {})
+  }
+})
+
+test('adoption takes the sync lock: of two concurrent adoptions one adopts, the other skips; a held lock skips it', async () => {
+  const wm = await startWireMock()
+  const dir = mkdtempSync(join(tmpdir(), 'wmui-adopt-'))
+  const client = new WireMockClient({ baseUrl: wm.url, user: wm.user, password: wm.password })
+  const stores = createStores(loadConfig({ ADMIN_USER: 'a', ADMIN_PASSWORD: 'b', SESSION_SECRET: 'c', STORE_DRIVER: 'sqlite', SQLITE_PATH: join(dir, 'ui.db') }))
+  try {
+    await client.importStubs([existing(21, '/a'), existing(22, '/b')], { deleteAllNotInImport: false })
+    const store = stores.mocks
+    const mocks = new MockService({ wiremock: client, store, audit: stores.audit })
+    const catalog = new CatalogService({ catalog: stores.catalog, audit: stores.audit, mocks: store })
+    const deps = { mocks, store, catalog, audit: stores.audit }
+    const info = vi.spyOn(logger, 'info')
+
+    // Held by someone else (another instance adopting or syncing): skip, and say so.
+    const token = await store.acquireLock(SYNC_LOCK, 60_000)
+    expect(await adoptStubs(await stubsToAdopt(client, store), deps)).toBe(0)
+    expect(info.mock.calls.some(([, msg]) => String(msg).includes('another instance holds the sync lock'))).toBe(true)
+    await store.releaseLock(SYNC_LOCK, token!)
+
+    const list = await stubsToAdopt(client, store)
+    const counts = await Promise.all([adoptStubs(list, deps), adoptStubs(list, deps)])
+    expect(counts.sort()).toEqual([0, 2])
+    expect((await store.listAll()).map((s) => s.id).sort()).toEqual([uid(21), uid(22)])
+    expect((await stores.audit.list()).entries.filter((e) => e.action === 'adopt')).toHaveLength(1)
+    // Released afterwards.
+    const again = await store.acquireLock(SYNC_LOCK, 1000)
+    expect(again).not.toBeNull()
+    info.mockRestore()
+  } finally {
+    await stores.close()
     rmSync(dir, { recursive: true, force: true })
     await wm.stop().catch(() => {})
   }

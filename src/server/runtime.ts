@@ -121,10 +121,12 @@ export async function bootRuntime(
             'seed mocks without an id get a content-derived id, so an edited one is added next to its old version; give seed mocks fixed ids or set SEED_PRUNE=true',
           )
         }
+        // Never delete stubs from the user's own WireMock.
+        if (wiremockOnly && config.seedPrune) logger.warn({ seedPath: config.seedPath }, 'SEED_PRUNE is ignored in WireMock-only mode')
         const report = await importBundle(
           bundle,
           { catalog, mocks, store, audit, reposition: reconciler ? () => reconciler.repositionPersonMocks() : undefined },
-          { actor: 'system', prune: config.seedPrune, source: 'seed', unreadable: skipped.length },
+          { actor: 'system', prune: config.seedPrune && !wiremockOnly, source: 'seed', unreadable: skipped.length },
         )
         logger.info({ report, seedPath: config.seedPath }, 'seed imported')
       } catch (err) {

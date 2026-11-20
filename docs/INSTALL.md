@@ -68,7 +68,7 @@ npm start                     # http://localhost:3000 (PORT changes it)
 
 For development (`npm run dev`, hot reload on port 3000) on Node 22.12, set `NODE_OPTIONS=--experimental-sqlite` first.
 
-**Pointing it at a WireMock that already has stubs.** On a first start (a store with no mocks yet) the UI adopts every stub WireMock already serves: they keep their ids, show up in the mocks list owned by `wiremock`, and stay in WireMock. From then on the UI's store is the source of truth, so stubs added to WireMock behind the UI's back are removed by the next full sync. To only view and edit WireMock's own stubs without a store, see [Run against an existing WireMock (no storage)](#run-against-an-existing-wiremock-no-storage).
+**Pointing it at a WireMock that already has stubs.** On a first start (a store with no mocks yet) the UI adopts every stub WireMock already serves: they keep their ids, show up in the mocks list owned by `wiremock` (or by the owner a stub's wiremock-ui metadata already names), and stay in WireMock. From then on the UI's store is the source of truth, so stubs added to WireMock behind the UI's back are removed by the next full sync. To only view and edit WireMock's own stubs without a store, see [Run against an existing WireMock (no storage)](#run-against-an-existing-wiremock-no-storage).
 
 ### Run against an existing WireMock (no storage)
 
@@ -88,7 +88,7 @@ What you give up, because nothing is stored:
 
 - **One account only**, the `ADMIN_USER` one: no Users page, and its password is changed by changing `ADMIN_PASSWORD` and restarting.
 - **No history**, so no restore and no Undo after a delete.
-- **The catalog, the audit log (last 500 entries) and sign-in sessions live in memory** and are gone after a restart (everyone signs in again). `SEED_PATH` still loads a catalog on every start; its mocks are written into WireMock.
+- **The catalog, the audit log (last 500 entries) and sign-in sessions live in memory** and are gone after a restart (everyone signs in again). `SEED_PATH` still loads a catalog on every start; its mocks are written into WireMock. `SEED_PRUNE` is ignored (with a warning in the log): the UI never deletes stubs from your WireMock on its own.
 - **Edits made while WireMock is down fail** (there is no copy to fall back to), and a WireMock restart keeps only what WireMock itself persists: a stub that came from WireMock's `mappings` folder stays persistent when you edit it; mocks you create in the UI are not written to WireMock's files.
 - **Two people saving the same mock at the same moment**: the version check catches most conflicts, but two saves within the same instant can both land (the later one wins).
 
@@ -114,7 +114,7 @@ Everything is set through environment variables. Empty values count as unset.
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy, so the client IP for the sign-in rate limit comes from `X-Forwarded-For` (the rightmost hop). Leave it off without a proxy. |
 | `PUBLIC_UI_URL` | (none) | The address people use to reach the UI, for example `https://mocks.example.com`. An `https` URL makes session cookies `Secure`. |
 | `SEED_PATH` | (none) | A bundle file or a folder of `*.json` files to import as baseline mocks on every start. See [USAGE.md](USAGE.md#importing-a-bundle-and-seeding-baseline-mocks). |
-| `SEED_PRUNE` | `false` | With `SEED_PATH`: also delete baseline mocks that are no longer in the seed. People's own mocks are never touched. |
+| `SEED_PRUNE` | `false` | With `SEED_PATH`: also delete baseline mocks that are no longer in the seed. People's own mocks are never touched. Ignored with `STORE_DRIVER=none`. |
 | `PORT` | `3000` | Port the UI listens on. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. Logs are JSON lines on stdout. |
 
