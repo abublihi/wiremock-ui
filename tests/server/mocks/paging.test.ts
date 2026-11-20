@@ -18,6 +18,12 @@ test('newestFirst sorts by updatedAt, newest first, ties by id so every driver p
   expect(list.sort(newestFirst).map((s) => s.id)).toEqual(['c', 'a', 'b'])
 })
 
+test('stubs with no update time (made in WireMock) keep the store order, after timed ones', () => {
+  const bare = (id: string) => ({ id, request: {}, response: { status: 200 } }) as StubMapping
+  const list = [bare('z'), bare('a'), stub('t', at(1)), bare('m')]
+  expect(list.sort(newestFirst).map((s) => s.id)).toEqual(['t', 'z', 'a', 'm'])
+})
+
 test('a scenario is one row placed where its newest mock is, with all its mocks on that page', () => {
   // Newest first: m5, s-flow(step 3), m4, m3, s-flow(step 2), m2, s-flow(step 1), m1
   const list = [

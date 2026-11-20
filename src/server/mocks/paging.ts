@@ -22,9 +22,16 @@ const updatedAt = (s: StubMapping) => {
   return typeof v === 'string' ? v : ''
 }
 
-/** Newest change first; equal times by id, so every store driver returns the same order and pages never overlap. */
+/**
+ * Newest change first; equal times by id, so every store driver returns the same order and pages never overlap.
+ * Stubs with no time at all (made in WireMock, listed in WireMock-only mode) keep the store's order (WireMock's
+ * own, newest first) instead of a random-looking id order; the sort is stable.
+ */
 export function newestFirst(a: StubMapping, b: StubMapping): number {
-  return updatedAt(b).localeCompare(updatedAt(a)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  const ta = updatedAt(a)
+  const tb = updatedAt(b)
+  if (ta === '' && tb === '') return 0
+  return tb.localeCompare(ta) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 }
 
 const scenarioOf = (s: StubMapping) => (typeof s.scenarioName === 'string' && s.scenarioName !== '' ? s.scenarioName : undefined)

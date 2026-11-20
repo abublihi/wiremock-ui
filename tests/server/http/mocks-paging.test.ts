@@ -23,7 +23,8 @@ beforeAll(async () => {
   rt = env.rt
   const actor = { id: 'ui-admin', username: 'ui-admin', displayName: 'ui-admin', disabled: false, createdAt: '', updatedAt: '' }
   // Scenario steps are spread out in time so that, sorted newest first, other mocks sit between them.
-  for (let i = 0; i < TOTAL; i++) {
+  // Created 25 at a time (nothing here depends on creation order): one at a time took most of a minute per driver.
+  const create = async (i: number) => {
     const scenario = i % 200 < STEPS * 20 && i % 20 === 0 ? Math.floor(i / 200) : undefined
     await rt.mocks.create(
       {
@@ -36,6 +37,7 @@ beforeAll(async () => {
       actor,
     )
   }
+  for (let i = 0; i < TOTAL; i += 25) await Promise.all(Array.from({ length: 25 }, (_, n) => create(i + n)))
 }, 600_000)
 
 afterAll(async () => {
