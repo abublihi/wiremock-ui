@@ -336,7 +336,21 @@ describe('endpoint page', () => {
     await ue.click(screen.getByRole('radio', { name: 'Template' }))
     await ue.click(screen.getByRole('combobox', { name: 'Where the key is' }))
     await ue.click(await screen.findByRole('option', { name: 'Path variable' }))
-    await ue.type(screen.getByLabelText('Key expression'), 'id')
+    // The variables of the path, to pick from; the first is picked already.
+    const variable = screen.getByRole('combobox', { name: 'Variable name' })
+    expect(variable.textContent).toContain('id')
+    await ue.click(variable)
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['id'])
+    await ue.click(screen.getByRole('option', { name: 'id' }))
+    // Renaming the variable in the path leaves the key pointing nowhere: the form says so before sending.
+    await ue.type(screen.getByLabelText('Path'), '/x')
+    await ue.clear(screen.getByLabelText('Path'))
+    await ue.type(screen.getByLabelText('Path'), '/citizens/{{nid}')
+    await ue.click(screen.getByRole('button', { name: 'Save endpoint' }))
+    expect(await screen.findByText('The path no longer has a variable named id. Pick one of its variables.')).toBeTruthy()
+    expect(calls).toHaveLength(0)
+    await ue.clear(screen.getByLabelText('Path'))
+    await ue.type(screen.getByLabelText('Path'), '/citizens/{{id}')
     await ue.type(screen.getByLabelText('Add status'), '200')
     await ue.click(screen.getByRole('button', { name: 'Add status' }))
     await ue.type(screen.getByLabelText('Add status'), '404{Enter}')
@@ -402,7 +416,9 @@ describe('endpoint page', () => {
     for (const [option, placeholder, example] of cases) {
       await ue.click(where)
       await ue.click(await screen.findByRole('option', { name: option }))
-      expect(screen.getByLabelText('Key expression').getAttribute('placeholder')).toBe(placeholder)
+      // A path without {variables} leaves the variable name to type.
+      const label = option === 'Path variable' ? 'Variable name' : 'Key expression'
+      expect(screen.getByLabelText(label).getAttribute('placeholder')).toBe(placeholder)
       expect(screen.getByText(example)).toBeTruthy()
     }
   })
@@ -453,6 +469,8 @@ describe('endpoint page', () => {
     expect((screen.getByLabelText('Endpoint ID') as HTMLInputElement).value).toBe('get-order')
     expect(screen.queryByText('Enter an endpoint ID, for example get-post.')).toBeNull()
     const path = screen.getByLabelText('Path')
+    // The integration prefix is fixed in front of the field: the user types only the rest.
+    expect(screen.getByTestId('path-prefix').textContent).toContain('/nic')
     await ue.clear(path)
     await ue.type(path, '/orders/{{id}')
     expect(screen.getByRole('radio', { name: 'Template' }).getAttribute('data-state')).toBe('on')

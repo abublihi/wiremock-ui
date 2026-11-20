@@ -23,6 +23,7 @@ import {
 import { Button } from '@/ui/components/ui/button'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/ui/components/ui/field'
 import { Input } from '@/ui/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@/ui/components/ui/input-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { Spinner } from '@/ui/components/ui/spinner'
@@ -137,7 +138,17 @@ export function endpointProblems(form: Form, adding: boolean, prefix: string, t:
   if (form.name.trim() === '') out.name = t('catalog.endpoint.nameRequired')
   if (!form.path.trim().startsWith('/')) out.path = t('catalog.endpoint.pathFix', { prefix: prefix || '/' })
   if (form.location !== NO_LOOKUP && form.expression.trim() === '') out.expression = endpointMessage('expression', form, prefix, t)
+  else if (form.location === 'path' && form.pathType === 'template') {
+    // The path was edited after the variable was picked: the key must still name one of its {variables}.
+    const variables = pathVariables(form.path)
+    if (variables.length > 0 && !variables.includes(form.expression.trim())) out.expression = t('catalog.endpoint.variableGone', { name: form.expression.trim() })
+  }
   return out
+}
+
+/** The {variable} names of a template path, in order, each once. */
+export function pathVariables(path: string): string[] {
+  return [...new Set([...path.matchAll(/\{([^{}/]+)\}/g)].map((m) => m[1].trim()).filter(Boolean))]
 }
 
 const prefixOf = (integration: Pick<Integration, 'prefix'>) => (integration.prefix === '/' ? '' : integration.prefix)
@@ -265,7 +276,8 @@ function EndpointEditor({
     if (field === 'name' && !keyTyped) return update({ name: value, key: slugify(value) }, ['name', 'key'])
     // A {variable} in an exact path means a template.
     if (field === 'path' && form.pathType === 'exact' && /\{/.test(value)) return update({ path: value, pathType: 'template' }, ['path'])
-    update({ [field]: value }, [field])
+    // A path edit can fix (or break) the path variable the key names.
+    update({ [field]: value }, field === 'path' ? ['path', 'expression'] : [field])
   }
   const described = (field: string, hint?: boolean) =>
     [hint && id(`${field}-hint`), errors[field] && id(`${field}-error`)].filter(Boolean).join(' ') || undefined
@@ -351,31 +363,53 @@ function EndpointEditor({
   const text = (
     field: 'key' | 'name' | 'path' | 'expression',
     label: string,
-    extra: { hint?: string; mono?: boolean; disabled?: boolean; placeholder?: string } = {},
-  ) => (
-    <Field data-invalid={Boolean(errors[field])}>
-      <FieldLabel htmlFor={id(field)}>{label}</FieldLabel>
-      <Input
-        id={id(field)}
-        dir={extra.mono ? 'ltr' : undefined}
-        className={extra.mono ? 'font-mono' : undefined}
-        autoComplete="off"
-        spellCheck={false}
-        disabled={extra.disabled}
-        placeholder={extra.placeholder}
-        value={form[field]}
-        aria-invalid={Boolean(errors[field])}
-        aria-describedby={described(field, Boolean(extra.hint))}
-        onChange={(e) => onText(field, e.target.value)}
-      />
-      {extra.hint && (
-        <FieldDescription id={id(`${field}-hint`)} className="text-xs">
-          {extra.hint}
-        </FieldDescription>
-      )}
-      {fieldError(field)}
-    </Field>
-  )
+    extra: { hint?: string; mono?: boolean; disabled?: boolean; placeholder?: string; prefix?: string } = {},
+  ) => {
+    const props = {
+      id: id(field),
+      dir: extra.mono ? ('ltr' as const) : undefined,
+      autoComplete: 'off',
+      spellCheck: false,
+      disabled: extra.disabled,
+      placeholder: extra.placeholder,
+      value: form[field],
+      'aria-invalid': Boolean(errors[field]),
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => onText(field, e.target.value),
+    }
+    return (
+      <Field data-invalid={Boolean(errors[field])}>
+        <FieldLabel htmlFor={id(field)}>{label}</FieldLabel>
+        {extra.prefix ? (
+          // A fixed part in front of the field (the integration prefix): only the rest is typed.
+          <InputGroup data-disabled={extra.disabled}>
+            <InputGroupAddon data-testid={`${field}-prefix`}>
+              <InputGroupText id={id(`${field}-prefix`)} dir="ltr" className="font-mono text-muted-foreground">
+                <span className="sr-only">{t('catalog.endpoint.prefixAdornment')} </span>
+                {extra.prefix}
+              </InputGroupText>
+            </InputGroupAddon>
+            <InputGroupInput
+              {...props}
+              className={extra.mono ? 'ps-0.5 font-mono' : 'ps-0.5'}
+              aria-describedby={[id(`${field}-prefix`), described(field, Boolean(extra.hint))].filter(Boolean).join(' ')}
+            />
+          </InputGroup>
+        ) : (
+          <Input {...props} className={extra.mono ? 'font-mono' : undefined} aria-describedby={described(field, Boolean(extra.hint))} />
+        )}
+        {extra.hint && (
+          <FieldDescription id={id(`${field}-hint`)} className="text-xs">
+            {extra.hint}
+          </FieldDescription>
+        )}
+        {fieldError(field)}
+      </Field>
+    )
+  }
+
+  // A path variable key picks from the {variables} of a Template path (typed when the path has none).
+  const variables = form.pathType === 'template' ? pathVariables(form.path) : []
+  const pickVariable = form.location === 'path' && variables.length > 0
 
   const caption = endpoint
     ? t('catalog.endpoint.editCaption', { integration: integration.name, endpoint: endpoint.name })
@@ -427,6 +461,7 @@ function EndpointEditor({
               </Field>
               {text('path', t('catalog.endpoint.path'), {
                 mono: true,
+                prefix,
                 placeholder: form.pathType === 'template' ? '/posts/{id}' : form.pathType === 'regex' ? '/posts/[0-9]+' : '/posts',
               })}
             </div>
@@ -485,7 +520,11 @@ function EndpointEditor({
               <FieldLabel htmlFor={id('location')}>{t('catalog.endpoint.lookup')}</FieldLabel>
               <Select
                 value={form.location}
-                onValueChange={(v) => update({ location: v as Form['location'], ...(v === NO_LOOKUP ? { expression: '' } : {}) }, ['location', 'expression'])}
+                onValueChange={(v) => {
+                  const first = v === 'path' && form.pathType === 'template' ? pathVariables(form.path)[0] : undefined
+                  const expression = v === NO_LOOKUP ? '' : first !== undefined && !pathVariables(form.path).includes(form.expression.trim()) ? first : undefined
+                  update({ location: v as Form['location'], ...(expression !== undefined ? { expression } : {}) }, ['location', 'expression'])
+                }}
               >
                 <SelectTrigger id={id('location')} className="w-full sm:w-96" aria-invalid={Boolean(errors.location)} aria-describedby={described('location', true)}>
                   <SelectValue />
@@ -504,8 +543,35 @@ function EndpointEditor({
               </FieldDescription>
               {fieldError('location')}
             </Field>
-            {form.location !== NO_LOOKUP &&
-              text('expression', t('catalog.endpoint.expression'), { mono: true, placeholder: EXPRESSION_PLACEHOLDER[form.location] })}
+            {pickVariable ? (
+              <Field data-invalid={Boolean(errors.expression)}>
+                <FieldLabel htmlFor={id('expression')}>{t('catalog.endpoint.variable')}</FieldLabel>
+                <Select value={variables.includes(form.expression.trim()) ? form.expression.trim() : undefined} onValueChange={(v) => update({ expression: v }, ['expression'])}>
+                  <SelectTrigger
+                    id={id('expression')}
+                    className="w-full font-mono sm:w-64"
+                    aria-invalid={Boolean(errors.expression)}
+                    aria-describedby={described('expression')}
+                  >
+                    <SelectValue placeholder={t('catalog.endpoint.variablePick')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {variables.map((v) => (
+                      <SelectItem key={v} value={v} className="font-mono">
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {fieldError('expression')}
+              </Field>
+            ) : (
+              form.location !== NO_LOOKUP &&
+              text('expression', t(form.location === 'path' ? 'catalog.endpoint.variable' : 'catalog.endpoint.expression'), {
+                mono: true,
+                placeholder: EXPRESSION_PLACEHOLDER[form.location],
+              })
+            )}
           </FieldGroup>
         </Section>
 
