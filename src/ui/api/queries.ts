@@ -10,6 +10,7 @@ import type { PublicConfig } from '@/server/http/handlers/config'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { PublicUser } from '@/server/users/types'
 import type { NearMissView, RequestSummary } from '@/server/requests/journal'
+import type { TestRequestInput, TestRequestResult } from '@/server/wiremock/relay'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
 import { SESSION_KEY, apiFetch, type SessionData } from './client'
 
@@ -154,20 +155,23 @@ export function useResetMine() {
   })
 }
 
-export function useMock(id: string) {
+export function useMock(id: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.mock(id),
     queryFn: () => apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(id)}`),
+    enabled: options.enabled ?? true,
   })
 }
 
-export function useEndpoints(integration: string | undefined) {
-  return useQuery({
-    queryKey: queryKeys.endpoints(integration ?? ''),
-    queryFn: () => apiFetch<Endpoint[]>(`/api/integrations/${encodeURIComponent(integration!)}/endpoints`),
-    enabled: Boolean(integration),
+export const endpointsQueryOptions = (integration: string) =>
+  queryOptions({
+    queryKey: queryKeys.endpoints(integration),
+    queryFn: () => apiFetch<Endpoint[]>(`/api/integrations/${encodeURIComponent(integration)}/endpoints`),
     staleTime: 60_000,
   })
+
+export function useEndpoints(integration: string | undefined) {
+  return useQuery({ ...endpointsQueryOptions(integration ?? ''), enabled: Boolean(integration) })
 }
 
 export type CatalogMockInput = { integration: string; endpoint: string; input: SimpleMockInput }
@@ -347,6 +351,13 @@ export function useCountRequests() {
   return useMutation({
     mutationFn: (pattern: Record<string, unknown>) =>
       apiFetch<{ count: number }>('/api/requests/count', { method: 'POST', body: { pattern } }),
+  })
+}
+
+/** Sends one request to WireMock through the server relay (the browser never talks to WireMock itself). */
+export function useSendTestRequest() {
+  return useMutation({
+    mutationFn: (input: TestRequestInput) => apiFetch<TestRequestResult>('/api/test-request', { method: 'POST', body: input }),
   })
 }
 

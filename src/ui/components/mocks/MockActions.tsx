@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { MoreHorizontalIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { MoreHorizontalIcon, PlusIcon, TerminalIcon, Trash2Icon } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { StubMapping } from '@/server/wiremock/types'
-import { useDeleteMock, useDuplicateMock, useMocks, useResetMine, restoreMock } from '@/ui/api/queries'
+import { endpointsQueryOptions, useDeleteMock, useDuplicateMock, useMocks, useResetMine, restoreMock } from '@/ui/api/queries'
+import { copyCurl } from '@/ui/components/editor/TestPanel'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,8 +24,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/ui/components/ui/dropdown-menu'
-import { useWireMockOnly } from '@/ui/config'
+import { useWireMockOnly, useWiremockPublicUrl } from '@/ui/config'
 import { useT } from '@/ui/i18n'
+import { curlFromStub } from '@/ui/lib/curl'
 
 export const mockName = (stub: StubMapping) => stub.name || stub.id
 export const mockVersion = (stub: StubMapping) => stub.metadata?.wiremockUi?.version ?? 0
@@ -55,6 +57,17 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
   // No history in WireMock-only mode, so nothing to undo a delete from.
   const wiremockOnly = useWireMockOnly()
   const name = mockName(stub)
+  const publicUrl = useWiremockPublicUrl()
+
+  // The catalog example request fills the body; without it (no link, catalog unreachable) the curl still works.
+  const onCopyCurl = async () => {
+    const link = stub.metadata?.wiremockUi
+    const endpoints = link?.integration && link.endpoint
+      ? await queryClient.fetchQuery(endpointsQueryOptions(link.integration)).catch(() => undefined)
+      : undefined
+    const endpoint = endpoints?.find((e) => e.key === link?.endpoint)
+    await copyCurl(publicUrl === undefined ? undefined : curlFromStub(stub, endpoint, publicUrl), t)
+  }
 
   const onDelete = () => {
     const version = mockVersion(stub)
@@ -100,6 +113,10 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
             }
           >
             {t('mocks.duplicate')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void onCopyCurl()}>
+            <TerminalIcon />
+            {t('curl.copy')}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={() => setConfirming(true)}>
