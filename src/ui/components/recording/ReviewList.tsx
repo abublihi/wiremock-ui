@@ -6,7 +6,10 @@ import { toast } from 'sonner'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import { matchesPrefix } from '@/server/catalog/prefix'
 import type { Recording, ReviewItem } from '@/server/recording/types'
-import { endpointsQueryOptions, useAcceptRecording, useDiscardRecording, useIntegrations } from '@/ui/api/queries'
+import type { StubMapping } from '@/server/wiremock/types'
+import { apiFetch } from '@/ui/api/client'
+import { endpointsQueryOptions, useAcceptRecording, useDiscardRecording, useIntegrations, useUpdateMock } from '@/ui/api/queries'
+import { mockVersion } from '@/ui/components/mocks/MockActions'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { StatusBadge } from '@/ui/components/common/StatusBadge'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
@@ -29,7 +32,7 @@ import { Spinner } from '@/ui/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useSeedPrune, useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
-import { NEW_ENDPOINT, acceptPayload, formatBytes, groupReviewItems, newEndpointFor, suggestLink, type ReviewGroup, type RowChoice } from '@/ui/lib/recording'
+import { NEW_ENDPOINT, acceptPayload, formatBytes, groupReviewItems, newEndpointFor, suggestLink, withoutScenario, type ReviewGroup, type RowChoice } from '@/ui/lib/recording'
 import { relativeTime } from '@/ui/lib/time'
 import { cn } from '@/ui/lib/utils'
 
@@ -87,6 +90,7 @@ export function ReviewList({ recording }: { recording: Recording }) {
   // Rows kept as plain mocks ("Keep only the first answer"): accepted without their scenario fields.
   const [plain, setPlain] = useState<ReadonlySet<string>>(() => new Set())
   const accept = useAcceptRecording()
+  const updateMock = useUpdateMock()
   const discard = useDiscardRecording()
   const busy = accept.isPending || discard.isPending
 
@@ -112,9 +116,18 @@ export function ReviewList({ recording }: { recording: Recording }) {
   }
 
   const onAccept = async () => {
-    const payload = acceptPayload(picked.map((item) => ({ item, ...choiceOf(item) })), allIntegrations, plain)
+    const payload = acceptPayload(picked.map((item) => ({ item, ...choiceOf(item) })), allIntegrations)
     try {
       const result = await accept.mutateAsync({ id: recording.id, items: payload, owner })
+      // "Keep only the first answer": the mock is created as recorded, then saved again without its scenario.
+      for (const made of result.created.filter((c) => plain.has(c.id))) {
+        try {
+          const stub = await apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(made.mockId)}`)
+          await updateMock.mutateAsync({ id: made.mockId, stub: withoutScenario(stub), version: mockVersion(stub) })
+        } catch (error) {
+          toast.error(t('recording.plainFailed'), { description: error instanceof Error ? error.message : undefined })
+        }
+      }
       setErrors(Object.fromEntries(result.failed.map((f) => [f.id, f.error])))
       if (result.created.length > 0) {
         toast.success(result.created.length === 1 ? t('recording.acceptedOne') : t('recording.accepted', { count: result.created.length }), {

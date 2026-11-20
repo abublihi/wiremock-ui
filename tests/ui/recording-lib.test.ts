@@ -85,11 +85,18 @@ describe('groupReviewItems', () => {
   })
 })
 
-describe('acceptPayload: first answer only', () => {
-  it('marks a row kept without its scenario', () => {
-    const row = { item: item('GET', '/a', 'r1'), name: '', integration: '', endpoint: '' }
-    expect(acceptPayload([row], [], new Set(['r1']))).toEqual([{ id: 'r1', withoutScenario: true }])
-    expect(acceptPayload([row], [])).toEqual([{ id: 'r1' }])
+describe('withoutScenario', () => {
+  it('drops the scenario fields and the server-owned ones, keeping the catalog link', async () => {
+    const { withoutScenario } = await import('@/ui/lib/recording')
+    const stub = {
+      id: 'm1', uuid: 'm1', name: 'GET /a', request: { method: 'GET', urlPath: '/a' }, response: { status: 200 },
+      scenarioName: 's', requiredScenarioState: 'Started', newScenarioState: 's-2',
+      metadata: { wiremockUi: { integration: 'shop', endpoint: 'get-a', owner: 'sara', version: 1 } },
+    }
+    expect(withoutScenario(stub as never)).toEqual({
+      name: 'GET /a', request: { method: 'GET', urlPath: '/a' }, response: { status: 200 },
+      metadata: { wiremockUi: { integration: 'shop', endpoint: 'get-a' } },
+    })
   })
 })
 

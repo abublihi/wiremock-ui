@@ -291,11 +291,12 @@ describe('review list: repeated requests and SEED_PRUNE', () => {
   })
   const repeated = () => review({ items: [review().items[1], step('c2', 'scenario-1-cart-2', undefined, 'two'), step('c1', 'Started', 'scenario-1-cart-2', 'one')] })
 
-  it('groups a recorded scenario as one item; Keep only the first answer discards the rest and accepts it without its scenario', async () => {
+  it('groups a recorded scenario as one item; Keep only the first answer discards the rest and saves it without its scenario', async () => {
     catalog()
     let current = repeated()
     const discarded: unknown[] = []
     const accepted: unknown[] = []
+    const updated: unknown[] = []
     server.use(
       http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [summaryOf(current)] })),
       http.get(`${BASE}/api/recordings/rec-1`, () => HttpResponse.json(current)),
@@ -309,6 +310,17 @@ describe('review list: repeated requests and SEED_PRUNE', () => {
       http.post(`${BASE}/api/recordings/rec-1/accept`, async ({ request }) => {
         accepted.push(await request.json())
         return HttpResponse.json({ created: [{ id: 'i2', mockId: 'm1' }, { id: 'c1', mockId: 'm2' }], failed: [], recording: null })
+      }),
+      http.get(`${BASE}/api/mocks/m2`, () =>
+        HttpResponse.json({
+          id: 'm2', name: 'GET /shop/cart', request: { method: 'GET', urlPath: '/shop/cart' }, response: { status: 200, body: 'one' },
+          scenarioName: 'GET /shop/cart · recorded', requiredScenarioState: 'Started', newScenarioState: 'x-2',
+          metadata: { wiremockUi: { owner: 'sara', version: 1 } },
+        }),
+      ),
+      http.put(`${BASE}/api/mocks/m2`, async ({ request }) => {
+        updated.push(await request.json())
+        return HttpResponse.json({ id: 'm2', request: {}, response: {} })
       }),
     )
     const ue = userEvent.setup()
@@ -324,7 +336,9 @@ describe('review list: repeated requests and SEED_PRUNE', () => {
     expect(screen.queryByText(/answers in order/)).toBeNull()
     await ue.click(screen.getByRole('button', { name: 'Accept 2 selected' }))
     await waitFor(() => expect(accepted).toHaveLength(1))
-    expect((accepted[0] as { items: unknown[] }).items).toContainEqual(expect.objectContaining({ id: 'c1', withoutScenario: true }))
+    expect((accepted[0] as { items: { id: string }[] }).items.map((i) => i.id)).toEqual(['i2', 'c1'])
+    await waitFor(() => expect(updated).toHaveLength(1))
+    expect(updated[0]).toEqual({ version: 1, stub: { name: 'GET /shop/cart', request: { method: 'GET', urlPath: '/shop/cart' }, response: { status: 200, body: 'one' } } })
   })
 
   it('turns Baseline off and says why when SEED_PRUNE is on', async () => {

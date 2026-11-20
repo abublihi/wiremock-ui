@@ -1,6 +1,8 @@
 import { longestPrefixMatch } from '@/server/catalog/prefix'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { ReviewItem } from '@/server/recording/types'
+import type { StubMapping } from '@/server/wiremock/types'
+import { fromEditable, linkOf, toEditable } from './editor-sync'
 
 /** The endpoint select's value for "create an endpoint from this request". */
 export const NEW_ENDPOINT = '__new__'
@@ -49,24 +51,17 @@ export type AcceptItem = {
   integration?: string
   endpoint?: string
   newEndpoint?: { key: string; name: string }
-  /** Keep the recorded answer as a plain mock: drop its scenario fields ("Keep only the first answer"). */
-  withoutScenario?: true
 }
 
 /**
  * The accept request's items. The server works through them in order, so the first row of a new endpoint
  * creates it and later rows for the same key simply link to it.
  */
-export function acceptPayload(
-  rows: (RowChoice & { item: ReviewItem })[],
-  integrations: Integration[],
-  withoutScenario: ReadonlySet<string> = new Set(),
-): AcceptItem[] {
+export function acceptPayload(rows: (RowChoice & { item: ReviewItem })[], integrations: Integration[]): AcceptItem[] {
   const created = new Set<string>()
   return rows.map(({ item, name, integration, endpoint }) => {
     const out: AcceptItem = { id: item.id }
     if (name.trim()) out.name = name.trim()
-    if (withoutScenario.has(item.id)) out.withoutScenario = true
     const target = integrations.find((i) => i.key === integration)
     if (!target) return out
     out.integration = target.key
@@ -87,6 +82,13 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** A created mock without its scenario fields (the stub an update sends), for "Keep only the first answer". */
+export function withoutScenario(stub: StubMapping): Omit<StubMapping, 'id'> {
+  const { scenarioName: _s, requiredScenarioState: _r, newScenarioState: _n, ...editable } = toEditable(stub)
+  // As the Advanced editor saves it: the catalog link stays, the server's own fields are left out.
+  return fromEditable(editable, linkOf(stub))
 }
 
 /** Review rows as the list shows them: a plain row alone, or every row of one recorded scenario together. */
