@@ -212,7 +212,8 @@ test('an endpoint added on its own page is ready for a new mock', async ({ page,
   await page.getByRole('radio', { name: 'Template' }).click()
   await page.getByRole('combobox', { name: 'Where the key is' }).click()
   await page.getByRole('option', { name: 'Path variable' }).click()
-  await page.getByLabel('Key expression').fill('id')
+  // The path's only variable is picked already.
+  await expect(page.getByRole('combobox', { name: 'Variable name' })).toContainText('id')
   const preview = page.getByRole('region', { name: 'How testers will see this' })
   await expect(preview).toContainText('Post comments')
   await expect(preview).toContainText('Value of path parameter id')

@@ -47,7 +47,8 @@ test('Getting started, end to end, from the guide\'s links only', async ({ page 
   await page.getByRole('textbox', { name: 'Path' }).fill('/posts/{id}')
   await page.getByRole('combobox', { name: 'Where the key is' }).click()
   await page.getByRole('option', { name: 'Path variable' }).click()
-  await page.getByLabel('Key expression').fill('id')
+  // The path's only variable is picked already.
+  await expect(page.getByRole('combobox', { name: 'Variable name' })).toContainText('id')
   await page.getByRole('button', { name: 'Save endpoint' }).click()
 
   // 4. Create a mock from the toast: id 42, Success.
