@@ -24,6 +24,8 @@ beforeAll(async () => {
   env = await startTestRuntime()
   const admin = (await env.rt.users.list()).find((u) => u.username === 'ui-admin')!
   await env.rt.catalog.upsertIntegration({ key: 'nic', name: 'NIC', prefix: '/nic' }, 'ui-admin')
+  const { updatedAt: _a, updatedBy: _b, ...input } = endpoint
+  await env.rt.catalog.upsertEndpoint(input, 'ui-admin')
   await env.rt.mocks.create(
     buildStub(integration, endpoint, { keyValue: '1012345678', status: 200, body: '{"name":"Ali"}' }),
     admin,
@@ -40,7 +42,9 @@ test('an unmatched request explains the closest stub field by field', async () =
   expect(misses.length).toBeGreaterThan(0)
   expect(misses.length).toBeLessThanOrEqual(3)
   const [first] = misses
-  expect(first.stub).toMatchObject({ owner: 'ui-admin', integration: 'nic' })
+  expect(first.stub).toMatchObject({ owner: 'ui-admin', integration: 'nic', endpoint: 'cit' })
+  // The value this request has where the endpoint keeps its key: what "Make a mock for 999" fills in.
+  expect(first.keyValue).toBe('999')
   expect(first.diffs.find((d) => d.field === 'method')).toMatchObject({ matched: true })
   expect(first.diffs.find((d) => d.field === 'urlPath')).toMatchObject({ matched: true })
   expect(first.diffs.find((d) => d.field === 'body')).toEqual({

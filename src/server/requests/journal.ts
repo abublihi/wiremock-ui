@@ -5,7 +5,7 @@ import { NotFoundError, ValidationError } from '../errors'
 import { MARKER_ID } from '../sync/marker'
 import type { WireMockClient } from '../wiremock/client'
 import type { LoggedEvent } from '../wiremock/types'
-import { explainMismatch, type FieldDiff } from './explain'
+import { explainMismatch, requestKeyValue, type FieldDiff } from './explain'
 
 export type RequestSummary = {
   id: string
@@ -21,7 +21,9 @@ export type RequestSummary = {
 }
 
 export type NearMissView = {
-  stub: { id: string; name: string | null; owner: string | null; integration: string | null }
+  stub: { id: string; name: string | null; owner: string | null; integration: string | null; endpoint: string | null }
+  /** For an endpoint mock: the value this request has where the endpoint keeps its key (null when none or unreadable). */
+  keyValue: string | null
   distance: number
   diffs: FieldDiff[]
 }
@@ -140,23 +142,37 @@ export class RequestJournal {
     const event = await this.get(id)
     if (event.wasMatched) return []
     const misses = await this.deps.wiremock.nearMisses(event.request)
-    return misses
+    const closest = misses
       .filter((m) => m.stubMapping.id !== MARKER_ID)
       .sort((a, b) => a.matchResult.distance - b.matchResult.distance)
       .slice(0, NEAR_MISS_LIMIT)
-      .map((m) => {
+    return Promise.all(
+      closest.map(async (m) => {
         const meta = m.stubMapping.metadata?.wiremockUi
+        const integration = meta?.integration ?? null
+        const linked = integration && meta?.endpoint ? await this.endpointKey(integration, meta.endpoint, event) : null
         return {
-          stub: {
-            id: m.stubMapping.id,
-            name: m.stubMapping.name ?? null,
-            owner: meta?.owner ?? null,
-            integration: meta?.integration ?? null,
-          },
+          stub: { id: m.stubMapping.id, name: m.stubMapping.name ?? null, owner: meta?.owner ?? null, integration, endpoint: linked?.endpoint ?? null },
+          keyValue: linked?.keyValue ?? null,
           distance: m.matchResult.distance,
           diffs: explainMismatch(m.stubMapping, event.request),
         }
-      })
+      }),
+    )
+  }
+
+  /**
+   * A near miss's catalog endpoint (null when it no longer exists) and the request's value for its key (null when the
+   * endpoint has no key or the value can't be read).
+   */
+  private async endpointKey(integration: string, endpoint: string, event: LoggedEvent): Promise<{ endpoint: string; keyValue: string | null } | null> {
+    try {
+      const [i, e] = await Promise.all([this.deps.catalog.getIntegration(integration), this.deps.catalog.getEndpoint(integration, endpoint)])
+      const root = i.prefix === '/' ? '' : i.prefix
+      return { endpoint, keyValue: e.lookup ? requestKeyValue(e.lookup, root + e.path, event.request) : null }
+    } catch {
+      return null
+    }
   }
 
   async clear(actor: string): Promise<void> {
