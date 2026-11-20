@@ -331,3 +331,45 @@ export function useCountRequests() {
       apiFetch<{ count: number }>('/api/requests/count', { method: 'POST', body: { pattern } }),
   })
 }
+
+// ── Catalog management ────────────────────────────────────────────────────────
+
+/** What a PUT carries: the server fills `key` (and `integration`) from the path and stamps updatedAt/updatedBy. */
+export type IntegrationInput = Omit<Integration, 'updatedAt' | 'updatedBy'>
+export type EndpointInput = Omit<Endpoint, 'updatedAt' | 'updatedBy'>
+
+const integrationPath = (key: string) => `/api/integrations/${encodeURIComponent(key)}`
+
+export function useUpsertIntegration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ key, ...body }: IntegrationInput) => apiFetch<Integration>(integrationPath(key), { method: 'PUT', body }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
+  })
+}
+
+export function useDeleteIntegration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (key: string) => apiFetch<void>(integrationPath(key), { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
+  })
+}
+
+export function useUpsertEndpoint() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ integration, key, ...body }: EndpointInput) =>
+      apiFetch<Endpoint>(`${integrationPath(integration)}/endpoints/${encodeURIComponent(key)}`, { method: 'PUT', body }),
+    onSuccess: (_endpoint, input) => queryClient.invalidateQueries({ queryKey: queryKeys.endpoints(input.integration) }),
+  })
+}
+
+export function useDeleteEndpoint() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ integration, key }: { integration: string; key: string }) =>
+      apiFetch<void>(`${integrationPath(integration)}/endpoints/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+    onSuccess: (_void, input) => queryClient.invalidateQueries({ queryKey: queryKeys.endpoints(input.integration) }),
+  })
+}

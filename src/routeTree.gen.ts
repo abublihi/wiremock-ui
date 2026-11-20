@@ -21,6 +21,8 @@ import { Route as ApiMocksRouteImport } from './routes/api/mocks'
 import { Route as ApiRequestsRouteImport } from './routes/api/requests'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
 import { Route as ApiUsersRouteImport } from './routes/api/users'
+import { Route as AppCatalogIndexRouteImport } from './routes/_app/catalog.index'
+import { Route as AppCatalogKeyRouteImport } from './routes/_app/catalog.$key'
 import { Route as AppMocksIndexRouteImport } from './routes/_app/mocks.index'
 import { Route as AppMocksIdRouteImport } from './routes/_app/mocks.$id'
 import { Route as AppMocksNewRouteImport } from './routes/_app/mocks.new'
@@ -98,6 +100,16 @@ const ApiUsersRoute = ApiUsersRouteImport.update({
   id: '/api/users',
   path: '/api/users',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppCatalogIndexRoute = AppCatalogIndexRouteImport.update({
+  id: '/catalog/',
+  path: '/catalog/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCatalogKeyRoute = AppCatalogKeyRouteImport.update({
+  id: '/catalog/$key',
+  path: '/catalog/$key',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppMocksIndexRoute = AppMocksIndexRouteImport.update({
   id: '/mocks/',
@@ -206,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
+  '/catalog/$key': typeof AppCatalogKeyRoute
   '/mocks/$id': typeof AppMocksIdRoute
   '/mocks/new': typeof AppMocksNewRoute
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
@@ -215,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
+  '/catalog/': typeof AppCatalogIndexRoute
   '/mocks/': typeof AppMocksIndexRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
@@ -237,6 +251,7 @@ export interface FileRoutesByTo {
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
   '/': typeof AppIndexRoute
+  '/catalog/$key': typeof AppCatalogKeyRoute
   '/mocks/$id': typeof AppMocksIdRoute
   '/mocks/new': typeof AppMocksNewRoute
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
@@ -246,6 +261,7 @@ export interface FileRoutesByTo {
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
+  '/catalog': typeof AppCatalogIndexRoute
   '/mocks': typeof AppMocksIndexRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
@@ -270,6 +286,7 @@ export interface FileRoutesById {
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
   '/_app/': typeof AppIndexRoute
+  '/_app/catalog/$key': typeof AppCatalogKeyRoute
   '/_app/mocks/$id': typeof AppMocksIdRoute
   '/_app/mocks/new': typeof AppMocksNewRoute
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
@@ -279,6 +296,7 @@ export interface FileRoutesById {
   '/api/requests/count': typeof ApiRequestsCountRoute
   '/api/session/password': typeof ApiSessionPasswordRoute
   '/api/users/$id': typeof ApiUsersIdRoute
+  '/_app/catalog/': typeof AppCatalogIndexRoute
   '/_app/mocks/': typeof AppMocksIndexRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
@@ -303,6 +321,7 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/session'
     | '/api/users'
+    | '/catalog/$key'
     | '/mocks/$id'
     | '/mocks/new'
     | '/api/integrations/$key'
@@ -312,6 +331,7 @@ export interface FileRouteTypes {
     | '/api/requests/count'
     | '/api/session/password'
     | '/api/users/$id'
+    | '/catalog/'
     | '/mocks/'
     | '/api/integrations/$key/endpoints'
     | '/api/mocks/$id/duplicate'
@@ -334,6 +354,7 @@ export interface FileRouteTypes {
     | '/api/session'
     | '/api/users'
     | '/'
+    | '/catalog/$key'
     | '/mocks/$id'
     | '/mocks/new'
     | '/api/integrations/$key'
@@ -343,6 +364,7 @@ export interface FileRouteTypes {
     | '/api/requests/count'
     | '/api/session/password'
     | '/api/users/$id'
+    | '/catalog'
     | '/mocks'
     | '/api/integrations/$key/endpoints'
     | '/api/mocks/$id/duplicate'
@@ -366,6 +388,7 @@ export interface FileRouteTypes {
     | '/api/session'
     | '/api/users'
     | '/_app/'
+    | '/_app/catalog/$key'
     | '/_app/mocks/$id'
     | '/_app/mocks/new'
     | '/api/integrations/$key'
@@ -375,6 +398,7 @@ export interface FileRouteTypes {
     | '/api/requests/count'
     | '/api/session/password'
     | '/api/users/$id'
+    | '/_app/catalog/'
     | '/_app/mocks/'
     | '/api/integrations/$key/endpoints'
     | '/api/mocks/$id/duplicate'
@@ -484,6 +508,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/users'
       preLoaderRoute: typeof ApiUsersRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/catalog/': {
+      id: '/_app/catalog/'
+      path: '/catalog'
+      fullPath: '/catalog/'
+      preLoaderRoute: typeof AppCatalogIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/catalog/$key': {
+      id: '/_app/catalog/$key'
+      path: '/catalog/$key'
+      fullPath: '/catalog/$key'
+      preLoaderRoute: typeof AppCatalogKeyRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/mocks/': {
       id: '/_app/mocks/'
@@ -617,16 +655,20 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppRequestsRoute: typeof AppRequestsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppCatalogKeyRoute: typeof AppCatalogKeyRoute
   AppMocksIdRoute: typeof AppMocksIdRoute
   AppMocksNewRoute: typeof AppMocksNewRoute
+  AppCatalogIndexRoute: typeof AppCatalogIndexRoute
   AppMocksIndexRoute: typeof AppMocksIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppRequestsRoute: AppRequestsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppCatalogKeyRoute: AppCatalogKeyRoute,
   AppMocksIdRoute: AppMocksIdRoute,
   AppMocksNewRoute: AppMocksNewRoute,
+  AppCatalogIndexRoute: AppCatalogIndexRoute,
   AppMocksIndexRoute: AppMocksIndexRoute,
 }
 
