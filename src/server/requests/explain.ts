@@ -17,7 +17,13 @@ const json = (v: unknown) => {
 }
 const show = (v: unknown) => (typeof v === 'string' ? v : json(v))
 
-/** WireMock `matches` is a full-string regex. Invalid expressions yield null instead of throwing. */
+/**
+ * WireMock `matches` is a full-string regex. Invalid expressions yield null instead of throwing.
+ * The stub's regex runs in Node's engine, not WireMock's Java one: dialects differ in corners (possessive
+ * quantifiers, some classes), and a pathological pattern can hold this request's thread for a while. Accepted:
+ * stubs come from signed-in users (spec A8, everyone is trusted) or WireMock admins, and values are capped at
+ * MAX_REGEX_INPUT characters.
+ */
 const MAX_REGEX_INPUT = 10_000
 const TOO_LONG = ' (value too long to check)'
 

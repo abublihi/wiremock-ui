@@ -48,3 +48,10 @@ Open items from the Milestone 1, 2A and 2B reviews. None blocks a release; pick 
 - The request drawer's accessible name is the request line (`POST /orders/…`), not "Request details"; fine, but tests must not look for the title.
 - e2e: specs share one stack and run serially (`workers: 1`) on the fixed port 3417 (`E2E_UI_PORT`). They need Docker and a Chromium download (`npx playwright install chromium`). The axe pass runs with reduced motion, because entrance fades make the contrast check read blended colours; it fails only on serious or critical violations.
 - Docs: the `SEED_PATH` Compose override is documented as a snippet, not shipped as a file. `.env.example` could not be read in this task, so its placeholders were not re-checked against docs/INSTALL.md.
+
+## From Milestone 2C
+
+- The near-miss explanation runs a stub's regex in Node (JavaScript dialect) rather than in WireMock (Java); a pathological stub regex can slow that one request. Inputs are capped at 10,000 characters; everyone signed in is trusted (spec A8).
+- Repositioning person-owned mocks after an import or seed also runs during a recording: the moved mocks become newer than the recording's catch-all proxy and keep answering their own requests (as mocks saved during a recording do). Skipping it would leave the order wrong afterwards.
+- "Load older" in the request log reads at most the newest 10,000 requests of WireMock's log (it has no offset); older ones are not reachable (`scanLimitReached`).
+- A review-list accept stops taking rows 100 s after it starts (its lock lasts 120 s and is not renewed); the rest stay in the list to accept again.
