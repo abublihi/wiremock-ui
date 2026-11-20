@@ -302,7 +302,11 @@ export class MockService {
     if (this.storeIsWireMock) {
       await this.store.save(stub, expectedVersion)
       // The store keeps a stub WireMock holds in its own files persistent: report what was stored.
-      const stored = await this.store.get(id)
+      // The save went through: a failed read-back only loses that detail (the written stub is the answer).
+      const stored = await this.store.get(id).catch((err: unknown) => {
+        logger.warn({ err, id }, 'reading a saved mock back from WireMock failed')
+        return null
+      })
       return stored ? { ...stub, persistent: stored.persistent } : stub
     }
     await this.wiremock.importStubs([stub], { deleteAllNotInImport: false })
