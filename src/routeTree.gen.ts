@@ -21,6 +21,8 @@ import { Route as ApiRequestsRouteImport } from './routes/api/requests'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
 import { Route as ApiUsersRouteImport } from './routes/api/users'
 import { Route as AppMocksIndexRouteImport } from './routes/_app/mocks.index'
+import { Route as AppMocksIdRouteImport } from './routes/_app/mocks.$id'
+import { Route as AppMocksNewRouteImport } from './routes/_app/mocks.new'
 import { Route as ApiIntegrationsKeyRouteImport } from './routes/api/integrations.$key'
 import { Route as ApiMocksIdRouteImport } from './routes/api/mocks.$id'
 import { Route as ApiMocksResetMineRouteImport } from './routes/api/mocks.reset-mine'
@@ -94,6 +96,16 @@ const ApiUsersRoute = ApiUsersRouteImport.update({
 const AppMocksIndexRoute = AppMocksIndexRouteImport.update({
   id: '/mocks/',
   path: '/mocks/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMocksIdRoute = AppMocksIdRouteImport.update({
+  id: '/mocks/$id',
+  path: '/mocks/$id',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMocksNewRoute = AppMocksNewRouteImport.update({
+  id: '/mocks/new',
+  path: '/mocks/new',
   getParentRoute: () => AppRoute,
 } as any)
 const ApiIntegrationsKeyRoute = ApiIntegrationsKeyRouteImport.update({
@@ -187,6 +199,8 @@ export interface FileRoutesByFullPath {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
+  '/mocks/$id': typeof AppMocksIdRoute
+  '/mocks/new': typeof AppMocksNewRoute
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
@@ -215,6 +229,8 @@ export interface FileRoutesByTo {
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
   '/': typeof AppIndexRoute
+  '/mocks/$id': typeof AppMocksIdRoute
+  '/mocks/new': typeof AppMocksNewRoute
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
@@ -245,6 +261,8 @@ export interface FileRoutesById {
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/users': typeof ApiUsersRouteWithChildren
   '/_app/': typeof AppIndexRoute
+  '/_app/mocks/$id': typeof AppMocksIdRoute
+  '/_app/mocks/new': typeof AppMocksNewRoute
   '/api/integrations/$key': typeof ApiIntegrationsKeyRouteWithChildren
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
@@ -275,6 +293,8 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/session'
     | '/api/users'
+    | '/mocks/$id'
+    | '/mocks/new'
     | '/api/integrations/$key'
     | '/api/mocks/$id'
     | '/api/mocks/reset-mine'
@@ -303,6 +323,8 @@ export interface FileRouteTypes {
     | '/api/session'
     | '/api/users'
     | '/'
+    | '/mocks/$id'
+    | '/mocks/new'
     | '/api/integrations/$key'
     | '/api/mocks/$id'
     | '/api/mocks/reset-mine'
@@ -332,6 +354,8 @@ export interface FileRouteTypes {
     | '/api/session'
     | '/api/users'
     | '/_app/'
+    | '/_app/mocks/$id'
+    | '/_app/mocks/new'
     | '/api/integrations/$key'
     | '/api/mocks/$id'
     | '/api/mocks/reset-mine'
@@ -449,6 +473,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMocksIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/mocks/$id': {
+      id: '/_app/mocks/$id'
+      path: '/mocks/$id'
+      fullPath: '/mocks/$id'
+      preLoaderRoute: typeof AppMocksIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/mocks/new': {
+      id: '/_app/mocks/new'
+      path: '/mocks/new'
+      fullPath: '/mocks/new'
+      preLoaderRoute: typeof AppMocksNewRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/api/integrations/$key': {
       id: '/api/integrations/$key'
       path: '/$key'
@@ -559,11 +597,15 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
+  AppMocksIdRoute: typeof AppMocksIdRoute
+  AppMocksNewRoute: typeof AppMocksNewRoute
   AppMocksIndexRoute: typeof AppMocksIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
+  AppMocksIdRoute: AppMocksIdRoute,
+  AppMocksNewRoute: AppMocksNewRoute,
   AppMocksIndexRoute: AppMocksIndexRoute,
 }
 

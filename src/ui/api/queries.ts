@@ -2,7 +2,8 @@ import { queryOptions, type QueryClient, useMutation, useQuery, useQueryClient }
 import { useRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useT } from '@/ui/i18n'
-import type { Integration } from '@/server/catalog/types'
+import type { SimpleMockInput } from '@/server/catalog/build'
+import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
 import { SESSION_KEY, apiFetch, type SessionData } from './client'
 
@@ -14,6 +15,8 @@ export const queryKeys = {
   mocks: ['mocks'] as const,
   mockList: (filter: MockFilter) => ['mocks', 'list', filter] as const,
   integrations: ['integrations'] as const,
+  mock: (id: string) => ['mocks', 'detail', id] as const,
+  endpoints: (integration: string) => ['integrations', integration, 'endpoints'] as const,
 } as const
 
 export const sessionQueryOptions = (fetchSession: () => Promise<SessionData> = defaultFetchSession) =>
@@ -114,5 +117,60 @@ export function useResetMine() {
   return useMutation({
     mutationFn: () => apiFetch<{ deleted: number }>('/api/mocks/reset-mine', { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
+  })
+}
+
+export function useMock(id: string) {
+  return useQuery({
+    queryKey: queryKeys.mock(id),
+    queryFn: () => apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(id)}`),
+  })
+}
+
+export function useEndpoints(integration: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.endpoints(integration ?? ''),
+    queryFn: () => apiFetch<Endpoint[]>(`/api/integrations/${encodeURIComponent(integration!)}/endpoints`),
+    enabled: Boolean(integration),
+    staleTime: 60_000,
+  })
+}
+
+export type CatalogMockInput = { integration: string; endpoint: string; input: SimpleMockInput }
+/** A stub as the builder returns it (no id or server metadata yet). */
+export type BuiltStub = Omit<StubMapping, 'id'>
+
+const catalogMockPath = ({ integration, endpoint }: CatalogMockInput) =>
+  `/api/integrations/${encodeURIComponent(integration)}/endpoints/${encodeURIComponent(endpoint)}`
+
+/** Builds the stub for a Simple form on the server without saving it. */
+export function usePreviewMock() {
+  return useMutation({
+    mutationFn: (args: CatalogMockInput) =>
+      apiFetch<BuiltStub>(`${catalogMockPath(args)}/preview`, { method: 'POST', body: args.input }),
+  })
+}
+
+export function useCreateCatalogMock() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (args: CatalogMockInput) =>
+      apiFetch<StubMapping>(`${catalogMockPath(args)}/mocks`, { method: 'POST', body: args.input }),
+    onSuccess: async (stub) => {
+      queryClient.setQueryData(queryKeys.mock(stub.id), stub)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' })
+    },
+  })
+}
+
+export function useUpdateMock() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, stub, version }: { id: string; stub: BuiltStub; version: number }) =>
+      apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(id)}`, { method: 'PUT', body: { stub, version } }),
+    onSuccess: async (stub) => {
+      queryClient.setQueryData(queryKeys.mock(stub.id), stub)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' })
+    },
   })
 }
