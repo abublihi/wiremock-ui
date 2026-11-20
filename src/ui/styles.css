@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "./shadcn-tailwind.css";
 
 /* Fonts (self-hosted, no runtime CDN): JetBrains Mono for everything; Rajdhani for display
    (page titles, big numbers). */
