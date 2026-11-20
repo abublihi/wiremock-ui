@@ -47,6 +47,18 @@ const contract = (start: () => Promise<{ store: RecordingStore; stop(): Promise<
     await h.store.delete('missing')
   })
 
+  test('listSummaries: newest first, without rows, with the row count; follows put and delete', async () => {
+    await h.store.put(rec('a', '2026-11-20T10:00:00.000Z', 60_000))
+    await h.store.put({ ...rec('b', '2026-11-20T11:00:00.000Z', 60_000), dropped: 2, leftInWireMock: 1 })
+    expect(await h.store.listSummaries()).toEqual([
+      { id: 'b', kind: 'recording', target: 'https://api.example.com', createdAt: '2026-11-20T11:00:00.000Z', createdBy: 'ann', expiresAt: expect.any(String), dropped: 2, leftInWireMock: 1, itemCount: 1 },
+      { id: 'a', kind: 'recording', target: 'https://api.example.com', createdAt: '2026-11-20T10:00:00.000Z', createdBy: 'ann', expiresAt: expect.any(String), dropped: 0, itemCount: 1 },
+    ])
+    await h.store.put({ ...rec('a', '2026-11-20T10:00:00.000Z', 60_000), items: [] })
+    await h.store.delete('b')
+    expect((await h.store.listSummaries()).map((r) => [r.id, r.itemCount])).toEqual([['a', 0]])
+  })
+
   test('put replaces a list and keeps its expiry; an expired list reads as missing', async () => {
     const a = rec('a', '2026-11-20T10:00:00.000Z', 60_000)
     await h.store.put(a)

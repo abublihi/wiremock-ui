@@ -337,7 +337,7 @@ export class RecordingService {
   /** Summaries only: the rows load with get(). */
   async list(): Promise<RecordingSummary[]> {
     this.assertAllowed()
-    return (await this.deps.store.list()).map(summaryOf)
+    return this.deps.store.listSummaries()
   }
 
   /** Runs `fn` holding the review list's lock, so two accepts (or an accept and a discard) never overlap. */

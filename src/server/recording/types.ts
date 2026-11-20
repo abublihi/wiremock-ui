@@ -67,6 +67,8 @@ export interface RecordingStore {
   get(id: string): Promise<Recording | null>
   /** Newest first. */
   list(): Promise<Recording[]>
+  /** Newest first, without the rows (so recorded bodies are not loaded). */
+  listSummaries(): Promise<RecordingSummary[]>
   delete(id: string): Promise<void>
   getActive(): Promise<ActiveRecording | null>
   /** null clears it. */

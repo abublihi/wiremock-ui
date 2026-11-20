@@ -1,13 +1,15 @@
 import type { Redis } from 'ioredis'
 import type { SqliteDb } from '../store/sqlite/db'
-import type { ActiveRecording, Recording, RecordingStore } from './types'
+import { summaryOf, type ActiveRecording, type Recording, type RecordingStore, type RecordingSummary } from './types'
 
 const key = (id: string) => `recording:${id}`
+/** The list without its rows, kept beside it so listing never loads recorded bodies. */
+const summaryKey = (id: string) => `recording-summary:${id}`
 // Named like the other indexes (stubs:all, integrations:all).
 const INDEX = 'recordings:all'
 const ACTIVE = 'recordings:active'
 const expiry = (r: Recording) => Date.parse(r.expiresAt)
-const newestFirst = (a: Recording, b: Recording) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)
+const newestFirst = (a: Pick<Recording, 'createdAt'>, b: Pick<Recording, 'createdAt'>) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)
 
 /** `recording:<id>` with an absolute expiry (PXAT) plus a sorted-set index pruned on read. */
 export class RedisRecordingStore implements RecordingStore {
@@ -18,6 +20,7 @@ export class RedisRecordingStore implements RecordingStore {
     if (at <= Date.now()) return this.delete(r.id)
     const m = this.redis.multi()
     m.set(key(r.id), JSON.stringify(r), 'PX', at - Date.now())
+    m.set(summaryKey(r.id), JSON.stringify(summaryOf(r)), 'PX', at - Date.now())
     m.zadd(INDEX, at, r.id)
     await m.exec()
   }
@@ -40,9 +43,27 @@ export class RedisRecordingStore implements RecordingStore {
       .sort(newestFirst)
   }
 
+  async listSummaries(): Promise<RecordingSummary[]> {
+    await this.redis.zremrangebyscore(INDEX, '-inf', String(Date.now()))
+    const ids = await this.redis.zrange(INDEX, '0', '-1')
+    if (ids.length === 0) return []
+    const jsons = await this.redis.mget(ids.map(summaryKey))
+    const out: RecordingSummary[] = []
+    for (const [i, json] of jsons.entries()) {
+      if (json !== null) out.push(JSON.parse(json) as RecordingSummary)
+      else {
+        // Written before summaries were kept (or already expired): read the list itself.
+        const full = await this.get(ids[i])
+        if (full) out.push(summaryOf(full))
+      }
+    }
+    return out.sort(newestFirst)
+  }
+
   async delete(id: string): Promise<void> {
     const m = this.redis.multi()
     m.del(key(id))
+    m.del(summaryKey(id))
     m.zrem(INDEX, id)
     await m.exec()
   }
@@ -87,6 +108,14 @@ export class SqliteRecordingStore implements RecordingStore {
       .sort(newestFirst)
   }
 
+  async listSummaries(): Promise<RecordingSummary[]> {
+    this.purge()
+    // SQLite takes the rows out of the JSON, so recorded bodies never reach JavaScript.
+    return (this.sql.stmt("SELECT json_remove(json, '$.items') AS summary, json_array_length(json, '$.items') AS n FROM recordings").all() as { summary: string; n: number }[])
+      .map((row) => ({ ...(JSON.parse(row.summary) as Omit<Recording, 'items'>), itemCount: row.n }))
+      .sort(newestFirst)
+  }
+
   async delete(id: string): Promise<void> {
     this.sql.stmt('DELETE FROM recordings WHERE id = ?').run(id)
   }
@@ -126,6 +155,11 @@ export class MemoryRecordingStore implements RecordingStore {
   async list(): Promise<Recording[]> {
     this.purge()
     return [...this.items.values()].map((r) => structuredClone(r)).sort(newestFirst)
+  }
+
+  async listSummaries(): Promise<RecordingSummary[]> {
+    this.purge()
+    return [...this.items.values()].map((r) => structuredClone(summaryOf(r))).sort(newestFirst)
   }
 
   async delete(id: string): Promise<void> {
