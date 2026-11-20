@@ -47,7 +47,9 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
   const wiremockOnly = useWireMockOnly()
   const run = useImport()
   const [fields, setFields] = useState<IntegrationFields>(() => {
-    const base = defaultIntegration(collection)
+    // Every request under one first segment (/api/…): that is the prefix, so endpoint paths start after it.
+    const common = commonFirstSegment(collection)
+    const base = { ...defaultIntegration(collection), ...(common ? { prefix: common } : {}) }
     return collection.description ? { ...base, description: collection.description } : base
   })
   const [choices, setChoices] = useState<Record<string, RowChoice>>({})

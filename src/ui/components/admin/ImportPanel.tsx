@@ -318,10 +318,10 @@ function ReportCard({ report, name, integration, onAgain }: { report: ImportRepo
         <Stat label={t('import.reportCreated')} value={report.created} />
         <Stat label={t('import.reportUpdated')} value={report.updated} />
         <Stat label={t('import.reportUnchanged')} value={report.unchanged} />
-        <Stat label={t('import.reportPruned')} value={report.pruned} />
+        {report.pruned > 0 && <Stat label={t('import.reportPruned')} value={report.pruned} />}
         <Stat label={t('import.reportIntegrations')} value={report.integrations} />
         <Stat label={t('import.reportEndpoints')} value={report.endpoints} />
-        <Stat label={t('import.reportIdentities')} value={report.ignoredOidcIdentities} />
+        {report.ignoredOidcIdentities > 0 && <Stat label={t('import.reportIdentities')} value={report.ignoredOidcIdentities} />}
       </dl>
       {report.skipped.length > 0 && (
         <div className="flex flex-col gap-2">

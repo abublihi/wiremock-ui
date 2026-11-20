@@ -1000,7 +1000,7 @@ export const en = {
   'import.notJson': '{name} is not a .json or .zip file.',
   'import.tooLarge': '{name} is {size} MB. The limit is 10 MB.',
   'import.invalidJson': '{name} is not valid JSON: {message}',
-  'import.unrecognised': '{name} is not a bundle, a WireMock export, a stub or an array of stubs.',
+  'import.unrecognised': '{name} is not a bundle, a WireMock export, a stub, an array of stubs or a Postman collection (v2.0 or v2.1).',
   'import.readFailed': 'Could not read {name}.',
   'import.fileShape': '{message}',
   'import.zipTooLarge': '{name} unpacks to more than 10 MB of .json files. Split it into smaller zips and import them one by one.',

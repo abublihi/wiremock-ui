@@ -62,8 +62,9 @@ describe('Postman preview on the Import page', () => {
     expect(within(region).getByText(/5 requests · 9 saved examples · from shop.postman_collection.json/)).toBeTruthy()
     expect((within(region).getByLabelText('Key') as HTMLInputElement).value).toBe('shop-api')
     expect((within(region).getByLabelText('Name') as HTMLInputElement).value).toBe('Shop API')
-    expect((within(region).getByLabelText('Prefix') as HTMLInputElement).value).toBe('/shop-api')
-    expect(within(rowOf('Get order')).getByText('/shop-api/api/orders/{orderId}')).toBeTruthy()
+    // Every request starts with /api: that is the prefix from the start.
+    expect((within(region).getByLabelText('Prefix') as HTMLInputElement).value).toBe('/api')
+    expect(within(rowOf('Get order')).getByText('/api/orders/{orderId}')).toBeTruthy()
     expect(within(rowOf('Get order')).getAllByText('New')).toHaveLength(1)
     expect(within(region).getByText('Examples not imported (1)')).toBeTruthy()
     expect(within(region).getByText(/Pending again/)).toBeTruthy()
@@ -74,11 +75,10 @@ describe('Postman preview on the Import page', () => {
     expect(screen.queryByText(/Remove baseline mocks/)).toBeNull()
   })
 
-  it('offers the shared first path segment as the prefix and imports one bundle without prune', async () => {
+  it('preselects the shared first path segment as the prefix and imports one bundle without prune', async () => {
     const calls = mockApi()
     const ue = await pick()
     const region = await preview()
-    await ue.click(within(region).getByRole('button', { name: 'Use /api — every request starts with it' }))
     expect((within(region).getByLabelText('Prefix') as HTMLInputElement).value).toBe('/api')
     expect(within(rowOf('Get order')).getByText('/api/orders/{orderId}')).toBeTruthy()
     await ue.click(within(region).getByRole('button', { name: 'Import 5 endpoints and 8 mocks' }))
