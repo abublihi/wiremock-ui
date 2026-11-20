@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest'
+import { buildStub } from '@/server/catalog/build'
 import type { Endpoint, Integration } from '@/server/catalog/types'
+import type { StubMapping } from '@/server/wiremock/types'
+import { fromStub } from '@/ui/lib/editor-sync'
 import {
   type BuilderDraft,
   type BuilderStep,
   hasErrors,
+  lastStepMocks,
   moveStep,
+  movedOn,
+  nextStateName,
   newStep,
   previewScenario,
   removeStep,
@@ -90,7 +96,7 @@ describe('scenario builder: validation', () => {
       draft({
         steps: [
           step('a', { status: '700', body: '{nope' }),
-          step('b', { state: '', delayMs: '-1' }),
+          step('b', { state: '', delaySeconds: '0' }),
           step('c', { state: 'Started', status: '500', headers: [{ name: '', value: 'x' }] }),
           step('d', { state: 'dup' }),
           step('e', { state: 'dup' }),
@@ -117,7 +123,7 @@ describe('scenario builder: what Save sends', () => {
     const creates = toCreates(
       draft({
         steps: [
-          step('a', { body: '{"status":"pending"}', delayMs: '250', headers: [{ name: 'X-Step', value: '1' }] }),
+          step('a', { body: '{"status":"pending"}', delaySeconds: '2', headers: [{ name: 'X-Step', value: '1' }] }),
           step('b', { state: 'approved', status: '404', body: '' }),
         ],
       }),
@@ -135,7 +141,7 @@ describe('scenario builder: what Save sends', () => {
             status: 200,
             body: '{"status":"pending"}',
             headers: { 'X-Step': '1' },
-            delayMs: 250,
+            delayMs: 2000,
             name: 'loan-approval — Started',
             scenario: { name: 'loan-approval', requiredState: 'Started', newState: 'approved' },
           },
@@ -165,14 +171,14 @@ describe('scenario builder: what Save sends', () => {
       draft({
         name: 'order',
         request: { kind: 'free', method: 'GET', url: ' /orders/1 ' },
-        steps: [step('a', { body: '{"status":"pending"}', delayMs: '100' }), step('b', { state: 'done', body: 'done', headers: [{ name: 'Content-Type', value: 'text/plain' }] })],
+        steps: [step('a', { body: '{"status":"pending"}', delaySeconds: '1' }), step('b', { state: 'done', body: 'done', headers: [{ name: 'Content-Type', value: 'text/plain' }] })],
       }),
     )
     expect(creates.map((c) => (c.kind === 'free' ? c.stub : null))).toEqual([
       {
         name: 'order — Started',
         request: { method: 'GET', urlPath: '/orders/1' },
-        response: { status: 200, headers: { 'Content-Type': 'application/json' }, body: '{"status":"pending"}', fixedDelayMilliseconds: 100 },
+        response: { status: 200, headers: { 'Content-Type': 'application/json' }, body: '{"status":"pending"}', fixedDelayMilliseconds: 1000 },
         scenarioName: 'order',
         requiredScenarioState: 'Started',
         newScenarioState: 'done',
@@ -199,5 +205,67 @@ describe('scenario builder: the live diagram', () => {
       { id: 'b', name: 'Step 2', method: 'GET', url: '/nic/loan/status', requiredState: 'approved', newState: 'Step 3' },
       { id: 'c', name: 'Step 3', method: 'GET', url: '/nic/loan/status', requiredState: 'Step 3' },
     ])
+  })
+})
+
+describe('scenario builder: its mocks reopen in Simple mode', () => {
+  it('a catalog step with a delay in seconds and no custom headers reads back into the Simple form', () => {
+    const creates = toCreates(draft({ steps: [step('a', { body: '{"status":"pending"}', delaySeconds: '3' }), step('b', { state: 'approved', status: '404' })] }))
+    for (const create of creates) {
+      if (create.kind !== 'catalog') throw new Error('catalog expected')
+      const stub = { id: 'x', ...buildStub(integration, endpoint, create.args.input) } as StubMapping
+      const form = fromStub(stub, integration, endpoint)
+      expect(form).not.toBeNull()
+      expect(form!.scenario).toEqual({ enabled: true, name: 'loan-approval', requiredState: create.state, newState: create.step === 1 ? 'approved' : '' })
+    }
+    const [first] = creates
+    const form = fromStub({ id: 'x', ...buildStub(integration, endpoint, first.kind === 'catalog' ? first.args.input : {}) } as StubMapping, integration, endpoint)!
+    expect([form.slow, form.delaySeconds, form.body]).toEqual([true, 3, JSON.stringify({ status: 'pending' }, null, 2)])
+  })
+
+  it('custom headers are Advanced-only (the hint says so)', () => {
+    const [create] = toCreates(draft({ steps: [step('a', { headers: [{ name: 'X-Step', value: '1' }] })] }))
+    const stub = { id: 'x', ...buildStub(integration, endpoint, create.kind === 'catalog' ? create.args.input : {}) } as StubMapping
+    expect(fromStub(stub, integration, endpoint)).toBeNull()
+  })
+})
+
+describe('adding a step after the last one', () => {
+  const stub = (id: string, over: Partial<StubMapping>): StubMapping =>
+    ({ id, request: { method: 'GET', urlPath: '/x' }, response: { status: 200 }, scenarioName: 'loan', ...over }) as StubMapping
+
+  it('names the new state step-<n+1>, skipping names in use', () => {
+    expect(nextStateName(['Started', 'approved'])).toBe('step-3')
+    expect(nextStateName(['Started', 'step-3', 'x'])).toBe('step-4')
+  })
+
+  it('finds the mocks that answer in the last state and stay there, not the new step or other scenarios', () => {
+    const stubs = [
+      stub('a', { requiredScenarioState: 'Started', newScenarioState: 'approved' }),
+      stub('b', { requiredScenarioState: 'approved' }),
+      stub('c', { requiredScenarioState: 'approved', newScenarioState: 'approved' }),
+      stub('d', { requiredScenarioState: 'approved', newScenarioState: 'Started' }),
+      stub('e', { requiredScenarioState: 'approved', scenarioName: 'other' }),
+      stub('new', { requiredScenarioState: 'approved' }),
+    ]
+    expect(lastStepMocks(stubs, 'loan', 'approved', 'new').map((s) => s.id)).toEqual(['b', 'c'])
+  })
+
+  it('moving one on sets newScenarioState and keeps everything else, catalog link included', () => {
+    const old = stub('b', {
+      name: 'Loan approved',
+      requiredScenarioState: 'approved',
+      persistent: false,
+      metadata: { wiremockUi: { integration: 'nic', endpoint: 'loan', version: 3, owner: 'sara' } },
+    } as unknown as Partial<StubMapping>)
+    expect(movedOn(old, 'step-3')).toEqual({
+      name: 'Loan approved',
+      request: { method: 'GET', urlPath: '/x' },
+      response: { status: 200 },
+      scenarioName: 'loan',
+      requiredScenarioState: 'approved',
+      newScenarioState: 'step-3',
+      metadata: { wiremockUi: { integration: 'nic', endpoint: 'loan' } },
+    })
   })
 })

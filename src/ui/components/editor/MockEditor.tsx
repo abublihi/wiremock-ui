@@ -65,6 +65,7 @@ export function MockEditor({
   simpleUnavailable,
   initialMode,
   onModeChange,
+  onFormChange,
   onSaved,
   onReload,
   onRestored,
@@ -81,6 +82,8 @@ export function MockEditor({
   simpleUnavailable?: string
   initialMode?: EditorMode
   onModeChange?: (mode: EditorMode) => void
+  /** Every change of the Simple form (e.g. the page follows the scenario state it answers in). */
+  onFormChange?: (form: SimpleForm) => void
   onSaved: (stub: StubMapping, mode: EditorMode) => void | Promise<void>
   /** Fetches the live version and starts over from it (conflict → Reload). */
   onReload?: () => Promise<void>
@@ -266,6 +269,7 @@ export function MockEditor({
               scenarioSeed={scenarioSeed}
               onChange={(form) => {
                 formRef.current = form
+                onFormChange?.(form)
                 setSimpleChanged(!sameForm(form, simple.form))
               }}
               onSaved={(saved) => finishSave(saved, 'simple')}

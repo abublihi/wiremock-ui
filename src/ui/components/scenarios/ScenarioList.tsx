@@ -9,6 +9,7 @@ import { Button } from '@/ui/components/ui/button'
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/components/ui/tooltip'
 import { useT } from '@/ui/i18n'
+import { nextStateName } from '@/ui/lib/scenario-builder'
 import { StateMachine } from './StateMachine'
 
 /** One card per scenario: its name, live state, Reset, "Add a mock to this scenario", and the state diagram. */
@@ -35,8 +36,9 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
   const reset = useResetScenarios()
   const busy = setState.isPending || reset.isPending
   const titleId = `scenario-${encodeURIComponent(scenario.name)}`
-  // A new step answers in the scenario's last state (the end of its transition order).
+  // A new step comes after the scenario's last state (the end of its transition order) and answers in a new state.
   const lastState = scenario.possibleStates.at(-1) ?? 'Started'
+  const nextState = nextStateName(scenario.possibleStates)
 
   const onSetState = async (state: string) => {
     try {
@@ -86,13 +88,13 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
           <Tooltip>
             <TooltipTrigger asChild>
               <Button asChild variant="outline" size="sm">
-                <Link to="/mocks/new" search={{ scenario: scenario.name, state: lastState }}>
+                <Link to="/mocks/new" search={{ scenario: scenario.name, state: nextState, after: lastState }}>
                   <PlusIcon data-icon="inline-start" />
                   {t('scenarios.addMock')}
                 </Link>
               </Button>
             </TooltipTrigger>
-            <TooltipContent className="max-w-64">{t('scenarios.addMockHint', { state: lastState })}</TooltipContent>
+            <TooltipContent className="max-w-64">{t('scenarios.addMockHint', { state: nextState, after: lastState })}</TooltipContent>
           </Tooltip>
           {scenario.settable ? (
             resetButton

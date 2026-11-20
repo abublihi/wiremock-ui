@@ -193,7 +193,7 @@ Go to **Scenarios → New scenario** (or **Build a scenario** when there are non
 2. **Request**: every step answers the same request. Pick a **Catalog endpoint** (the same picker as **New mock**, then the key value or the default answer), or switch to **Method and URL** for a request that is not in the catalog (a path starting with `/`; add `?name=value` to match a query too).
 3. **Steps**, in the order calls get them. For each step:
    - **State**: the state it answers in. Step 1 is always `Started`.
-   - **Status**, **Headers**, **Body** and an optional **Delay (ms)**. For a catalog endpoint the body starts from the catalog example for the status.
+   - **Status**, **Headers**, **Body** and an optional **Delay (seconds)**, 1 to 120 like the editor's **Slow response**. For a catalog endpoint the body starts from the catalog example for the status. Every step of a catalog request opens again in the editor's Simple mode, unless you add custom headers: those make the step editable in Advanced mode only.
    - **Then move to**: by default the next step's state; the last step stays where it is. You can also stay, or jump to any other step (for example back to step 1 to start over).
 
    **Add step** adds one at the end; the arrow buttons move a step up or down and the bin removes it (all work from the keyboard). A step moved into first place answers in `Started` and hands its old state name to the step it displaced.
@@ -206,7 +206,9 @@ For the loan example: name `loan-approval`, request **NIC → Loan status** with
 
 ### Add a step to an existing scenario
 
-On a scenario's card, **Add a mock to this scenario** opens the mock editor with a banner "Adding a step to scenario …" and the **Scenario (stateful)** section already filled in: the scenario name, and **Only answers when the scenario is in state** set to the scenario's last state. Pick the same request the scenario answers, write the answer, and set **Then move the scenario to state** if the scenario should move on.
+On a scenario's card, **Add a mock to this scenario** adds a step after the scenario's last state. It opens the mock editor with a banner "Adding a step to scenario …" and the **Scenario (stateful)** section already filled in: the scenario name, and **Only answers when the scenario is in state** set to a new state such as `step-3` (rename it if you like; letters, digits and `- _ .`). Pick the same request the scenario answers and write the answer.
+
+Why a new state? A mock only answers while the scenario is in its state. If the new mock answered in the last state too, two mocks would match the same call and the newest would win, so the old last step would never answer again. Instead the new step waits in its own state, and the old last step has to move the scenario there. That is what the banner's checkbox, on by default, does: **Make the current last step move to …**. After the new mock is saved, every mock that answers in the last state and stays there gets **Then move the scenario to state** set to the new state (through the normal save, so someone else's newer edit is never overwritten). The calls then run old last step first, then the new step. If that update fails (someone changed the mock meanwhile, say), a message names the mock and offers to open it, so you can set **Then move the scenario to state** yourself. Untick the box to leave the old last step alone.
 
 You can also put any mock in a scenario by hand: in the mock editor, turn on **Answer differently on later calls** and fill in the scenario name, the state it answers in (blank means `Started`) and, optionally, the state to move to.
 

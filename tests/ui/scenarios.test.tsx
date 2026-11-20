@@ -179,7 +179,7 @@ describe('Scenarios page', () => {
     const card = await screen.findByRole('article', { name: 'loan-approval' })
     expect(screen.getByRole('link', { name: 'New scenario' }).getAttribute('href')).toBe('/scenarios/new')
     expect(within(card).getByRole('link', { name: 'Add a mock to this scenario' }).getAttribute('href')).toBe(
-      '/mocks/new?scenario=loan-approval&state=approved',
+      '/mocks/new?scenario=loan-approval&state=step-3&after=approved',
     )
   })
 })
@@ -284,7 +284,19 @@ describe('mock editor — scenario', () => {
 })
 
 describe('mock editor — adding a step to a scenario', () => {
-  it('opened from a scenario card: a banner says so, the pick keeps the scenario, and the Scenario section starts filled in', async () => {
+  const oldLast = {
+    id: 'm2',
+    name: 'Loan approved',
+    request: { method: 'GET', urlPath: '/nic/loan/status' },
+    response: { status: 200 },
+    scenarioName: 'loan-approval',
+    requiredScenarioState: 'approved',
+    metadata: { wiremockUi: { integration: 'nic', endpoint: 'loan', version: 4 } },
+  }
+  const first = { ...oldLast, id: 'm1', name: 'Loan pending', requiredScenarioState: 'Started', newScenarioState: 'approved' }
+
+  /** The catalog, preview/create, the mock list and updates; `putStatus` makes the update of the old last step fail. */
+  function mockEditorApi({ putStatus = 200 }: { putStatus?: number } = {}) {
     const calls: Call[] = []
     server.use(
       http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
@@ -293,38 +305,121 @@ describe('mock editor — adding a step to a scenario', () => {
         calls.push({ method: 'POST', path: 'preview', body: await request.json() })
         return HttpResponse.json({ name: 'built', request: {}, response: { status: 200 } })
       }),
+      http.post(`${CATALOG}/loan/mocks`, async ({ request }) => {
+        const body = (await request.json()) as { scenario: { name: string; requiredState: string } }
+        calls.push({ method: 'POST', path: 'create', body })
+        return HttpResponse.json(
+          { id: 'm3', name: 'new', request: {}, response: {}, scenarioName: body.scenario.name, requiredScenarioState: body.scenario.requiredState },
+          { status: 201 },
+        )
+      }),
+      http.get(`${BASE}/api/mocks`, () =>
+        HttpResponse.json([first, oldLast, { ...oldLast, id: 'm3', name: 'new', requiredScenarioState: 'step-3', metadata: {} }]),
+      ),
+      http.put(`${BASE}/api/mocks/:id`, async ({ request, params }) => {
+        calls.push({ method: 'PUT', path: String(params.id), body: await request.json() })
+        return putStatus === 200 ? HttpResponse.json(oldLast) : HttpResponse.json({ error: 'Someone else saved this mock first' }, { status: putStatus })
+      }),
     )
     mockScenarios([[loan()]])
-    await renderApp(<NewHarness initial={{ scenario: 'loan-approval', state: 'approved' }} />)
+    return calls
+  }
+
+  async function openAndFill() {
     const ue = userEvent.setup()
-    expect(screen.getByText('Adding a step to scenario loan-approval')).toBeTruthy()
+    const app = await renderApp(<NewHarness initial={{ scenario: 'loan-approval', state: 'step-3', after: 'approved' }} />)
     await ue.click(await screen.findByRole('option', { name: /Loan status/ }))
+    await screen.findByRole('textbox', { name: 'Response body' })
+    await ue.type(screen.getByLabelText('Value of query parameter id'), '7')
+    return { ue, ...app }
+  }
+
+  it('opened from a scenario card: a banner explains it, the pick keeps the scenario, and the Scenario section answers in the new state', async () => {
+    const calls = mockEditorApi()
+    const { ue } = await openAndFill()
     expect(JSON.parse(screen.getByRole('status', { name: 'search' }).textContent!)).toEqual({
       integration: 'nic',
       endpoint: 'loan',
       scenario: 'loan-approval',
-      state: 'approved',
+      state: 'step-3',
+      after: 'approved',
     })
-    await screen.findByRole('textbox', { name: 'Response body' })
     expect(screen.getByText('Adding a step to scenario loan-approval')).toBeTruthy()
+    expect(screen.getByText(/the current last step \(in approved\) has to move the scenario there/)).toBeTruthy()
     expect((screen.getByRole('switch', { name: 'Answer differently on later calls' }) as HTMLButtonElement).getAttribute('aria-checked')).toBe('true')
     expect((screen.getByRole('textbox', { name: 'Scenario name' }) as HTMLInputElement).value).toBe('loan-approval')
-    expect((screen.getByRole('textbox', { name: 'Only answers when the scenario is in state' }) as HTMLInputElement).value).toBe('approved')
+    const required = screen.getByRole('textbox', { name: 'Only answers when the scenario is in state' }) as HTMLInputElement
+    expect(required.value).toBe('step-3')
     // The body still follows the catalog example, as for any new mock.
     expect(screen.getByText('// prefilled from the catalog example for 200')).toBeTruthy()
+    // The checkbox is on by default and follows the state typed in the form.
+    expect(screen.getByRole('checkbox', { name: 'Make the current last step move to step-3' }).getAttribute('aria-checked')).toBe('true')
+    await ue.clear(required)
+    await ue.type(required, 'closed')
+    expect(screen.getByRole('checkbox', { name: 'Make the current last step move to closed' })).toBeTruthy()
+    await ue.type(required, ' now')
+    expect(screen.getByText(/Use letters, digits and - _ . for the new state/)).toBeTruthy()
+    await ue.type(required, '{Backspace>4/}')
+    expect(screen.queryByText(/Use letters, digits and - _ . for the new state/)).toBeNull()
 
-    await ue.type(screen.getByLabelText('Value of query parameter id'), '7')
     await ue.click(screen.getByRole('button', { name: 'Preview' }))
-    await waitFor(() => expect((calls.at(-1)?.body as { scenario?: unknown })?.scenario).toEqual({ name: 'loan-approval', requiredState: 'approved' }))
+    await waitFor(() => expect((calls.at(-1)?.body as { scenario?: unknown })?.scenario).toEqual({ name: 'loan-approval', requiredState: 'closed' }))
+  })
+
+  it('after saving, the old last step is updated (with its version) to move the scenario to the new state', async () => {
+    const calls = mockEditorApi()
+    const { ue, router } = await openAndFill()
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/mocks/m3'))
+    const puts = calls.filter((c) => c.method === 'PUT')
+    expect(puts).toEqual([
+      {
+        method: 'PUT',
+        path: 'm2',
+        body: {
+          version: 4,
+          stub: {
+            name: 'Loan approved',
+            request: { method: 'GET', urlPath: '/nic/loan/status' },
+            response: { status: 200 },
+            scenarioName: 'loan-approval',
+            requiredScenarioState: 'approved',
+            newScenarioState: 'step-3',
+            metadata: { wiremockUi: { integration: 'nic', endpoint: 'loan' } },
+          },
+        },
+      },
+    ])
+    expect(await screen.findByText('Loan approved now moves the scenario to step-3')).toBeTruthy()
+  })
+
+  it('a failed update names the mock to fix, offers to open it, and still opens the new mock', async () => {
+    mockEditorApi({ putStatus: 409 })
+    const { ue, router } = await openAndFill()
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    expect(
+      await screen.findByText("Couldn't make Loan approved move the scenario to step-3. Open it and set Then move the scenario to state to step-3."),
+    ).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open it' })).toBeTruthy()
+    await waitFor(() => expect(router.state.location.pathname).toBe('/mocks/m3'))
+  })
+
+  it('unticked: only the new mock is saved', async () => {
+    const calls = mockEditorApi()
+    const { ue, router } = await openAndFill()
+    await ue.click(screen.getByRole('checkbox', { name: 'Make the current last step move to step-3' }))
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/mocks/m3'))
+    expect(calls.filter((c) => c.method === 'PUT')).toEqual([])
   })
 
   it('the blank JSON stub starts with the scenario fields too', async () => {
     server.use(http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])), http.get(CATALOG, () => HttpResponse.json([endpoint])))
     mockScenarios([[loan()]])
-    await renderApp(<NewHarness initial={{ mode: 'json', scenario: 'loan-approval', state: 'approved' }} />)
+    await renderApp(<NewHarness initial={{ mode: 'json', scenario: 'loan-approval', state: 'step-3', after: 'approved' }} />)
     expect(screen.getByText('Adding a step to scenario loan-approval')).toBeTruthy()
     const json = await screen.findByRole('textbox', { name: /stub JSON/i })
     expect(json.textContent).toContain('"scenarioName": "loan-approval"')
-    expect(json.textContent).toContain('"requiredScenarioState": "approved"')
+    expect(json.textContent).toContain('"requiredScenarioState": "step-3"')
   })
 })

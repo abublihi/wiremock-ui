@@ -12,6 +12,7 @@ export const Route = createFileRoute('/_app/mocks/new')({
     from: str(raw.from),
     scenario: str(raw.scenario),
     state: str(raw.state),
+    after: str(raw.after),
   }),
   component: NewMockRoute,
 })

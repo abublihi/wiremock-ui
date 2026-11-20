@@ -221,8 +221,11 @@ export function ScenarioBuilder() {
               left.push(stub)
             }
           }
-          const vars = { n: create.step, state: create.state, message: messageOf(error, t('error.generic')).replace(/\.$/, ''), count: left.length }
+          const names = left.map((stub) => stub.name ?? stub.id).join(', ')
+          const vars = { n: create.step, state: create.state, message: messageOf(error, t('error.generic')).replace(/\.$/, ''), names }
           setFailure(t(left.length > 0 ? 'builder.rollbackFailed' : 'builder.failed', vars))
+          // Mocks left behind belong to a scenario now: the Scenarios page must show them.
+          if (left.length > 0) await queryClient.invalidateQueries({ queryKey: queryKeys.scenarios })
           return
         }
       }
@@ -446,6 +449,7 @@ export function ScenarioBuilder() {
                 msg={msg}
                 bodyLanguage={bodyLanguage}
                 exampleShown={kind === 'catalog' && step.bodyFromExample && step.body !== ''}
+                catalog={kind === 'catalog'}
                 onChange={(patch) => updateStep(step.id, patch)}
                 onStatus={(status) => onStatus(step, status)}
                 onMove={(dir) => move(step, dir)}
@@ -503,6 +507,7 @@ function StepCard({
   msg,
   bodyLanguage,
   exampleShown,
+  catalog,
   onChange,
   onStatus,
   onMove,
@@ -516,6 +521,8 @@ function StepCard({
   msg: (m: Message | undefined) => string | undefined
   bodyLanguage: 'json' | 'xml' | null
   exampleShown: boolean
+  /** A catalog request: its mocks reopen in Simple mode unless the step adds custom headers. */
+  catalog: boolean
   onChange: (patch: Partial<BuilderStep>) => void
   onStatus: (status: string) => void
   onMove: (dir: 'up' | 'down') => void
@@ -608,13 +615,14 @@ function StepCard({
         </Field>
         <Field>
           <FieldLabel htmlFor={id('move')}>{t('builder.moveTo')}</FieldLabel>
-          <Select value={step.moveTo} onValueChange={(moveTo) => onChange({ moveTo: moveTo as MoveTo })}>
+          <Select value={last && step.moveTo === 'stay' ? 'next' : step.moveTo} onValueChange={(moveTo) => onChange({ moveTo: moveTo as MoveTo })}>
             <SelectTrigger id={id('move')} aria-label={t('builder.moveToOf', { n })} className="w-full font-mono text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="next">{last ? t('builder.moveNextLast') : t('builder.moveNext', { state: nextState })}</SelectItem>
-              <SelectItem value="stay">{t('builder.moveStay', { state: stateLabel })}</SelectItem>
+              {/* On the last step the default already stays. */}
+              {!last && <SelectItem value="stay">{t('builder.moveStay', { state: stateLabel })}</SelectItem>}
               {steps.map((other, j) =>
                 j === index ? null : (
                   <SelectItem key={other.id} value={`step:${other.id}`}>
@@ -653,15 +661,15 @@ function StepCard({
             id={id('delay')}
             type="number"
             inputMode="numeric"
-            min={0}
-            max={120000}
+            min={1}
+            max={120}
             className="font-mono"
             aria-label={t('builder.delayOf', { n })}
-            placeholder="0"
-            value={step.delayMs}
+            placeholder="3"
+            value={step.delaySeconds}
             aria-invalid={Boolean(errors.delay)}
             aria-describedby={described('delay')}
-            onChange={(e) => onChange({ delayMs: e.target.value })}
+            onChange={(e) => onChange({ delaySeconds: e.target.value })}
           />
           {error('delay')}
         </Field>
@@ -673,9 +681,14 @@ function StepCard({
           label={t('builder.headersOf', { n })}
           rows={step.headers}
           invalid={Boolean(errors.headers)}
-          describedBy={described('headers')}
+          describedBy={described('headers', catalog && id('headers-hint'))}
           onChange={(headers) => onChange({ headers })}
         />
+        {catalog && (
+          <FieldDescription id={id('headers-hint')} className="text-xs">
+            {t('builder.headersAdvanced')}
+          </FieldDescription>
+        )}
         {error('headers')}
       </Field>
 

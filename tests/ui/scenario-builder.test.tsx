@@ -45,8 +45,12 @@ const existing: Scenario = {
 
 type Call = { method: string; path: string; body?: unknown }
 
-/** The catalog, the scenario list, and the create/delete endpoints; `failOn` makes the nth create (1-based) fail. */
-function mockApi({ failOn, scenarios = [] }: { failOn?: number; scenarios?: Scenario[] } = {}) {
+/**
+ * The catalog, the scenario list, and the create/delete endpoints; `failOn` makes the nth create (1-based) fail and
+ * `failDelete` the deletes of those mock ids. `scenarioGets` counts the scenario list fetches.
+ */
+let scenarioGets = 0
+function mockApi({ failOn, failDelete = [], scenarios = [] }: { failOn?: number; failDelete?: string[]; scenarios?: Scenario[] } = {}) {
   const calls: Call[] = []
   let creates = 0
   const created = async (path: string, request: Request) => {
@@ -59,11 +63,15 @@ function mockApi({ failOn, scenarios = [] }: { failOn?: number; scenarios?: Scen
   server.use(
     http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
     http.get(CATALOG, () => HttpResponse.json([endpoint])),
-    http.get(`${BASE}/api/scenarios`, () => HttpResponse.json({ scenarios })),
+    http.get(`${BASE}/api/scenarios`, () => {
+      scenarioGets += 1
+      return HttpResponse.json({ scenarios })
+    }),
     http.post(`${CATALOG}/loan/mocks`, ({ request }) => created('catalog', request)),
     http.post(`${BASE}/api/mocks`, ({ request }) => created('mocks', request)),
     http.delete(`${BASE}/api/mocks/:id`, ({ request, params }) => {
       calls.push({ method: 'DELETE', path: `${String(params.id)}?version=${new URL(request.url).searchParams.get('version')}` })
+      if (failDelete.includes(String(params.id))) return HttpResponse.json({ error: 'WireMock is not reachable' }, { status: 502 })
       return new HttpResponse(null, { status: 204 })
     }),
   )
@@ -105,8 +113,9 @@ describe('scenario builder', () => {
     expect(boxes.map((b) => b.querySelector('.font-mono.text-sm')?.textContent)).toEqual(['Started', 'approved', 'Step 3'])
     expect(within(states).queryByRole('button', { name: /as current/ })).toBeNull()
 
-    // "Then move to" can pick any other step, or stay.
+    // "Then move to" can pick any other step, or stay (on the last step the default already stays: no second "stay").
     await ue.click(moveSelect(3))
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Stay here (last step)', 'Step 1: Started', 'Step 2: approved'])
     await ue.click(await screen.findByRole('option', { name: 'Step 1: Started' }))
     expect(moveSelect(3).textContent).toBe('Step 1: Started')
     expect(screen.getByRole('heading', { name: /Step 3/, level: 3 }).textContent).toContain('Step 3 → Started')
@@ -155,7 +164,9 @@ describe('scenario builder', () => {
     await ue.type(textbox('Step 2 state'), 'approved')
     await ue.clear(textbox('Step 2 response body'))
     await ue.type(textbox('Step 2 response body'), 'approved')
-    await ue.type(screen.getByRole('spinbutton', { name: 'Step 2 delay in milliseconds' }), '300')
+    await ue.type(screen.getByRole('spinbutton', { name: 'Step 2 delay in seconds' }), '2')
+    // Custom headers would make a step Advanced-only; the hint says so.
+    expect(screen.getAllByText('Custom headers make this step editable in Advanced mode only.')).toHaveLength(2)
 
     await ue.click(screen.getByRole('button', { name: 'Create scenario' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/scenarios'))
@@ -180,7 +191,7 @@ describe('scenario builder', () => {
           keyValue: '7',
           status: 200,
           body: 'approved',
-          delayMs: 300,
+          delayMs: 2000,
           name: 'loan-approval — approved',
           scenario: { name: 'loan-approval', requiredState: 'approved' },
         },
@@ -207,6 +218,26 @@ describe('scenario builder', () => {
       { method: 'DELETE', path: 'm-1?version=1' },
     ])
     expect(router.state.location.pathname).toBe('/')
+  })
+
+  it('when taking back a step fails too, the message names the mocks left behind and the scenario list refreshes', async () => {
+    mockApi({ failOn: 3, failDelete: ['m-1'] })
+    await renderApp(<ScenarioBuilder />)
+    const ue = userEvent.setup()
+    await ue.type(textbox('Scenario name'), 'loan-approval')
+    await pickEndpoint(ue)
+    await ue.type(textbox('Step 2 state'), 'approved')
+    await ue.click(screen.getByRole('button', { name: 'Add step' }))
+    await ue.type(textbox('Step 3 state'), 'closed')
+    const gets = scenarioGets
+
+    await ue.click(screen.getByRole('button', { name: 'Create scenario' }))
+    expect(
+      await screen.findByText(
+        'Step 3 (closed) was refused: status 418 is not allowed for this endpoint. These mocks made before it could not be removed: loan-approval — Started. Delete them from Mocks before trying again.',
+      ),
+    ).toBeTruthy()
+    await waitFor(() => expect(scenarioGets).toBeGreaterThan(gets))
   })
 
   it('an uncatalogued request: method and URL, saved as full stubs', async () => {

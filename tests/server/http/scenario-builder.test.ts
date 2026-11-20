@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { createCatalogMock } from '../../../src/server/http/handlers/catalog'
-import { createMock } from '../../../src/server/http/handlers/mocks'
+import { createMock, listMocks, updateMock } from '../../../src/server/http/handlers/mocks'
+import type { StubMapping } from '../../../src/server/wiremock/types'
 import type { Endpoint, Integration } from '../../../src/server/catalog/types'
-import { type BuilderDraft, newStep, toCreates } from '../../../src/ui/lib/scenario-builder'
+import { type BuilderDraft, lastStepMocks, movedOn, newStep, nextStateName, toCreates } from '../../../src/ui/lib/scenario-builder'
 import { login, req, startTestRuntime } from '../../helpers/http'
 
 // The scenario builder's output, sent through the same create endpoints the page uses: WireMock answers as the steps say.
@@ -100,4 +101,41 @@ test('method and URL: statuses, headers and a move back to step 1 behave as the 
     { status: 404, body: 'lost' },
     { status: 202, body: '{"at":"warehouse"}' },
   ])
+})
+
+test('a step added after the last one: the old last step answers first, then moves the scenario on to the new step', async () => {
+  const request = { kind: 'catalog' as const, integration, endpoint, isDefault: false, keyValue: '77' }
+  const draft: BuilderDraft = {
+    name: 'refund',
+    request,
+    steps: [newStep('a', { body: '{"status":"pending"}' }), newStep('b', { state: 'approved', body: '{"status":"approved"}' })],
+  }
+  expect(await save(draft)).toEqual([201, 201])
+
+  // "Add a mock to this scenario": a new state after the last one (approved), saved through the catalog create path.
+  const listed = (await env.rt.scenarios.list()).find((s) => s.name === 'refund')!
+  const after = listed.possibleStates.at(-1)!
+  const next = nextStateName(listed.possibleStates)
+  expect([after, next]).toEqual(['approved', 'step-3'])
+  const res = await createCatalogMock(
+    env.rt,
+    req('/api/integrations/shop/endpoints/order-status/mocks', 'POST', { keyValue: '77', status: 200, body: '{"status":"paid out"}', scenario: { name: 'refund', requiredState: next } }, as()),
+    { key: 'shop', endpoint: 'order-status' },
+  )
+  expect(res.status).toBe(201)
+  const added = (await res.json()) as StubMapping
+
+  // Then the old last step is made to move on (the editor's update path, with its version).
+  const all = (await (await listMocks(env.rt, req('/api/mocks', 'GET', undefined, as()))).json()) as StubMapping[]
+  const last = lastStepMocks(all, 'refund', after, added.id)
+  expect(last.map((m) => m.name)).toEqual(['refund — approved'])
+  for (const old of last) {
+    const body = { stub: movedOn(old, next), version: old.metadata!.wiremockUi!.version }
+    const updated = await updateMock(env.rt, req(`/api/mocks/${old.id}`, 'PUT', body, as()), { id: old.id })
+    expect(updated.status).toBe(200)
+  }
+
+  const answers = []
+  for (let i = 0; i < 4; i++) answers.push(JSON.parse((await call('/shop/orders/status?id=77')).body))
+  expect(answers).toEqual([{ status: 'pending' }, { status: 'approved' }, { status: 'paid out' }, { status: 'paid out' }])
 })

@@ -3,7 +3,7 @@ import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { Scenario, ScenarioMock } from '@/server/scenarios/service'
 import type { StubMapping } from '@/server/wiremock/types'
 import type { MessageKey } from '@/ui/i18n'
-import { type HeaderRow, STARTED, headerMap, isScenarioNameSettable } from './editor-sync'
+import { type HeaderRow, STARTED, fromEditable, headerMap, isScenarioNameSettable, linkOf, toEditable } from './editor-sync'
 
 /**
  * The scenario builder's model: one request, an ordered list of steps (each the answer in one state and the
@@ -21,8 +21,8 @@ export type BuilderStep = {
   status: string
   headers: HeaderRow[]
   body: string
-  /** Milliseconds as typed; '' for no delay. */
-  delayMs: string
+  /** Whole seconds as typed (1–120, like Simple mode's "slow"); '' for no delay. */
+  delaySeconds: string
   moveTo: MoveTo
   /** The body is the catalog's example for the status and follows it until the user types. */
   bodyFromExample: boolean
@@ -36,10 +36,12 @@ export type Message = { key: MessageKey; vars?: Record<string, string | number> 
 export type StepField = 'state' | 'status' | 'headers' | 'body' | 'delay'
 export type BuilderErrors = { name?: Message; request?: Message; steps: Record<string, Partial<Record<StepField, Message>>> }
 
-export const MAX_DELAY_MS = 120_000
+/** The delay range Simple mode can show (its "slow" switch), so builder mocks reopen in Simple mode. */
+export const MIN_DELAY_SECONDS = 1
+export const MAX_DELAY_SECONDS = 120
 
 export function newStep(id: string, over: Partial<BuilderStep> = {}): BuilderStep {
-  return { id, state: '', status: '200', headers: [], body: '', delayMs: '', moveTo: 'next', bodyFromExample: false, ...over }
+  return { id, state: '', status: '200', headers: [], body: '', delaySeconds: '', moveTo: 'next', bodyFromExample: false, ...over }
 }
 
 /** The state a step answers in (the first step's is always `Started`). */
@@ -123,7 +125,8 @@ export function validateDraft(draft: BuilderDraft): BuilderErrors {
       }
     }
 
-    if (step.delayMs.trim() !== '' && (!isInt(step.delayMs) || Number(step.delayMs) < 0 || Number(step.delayMs) > MAX_DELAY_MS))
+    const seconds = step.delaySeconds.trim()
+    if (seconds !== '' && (!isInt(seconds) || Number(seconds) < MIN_DELAY_SECONDS || Number(seconds) > MAX_DELAY_SECONDS))
       e.delay = { key: 'builder.delayRange' }
 
     if (Object.keys(e).length > 0) errors.steps[step.id] = e
@@ -156,7 +159,7 @@ export function toCreates(draft: BuilderDraft): Create[] {
     const newState = targetOf(draft.steps, i)
     const status = Number(step.status)
     const headers = headerMap(step.headers)
-    const delay = step.delayMs.trim() === '' ? undefined : Number(step.delayMs)
+    const delay = step.delaySeconds.trim() === '' ? undefined : Number(step.delaySeconds) * 1000
     const mockName = `${name} — ${state}`
     const scenario = { name, requiredState: state, ...(newState ? { newState } : {}) }
 
@@ -222,4 +225,29 @@ export function previewScenario(draft: BuilderDraft, label: (n: number) => strin
     }
   })
   return { name: draft.name.trim(), state: '', possibleStates: states, settable: true, mocks }
+}
+
+// ── Adding a step to an existing scenario ─────────────────────────────────────
+
+/** The state a step added after a scenario's last one answers in: `step-<n+1>`, skipping names the scenario uses. */
+export function nextStateName(possibleStates: string[]): string {
+  let n = possibleStates.length + 1
+  while (possibleStates.includes(`step-${n}`)) n++
+  return `step-${n}`
+}
+
+/** A scenario's last step: the mocks that answer in `from` and leave the scenario there (`exceptId`, the new step, aside). */
+export function lastStepMocks(stubs: StubMapping[], scenario: string, from: string, exceptId?: string): StubMapping[] {
+  return stubs.filter(
+    (s) =>
+      s.id !== exceptId &&
+      s.scenarioName === scenario &&
+      s.requiredScenarioState === from &&
+      (s.newScenarioState === undefined || s.newScenarioState === '' || s.newScenarioState === from),
+  )
+}
+
+/** The stub to save over a last-step mock so it moves the scenario on to `to` (the editor's Advanced save shape). */
+export function movedOn(stub: StubMapping, to: string): Omit<StubMapping, 'id'> {
+  return fromEditable({ ...toEditable(stub), newScenarioState: to }, linkOf(stub))
 }

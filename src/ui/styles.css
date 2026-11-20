@@ -69,7 +69,7 @@
   --match: #00a676;
 
   --muted-text: var(--muted-ink);
-  --signal-fg: #036f9b;
+  --signal-fg: #02668f;
   --hazard-fg: #9a5200;
   --on-signal: #04121a;
   --grid-dot: rgb(140 156 178 / 0.45);
@@ -93,7 +93,7 @@
     --match: #00a676;
 
     --muted-text: var(--muted-ink);
-    --signal-fg: #036f9b;
+    --signal-fg: #02668f;
     --hazard-fg: #9a5200;
     --on-signal: #04121a;
     --grid-dot: rgb(140 156 178 / 0.45);

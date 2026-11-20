@@ -279,7 +279,7 @@ export const en = {
   'scenarios.resetAllFailed': "Couldn't reset the scenarios",
   'scenarios.new': 'New scenario',
   'scenarios.addMock': 'Add a mock to this scenario',
-  'scenarios.addMockHint': 'Opens the mock editor with this scenario filled in, answering in {state}.',
+  'scenarios.addMockHint': 'Opens the mock editor for a new step after {after}: it answers in {state}.',
   'builder.title': 'New scenario',
   'builder.caption': '// one request, several answers in order',
   'builder.back': 'Back to scenarios',
@@ -327,9 +327,10 @@ export const en = {
   'builder.body': 'Body',
   'builder.bodyOf': 'Step {n} response body',
   'builder.bodyJson': 'The body is not valid JSON. Fix it or clear it.',
-  'builder.delay': 'Delay (ms)',
-  'builder.delayOf': 'Step {n} delay in milliseconds',
-  'builder.delayRange': 'Enter a delay from 0 to 120000 ms, or leave it empty.',
+  'builder.delay': 'Delay (seconds)',
+  'builder.delayOf': 'Step {n} delay in seconds',
+  'builder.delayRange': 'Enter a delay from 1 to 120 seconds, or leave it empty.',
+  'builder.headersAdvanced': 'Custom headers make this step editable in Advanced mode only.',
   'builder.moveTo': 'Then move to',
   'builder.moveToOf': 'Step {n}: then move to',
   'builder.moveNext': 'Next step ({state})',
@@ -352,9 +353,19 @@ export const en = {
   'builder.failedTitle': "Couldn't create the scenario",
   'builder.failed': 'Step {n} ({state}) was refused: {message}. Nothing was saved; fix it and try again.',
   'builder.rollbackFailed':
-    'Step {n} ({state}) was refused: {message}. {count} mocks made before it could not be removed; delete them from Mocks before trying again.',
+    'Step {n} ({state}) was refused: {message}. These mocks made before it could not be removed: {names}. Delete them from Mocks before trying again.',
   'builder.leaveBody': 'This scenario has not been created yet; its steps will be lost.',
   'editor.scenarioBanner': 'Adding a step to scenario {name}',
+  'editor.scenarioBannerAfter':
+    'Pick the request the scenario answers. The Scenario section is filled in: this mock answers in a new state, {state}. A mock only answers once the scenario reaches its state, so the current last step (in {after}) has to move the scenario there.',
+  'editor.scenarioLinkLast': 'Make the current last step move to {state}',
+  'editor.scenarioLinkLastHint': 'After saving, the mocks that answer in {after} and stay there are changed to move the scenario to {state}.',
+  'editor.scenarioStateUnsettable':
+    "Use letters, digits and - _ . for the new state: the Scenarios page can't move the scenario to a state with spaces or symbols like / or %.",
+  'editor.lastStepMoved': '{name} now moves the scenario to {state}',
+  'editor.lastStepFailed': "Couldn't make {name} move the scenario to {state}. Open it and set Then move the scenario to state to {state}.",
+  'editor.lastStepLoadFailed':
+    "Couldn't find the last step of {scenario}. Open the mocks that answer in {after} and set Then move the scenario to state to {state}.",
   'editor.scenarioBannerHint':
     'Pick the request this scenario answers. The Scenario section is filled in: the mock answers in {state}; set where it moves the scenario next.',
   'editor.scenario.toggle': 'Answer differently on later calls',
