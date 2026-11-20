@@ -16,7 +16,8 @@ export const testUser: PublicUser = {
 export const testSession: SessionData = { user: testUser, csrfToken: 'csrf-1' }
 
 /**
- * Renders `ui` at "/" inside a router that also has "/login" and "/mocks" pages that print their search,
+ * Renders `ui` at "/" inside a router that also has "/login", "/mocks", "/mocks/new" and "/catalog/$key" pages that print
+ * their search or params,
  * so tests can see where navigation ended up. Pass `session` to prime the query cache (and CSRF token).
  */
 export async function renderApp(ui: ReactNode, opts: { path?: string; session?: SessionData | null } = {}) {
@@ -45,8 +46,19 @@ export async function renderApp(ui: ReactNode, opts: { path?: string; session?: 
   })
   const mocks = createRoute({ getParentRoute: () => root, path: '/mocks', component: () => <main>mocks page</main> })
   const other = createRoute({ getParentRoute: () => root, path: '/requests', component: () => <main>requests page</main> })
+  const newMock = createRoute({
+    getParentRoute: () => root,
+    path: '/mocks/new',
+    validateSearch: (s: Record<string, unknown>) => s,
+    component: () => <main>new mock page {JSON.stringify(newMock.useSearch())}</main>,
+  })
+  const integrationPage = createRoute({
+    getParentRoute: () => root,
+    path: '/catalog/$key',
+    component: () => <main>integration page {(integrationPage.useParams() as { key: string }).key}</main>,
+  })
   const router = createRouter({
-    routeTree: root.addChildren([home, login, mocks, other]),
+    routeTree: root.addChildren([home, login, mocks, newMock, other, integrationPage]),
     history: createMemoryHistory({ initialEntries: [opts.path ?? '/'] }),
   })
   render(<RouterProvider router={router} />)

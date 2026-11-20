@@ -1,4 +1,4 @@
-import type { Endpoint } from '@/server/catalog/types'
+import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
 
 /** A name/value row (query parameter or header); names may repeat. */
@@ -250,4 +250,36 @@ export function loggedHeaders(event: Pick<LoggedEvent, 'request'>): Pair[] {
 export function draftFromLoggedRequest(event: Pick<LoggedEvent, 'request'>): RequestDraft {
   const { path, query } = splitUrl(event.request.url)
   return { method: (event.request.method || 'GET').toUpperCase(), path, query, headers: loggedHeaders(event), body: event.request.body ?? '' }
+}
+
+// ── Catalog endpoint → draft ─────────────────────────────────────────────────
+
+const CONTENT_TYPES: Record<Endpoint['contentType'], string> = {
+  json: 'application/json',
+  xml: 'application/xml',
+  text: 'text/plain',
+  html: 'text/html',
+}
+
+/**
+ * The request "Try it" sends for a catalog endpoint: its method (ANY → GET), the integration prefix + path
+ * (template variables and regex pieces filled with a sample), the example request as the body, and a query
+ * parameter or header named by the key lookup (value `example`) so the shape is right.
+ */
+export function draftFromEndpoint(
+  integration: Pick<Integration, 'prefix'>,
+  endpoint: Pick<Endpoint, 'method' | 'path' | 'pathType' | 'lookup' | 'contentType' | 'exampleRequest'>,
+): StubDraft {
+  const url = (integration.prefix === '/' ? '' : integration.prefix) + endpoint.path
+  const pathKey = endpoint.pathType === 'template' ? 'urlPathTemplate' : endpoint.pathType === 'regex' ? 'urlPathPattern' : 'urlPath'
+  const request: Record<string, unknown> = { method: endpoint.method, [pathKey]: url }
+  const lookup = endpoint.lookup
+  if (lookup?.location === 'query') request.queryParameters = { [lookup.expression]: { equalTo: EXAMPLE } }
+  if (lookup?.location === 'header') request.headers = { [lookup.expression]: { equalTo: EXAMPLE } }
+  if (lookup?.location === 'form' && !endpoint.exampleRequest?.trim()) request.formParameters = { [lookup.expression]: { equalTo: EXAMPLE } }
+  const { draft, pathIsPattern } = draftFromStub({ request } as Pick<StubMapping, 'request'>, endpoint)
+  // The catalog knows the body's type better than a guess from its first character.
+  const ct = draft.headers.findIndex((h) => h.name.toLowerCase() === 'content-type')
+  if (ct >= 0 && draft.body.trim() && lookup?.location !== 'form') draft.headers[ct] = { name: 'Content-Type', value: CONTENT_TYPES[endpoint.contentType] }
+  return { draft, pathIsPattern }
 }

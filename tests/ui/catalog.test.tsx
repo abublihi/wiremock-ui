@@ -6,7 +6,9 @@ import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import { CatalogPage } from '@/routes/_app/catalog.index'
-import { IntegrationPage } from '@/routes/_app/catalog.$key'
+import { IntegrationPage } from '@/routes/_app/catalog.$key.index'
+import { EndpointPage } from '@/ui/components/catalog/EndpointPage'
+import { EndpointInfo } from '@/ui/components/editor/EndpointPicker'
 import { renderApp } from './helpers'
 
 const server = setupServer()
@@ -143,10 +145,10 @@ describe('catalog index', () => {
     await screen.findByRole('link', { name: /NIC/, hidden: true })
   })
 
-  it('shows an empty state with an add button', async () => {
+  it('shows an empty state that invites adding the system the app calls', async () => {
     mockApi({ integrations: [] })
     await renderApp(<CatalogPage />)
-    await screen.findByText('No integrations yet')
+    await screen.findByText('Add the system your app calls')
     expect(screen.getAllByRole('button', { name: 'Add integration' })).toHaveLength(2)
   })
 })
@@ -165,86 +167,6 @@ describe('integration page', () => {
     expect(href.pathname).toBe('/mocks/new')
     expect(href.searchParams.get('integration')).toBe('nic')
     expect(href.searchParams.get('endpoint')).toBe('get-citizen')
-  })
-
-  it('adds an endpoint: lookup shape, path type, statuses and no server fields', async () => {
-    const calls = mockApi({ endpoints: [] })
-    await renderApp(<IntegrationPage integrationKey="nic" />)
-    const ue = userEvent.setup()
-    await screen.findByText('No endpoints yet')
-    await ue.click(screen.getByRole('button', { name: 'Add endpoint' }))
-    const sheet = await screen.findByRole('dialog')
-    await ue.type(within(sheet).getByLabelText('Key'), 'get-citizen')
-    await ue.type(within(sheet).getByLabelText('Name'), 'Fetch citizen')
-    await ue.clear(within(sheet).getByLabelText('Path'))
-    await ue.type(within(sheet).getByLabelText('Path'), '/citizens/{{id}')
-    await ue.click(within(sheet).getByRole('radio', { name: 'Template' }))
-    await ue.click(within(sheet).getByRole('combobox', { name: 'Lookup location' }))
-    await ue.click(await screen.findByRole('option', { name: 'Path variable' }))
-    await ue.type(within(sheet).getByLabelText('Lookup expression'), 'id')
-    await ue.type(within(sheet).getByLabelText('Add status'), '200')
-    await ue.click(within(sheet).getByRole('button', { name: 'Add status' }))
-    await ue.type(within(sheet).getByLabelText('Add status'), '404{Enter}')
-    expect(within(sheet).getByText('404')).toBeTruthy()
-    await ue.click(within(sheet).getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(calls).toHaveLength(1))
-    expect(calls[0]).toMatchObject({ method: 'PUT', path: '/api/integrations/nic/endpoints/get-citizen', ifNoneMatch: '*' })
-    await screen.findByText('Endpoint saved')
-    expect(calls[0]!.body).toEqual({
-      name: 'Fetch citizen',
-      method: 'GET',
-      path: '/citizens/{id}',
-      pathType: 'template',
-      lookup: { location: 'path', expression: 'id' },
-      contentType: 'json',
-      exampleResponses: {},
-      allowedStatuses: [200, 404],
-    })
-  })
-
-  it('shows the lookup placeholder for the chosen location', async () => {
-    mockApi({ endpoints: [] })
-    await renderApp(<IntegrationPage integrationKey="nic" />)
-    const ue = userEvent.setup()
-    await ue.click(await screen.findByRole('button', { name: 'Add endpoint' }))
-    const sheet = await screen.findByRole('dialog')
-    await ue.click(within(sheet).getByRole('combobox', { name: 'Lookup location' }))
-    await ue.click(await screen.findByRole('option', { name: 'JSON body (JSONPath)' }))
-    expect(within(sheet).getByLabelText('Lookup expression').getAttribute('placeholder')).toBe('$.idNo')
-    await ue.click(within(sheet).getByRole('combobox', { name: 'Lookup location' }))
-    await ue.click(await screen.findByRole('option', { name: 'XML body (XPath)' }))
-    expect(within(sheet).getByLabelText('Lookup expression').getAttribute('placeholder')).toBe('/Envelope/Body/id')
-  })
-
-  it('edits an endpoint: key is fixed, body omits integration, key, updatedAt and updatedBy', async () => {
-    const calls = mockApi()
-    await renderApp(<IntegrationPage integrationKey="nic" />)
-    const ue = userEvent.setup()
-    await ue.click(await screen.findByRole('button', { name: 'Edit Fetch citizen' }))
-    const sheet = await screen.findByRole('dialog')
-    const key = within(sheet).getByLabelText('Key') as HTMLInputElement
-    expect(key.disabled).toBe(true)
-    expect(key.value).toBe('get-citizen')
-    await ue.type(within(sheet).getByLabelText('Name'), ' v2')
-    await ue.click(within(sheet).getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(calls).toHaveLength(1))
-    const body = calls[0]!.body as Record<string, unknown>
-    expect(body.name).toBe('Fetch citizen v2')
-    expect(calls[0]!.ifNoneMatch).toBeNull()
-    expect(body.exampleResponses).toEqual({ '200': '{"name":"Sara"}' })
-    for (const field of ['updatedAt', 'updatedBy', 'integration', 'key']) expect(body).not.toHaveProperty(field)
-  })
-
-  it('puts a 400 message on the field it names', async () => {
-    mockApi({ put: () => HttpResponse.json({ error: 'lookup.expression for jsonPath must start with $' }, { status: 400 }) })
-    await renderApp(<IntegrationPage integrationKey="nic" />)
-    const ue = userEvent.setup()
-    await ue.click(await screen.findByRole('button', { name: 'Edit Fetch citizen' }))
-    const sheet = await screen.findByRole('dialog')
-    await ue.click(within(sheet).getByRole('button', { name: 'Save' }))
-    const expression = within(sheet).getByLabelText('Lookup expression')
-    await waitFor(() => expect(expression.getAttribute('aria-invalid')).toBe('true'))
-    expect(within(sheet).getByText('lookup.expression for jsonPath must start with $')).toBeTruthy()
   })
 
   it('shows the server message when deleting an endpoint that still has mocks, then deletes a clean one', async () => {
@@ -266,35 +188,6 @@ describe('integration page', () => {
     await ue.click(within(dialog).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
     expect(attempts).toBe(2)
-  })
-
-  it('refuses to add an endpoint over an existing key, without sending the PUT', async () => {
-    const calls = mockApi()
-    await renderApp(<IntegrationPage integrationKey="nic" />)
-    const ue = userEvent.setup()
-    await ue.click(await screen.findByRole('button', { name: 'Add endpoint' }))
-    const sheet = await screen.findByRole('dialog')
-    await ue.type(within(sheet).getByLabelText('Key'), 'get-citizen')
-    await ue.type(within(sheet).getByLabelText('Name'), 'Dup')
-    await ue.click(within(sheet).getByRole('button', { name: 'Save' }))
-    await within(sheet).findByText('An endpoint with this key already exists')
-    expect(calls).toHaveLength(0)
-  })
-
-  it('puts a 409 from the create-only PUT on the key field when the cached list is stale', async () => {
-    const calls = mockApi({ endpoints: [], put: () => HttpResponse.json({ error: 'An endpoint with this key already exists' }, { status: 409 }) })
-    await renderApp(<IntegrationPage integrationKey="nic" />)
-    const ue = userEvent.setup()
-    await screen.findByText('No endpoints yet')
-    await ue.click(screen.getByRole('button', { name: 'Add endpoint' }))
-    const sheet = await screen.findByRole('dialog')
-    await ue.type(within(sheet).getByLabelText('Key'), 'get-citizen')
-    await ue.type(within(sheet).getByLabelText('Name'), 'Dup')
-    await ue.click(within(sheet).getByRole('button', { name: 'Save' }))
-    const key = within(sheet).getByLabelText('Key')
-    await waitFor(() => expect(key.getAttribute('aria-invalid')).toBe('true'))
-    expect(within(sheet).getByText('An endpoint with this key already exists')).toBeTruthy()
-    expect(calls).toEqual([expect.objectContaining({ method: 'PUT', ifNoneMatch: '*' })])
   })
 
   it('shows the server message when deleting an integration that still has mocks', async () => {
@@ -333,12 +226,243 @@ describe('integration page', () => {
     await screen.findByText('Fetch citizen')
     expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Add endpoint' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Add endpoint' })).toBeTruthy()
   })
 
   it('says so when the integration does not exist', async () => {
     mockApi()
     await renderApp(<IntegrationPage integrationKey="nope" />)
     await screen.findByText('Integration not found')
+  })
+})
+
+describe('how it fits together', () => {
+  afterEach(() => localStorage.clear())
+
+  it('explains integration, endpoint and mock with the NIC example, and stays hidden once dismissed', async () => {
+    mockApi()
+    await renderApp(<CatalogPage />)
+    const strip = await screen.findByRole('region', { name: 'How it fits together' })
+    for (const word of ['Integration', 'Endpoint', 'Mock']) expect(within(strip).getByRole('heading', { name: word })).toBeTruthy()
+    expect(within(strip).getByText('POST /nic/citizens/fetch')).toBeTruthy()
+    const ue = userEvent.setup()
+    await ue.click(within(strip).getByRole('button', { name: 'Hide this explainer' }))
+    expect(screen.queryByRole('region', { name: 'How it fits together' })).toBeNull()
+    expect(localStorage.getItem('wmui.catalogExplainer.dismissed')).toBe('1')
+    // It can be brought back from the header.
+    await ue.click(screen.getByRole('button', { name: 'How it fits together' }))
+    expect(await screen.findByRole('region', { name: 'How it fits together' })).toBeTruthy()
+  })
+
+  it('starts hidden when this browser dismissed it before', async () => {
+    localStorage.setItem('wmui.catalogExplainer.dismissed', '1')
+    mockApi()
+    await renderApp(<CatalogPage />)
+    await screen.findByRole('link', { name: /NIC/ })
+    expect(screen.queryByRole('region', { name: 'How it fits together' })).toBeNull()
+  })
+})
+
+describe('integration page endpoint actions', () => {
+  it('links Add endpoint and Edit to the endpoint pages', async () => {
+    mockApi()
+    await renderApp(<IntegrationPage integrationKey="nic" />)
+    await screen.findByText('Fetch citizen')
+    expect(screen.getByRole('link', { name: 'Add endpoint' }).getAttribute('href')).toBe('/catalog/nic/endpoints/new')
+    expect(screen.getByRole('link', { name: 'Edit Fetch citizen' }).getAttribute('href')).toBe('/catalog/nic/endpoints/get-citizen/edit')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('Try it opens the test panel with the example request', async () => {
+    mockApi({ endpoints: [endpoint({ exampleRequest: '{"idNo":"1012345678"}' })] })
+    server.use(http.get(`${BASE}/api/config`, () => HttpResponse.json({ wiremockPublicUrl: 'http://wm:8080', storeDriver: 'sqlite' })))
+    await renderApp(<IntegrationPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    await ue.click(await screen.findByRole('button', { name: 'Try it: Fetch citizen' }))
+    const panel = await screen.findByRole('dialog', { name: 'Try this endpoint' })
+    expect((within(panel).getByRole('textbox', { name: 'Path' }) as HTMLInputElement).value).toBe('/nic/citizens')
+    expect(within(panel).getByRole('combobox', { name: 'Method' }).textContent).toContain('POST')
+    expect((within(panel).getByRole('textbox', { name: 'Body' }) as HTMLTextAreaElement).value).toBe('{"idNo":"1012345678"}')
+  })
+})
+
+describe('endpoint page', () => {
+  it('adds an endpoint with the create-only PUT, then goes back to the integration with a New mock action', async () => {
+    const calls = mockApi({ endpoints: [] })
+    const { router } = await renderApp(<EndpointPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    await screen.findByRole('heading', { level: 1, name: 'Add endpoint' })
+    await ue.type(screen.getByLabelText('Endpoint ID'), 'get-citizen')
+    await ue.type(screen.getByLabelText('Name'), 'Fetch citizen')
+    await ue.clear(screen.getByLabelText('Path'))
+    await ue.type(screen.getByLabelText('Path'), '/citizens/{{id}')
+    await ue.click(screen.getByRole('radio', { name: 'Template' }))
+    await ue.click(screen.getByRole('combobox', { name: 'Where the key is' }))
+    await ue.click(await screen.findByRole('option', { name: 'Path variable' }))
+    await ue.type(screen.getByLabelText('Key expression'), 'id')
+    await ue.type(screen.getByLabelText('Add status'), '200')
+    await ue.click(screen.getByRole('button', { name: 'Add status' }))
+    await ue.type(screen.getByLabelText('Add status'), '404{Enter}')
+    await ue.click(screen.getByRole('button', { name: 'Save endpoint' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0]).toMatchObject({ method: 'PUT', path: '/api/integrations/nic/endpoints/get-citizen', ifNoneMatch: '*' })
+    expect(calls[0]!.body).toEqual({
+      name: 'Fetch citizen',
+      method: 'GET',
+      path: '/citizens/{id}',
+      pathType: 'template',
+      lookup: { location: 'path', expression: 'id' },
+      contentType: 'json',
+      exampleResponses: {},
+      allowedStatuses: [200, 404],
+    })
+    await screen.findByText('integration page nic')
+    await screen.findByText('Endpoint Fetch citizen saved')
+    await ue.click(screen.getByRole('button', { name: 'New mock from this endpoint' }))
+    await screen.findByText(/new mock page/)
+    expect(router.state.location.search).toEqual({ integration: 'nic', endpoint: 'get-citizen' })
+  })
+
+  it('previews the picker row and key label testers will see, live', async () => {
+    mockApi({ endpoints: [] })
+    await renderApp(<EndpointPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    const preview = await screen.findByRole('region', { name: 'How testers will see this' })
+    expect(within(preview).getByText('No key: every mock of this endpoint answers every request.')).toBeTruthy()
+    await ue.type(screen.getByLabelText('Name'), 'Fetch citizen')
+    await ue.clear(screen.getByLabelText('Path'))
+    await ue.type(screen.getByLabelText('Path'), '/citizens/fetch')
+    await ue.click(screen.getByRole('combobox', { name: 'Method' }))
+    await ue.click(await screen.findByRole('option', { name: 'POST' }))
+    await ue.click(screen.getByRole('combobox', { name: 'Where the key is' }))
+    await ue.click(await screen.findByRole('option', { name: 'JSON body (JSONPath)' }))
+    await ue.type(screen.getByLabelText('Key expression'), '$.idNo')
+    expect(within(preview).getByText('Fetch citizen')).toBeTruthy()
+    expect(within(preview).getByText('/nic')).toBeTruthy()
+    expect(within(preview).getByText('/citizens/fetch')).toBeTruthy()
+    expect(within(preview).getByText('POST')).toBeTruthy()
+    expect(within(preview).getByText('Value of $.idNo in the request body')).toBeTruthy()
+  })
+
+  it('explains each path type and key location with an example', async () => {
+    mockApi({ endpoints: [] })
+    await renderApp(<EndpointPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    await screen.findByText(/must equal this text/)
+    await ue.click(screen.getByRole('radio', { name: 'Template' }))
+    expect(screen.getByText(/\/citizens\/\{id\} matches \/nic\/citizens\/42/)).toBeTruthy()
+    await ue.click(screen.getByRole('radio', { name: 'Regex' }))
+    expect(screen.getByText(/regular expression/)).toBeTruthy()
+    const where = screen.getByRole('combobox', { name: 'Where the key is' })
+    const cases: [string, string, RegExp][] = [
+      ['JSON body (JSONPath)', '$.idNo', /\{"idNo":"1012345678"\}/],
+      ['XML body (XPath)', '/Envelope/Body/id', /<id>1012345678<\/id>/],
+      ['Query parameter', 'id', /\?id=1012345678/],
+      ['Path variable', 'id', /the key id reads 42/],
+      ['Header', 'X-Account-Id', /X-Account-Id: 1012345678/],
+      ['Form field', 'accountId', /accountId=1012345678/],
+    ]
+    for (const [option, placeholder, example] of cases) {
+      await ue.click(where)
+      await ue.click(await screen.findByRole('option', { name: option }))
+      expect(screen.getByLabelText('Key expression').getAttribute('placeholder')).toBe(placeholder)
+      expect(screen.getByText(example)).toBeTruthy()
+    }
+  })
+
+  it('edits an endpoint: key is locked, plain PUT, example tabs per status, server fields left out', async () => {
+    const calls = mockApi()
+    await renderApp(<EndpointPage integrationKey="nic" endpointKey="get-citizen" />)
+    const ue = userEvent.setup()
+    await screen.findByRole('heading', { level: 1, name: 'Edit endpoint' })
+    const key = screen.getByLabelText('Endpoint ID') as HTMLInputElement
+    expect(key.disabled).toBe(true)
+    expect(key.value).toBe('get-citizen')
+    expect(screen.getByRole('tab', { name: '200' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: '404' })).toBeTruthy()
+    await ue.type(screen.getByLabelText('Name'), ' v2')
+    await ue.click(screen.getByRole('button', { name: 'Save endpoint' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    const body = calls[0]!.body as Record<string, unknown>
+    expect(body.name).toBe('Fetch citizen v2')
+    expect(calls[0]!.ifNoneMatch).toBeNull()
+    expect(body.exampleResponses).toEqual({ '200': '{"name":"Sara"}' })
+    for (const field of ['updatedAt', 'updatedBy', 'integration', 'key']) expect(body).not.toHaveProperty(field)
+    await screen.findByText('integration page nic')
+  })
+
+  it('puts a 400 message on the field it names and stays on the page', async () => {
+    mockApi({ put: () => HttpResponse.json({ error: 'lookup.expression for jsonPath must start with $' }, { status: 400 }) })
+    await renderApp(<EndpointPage integrationKey="nic" endpointKey="get-citizen" />)
+    const ue = userEvent.setup()
+    await ue.click(await screen.findByRole('button', { name: 'Save endpoint' }))
+    const expression = screen.getByLabelText('Key expression')
+    await waitFor(() => expect(expression.getAttribute('aria-invalid')).toBe('true'))
+    expect(screen.getByText('lookup.expression for jsonPath must start with $')).toBeTruthy()
+    expect(screen.queryByText('integration page nic')).toBeNull()
+  })
+
+  it('refuses to add an endpoint over an existing key, without sending the PUT', async () => {
+    const calls = mockApi()
+    await renderApp(<EndpointPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    await screen.findByRole('heading', { level: 1, name: 'Add endpoint' })
+    await waitFor(() => expect(screen.getByLabelText('Endpoint ID')).toBeTruthy())
+    await ue.type(screen.getByLabelText('Endpoint ID'), 'get-citizen')
+    await ue.type(screen.getByLabelText('Name'), 'Dup')
+    await ue.click(screen.getByRole('button', { name: 'Save endpoint' }))
+    await screen.findByText('An endpoint with this ID already exists. Pick another ID.')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('puts a 409 from the create-only PUT on the key field when the cached list is stale', async () => {
+    const calls = mockApi({ endpoints: [], put: () => HttpResponse.json({ error: 'An endpoint with this key already exists' }, { status: 409 }) })
+    await renderApp(<EndpointPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    await screen.findByRole('heading', { level: 1, name: 'Add endpoint' })
+    await ue.type(screen.getByLabelText('Endpoint ID'), 'get-citizen')
+    await ue.type(screen.getByLabelText('Name'), 'Dup')
+    await ue.click(screen.getByRole('button', { name: 'Save endpoint' }))
+    const key = screen.getByLabelText('Endpoint ID')
+    await waitFor(() => expect(key.getAttribute('aria-invalid')).toBe('true'))
+    expect(screen.getByText('An endpoint with this ID already exists. Pick another ID.')).toBeTruthy()
+    expect(calls).toEqual([expect.objectContaining({ method: 'PUT', ifNoneMatch: '*' })])
+  })
+
+  it('asks before leaving with unsaved changes', async () => {
+    mockApi({ endpoints: [] })
+    await renderApp(<EndpointPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    await screen.findByRole('heading', { level: 1, name: 'Add endpoint' })
+    await ue.type(screen.getByLabelText('Name'), 'Draft')
+    await ue.click(screen.getByRole('link', { name: 'Back to NIC' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await ue.click(within(dialog).getByRole('button', { name: 'Stay' }))
+    expect(screen.getByRole('heading', { level: 1, name: 'Add endpoint' })).toBeTruthy()
+    await ue.click(screen.getByRole('link', { name: 'Back to NIC' }))
+    await ue.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Leave' }))
+    await screen.findByText('integration page nic')
+  })
+
+  it('says so when the endpoint does not exist', async () => {
+    mockApi()
+    await renderApp(<EndpointPage integrationKey="nic" endpointKey="nope" />)
+    await screen.findByText('Endpoint not found')
+  })
+})
+
+describe('mock editor: about this endpoint', () => {
+  it('explains the key in plain words', async () => {
+    await renderApp(<EndpointInfo integration={integration} endpoint={endpoint()} />)
+    expect(
+      screen.getByText(
+        'Mocks of this endpoint are told apart by the value of $.idNo in the JSON body. A mock with a key value answers only requests that carry that value; the default mock answers the rest.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('says when the endpoint has no key', async () => {
+    await renderApp(<EndpointInfo integration={integration} endpoint={endpoint({ lookup: undefined })} />)
+    expect(screen.getByText('This endpoint has no key: a mock of it answers every request to it.')).toBeTruthy()
   })
 })

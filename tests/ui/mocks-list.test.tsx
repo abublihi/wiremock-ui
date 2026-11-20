@@ -226,6 +226,16 @@ describe('mock list', () => {
     expect(screen.getAllByRole('link', { name: 'New mock' }).length).toBeGreaterThan(0)
   })
 
+  it('empty state with an empty catalog starts with describing an endpoint', async () => {
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/mocks`, () => HttpResponse.json([])),
+    )
+    await renderApp(<Harness />)
+    await screen.findByText('Start by describing an endpoint')
+    expect(screen.getByRole('link', { name: 'Open the catalog' }).getAttribute('href')).toBe('/catalog')
+  })
+
   it('empty state with filters offers Clear filters', async () => {
     mockApi([])
     await renderApp(<Harness initial={{ status: '500' }} />)

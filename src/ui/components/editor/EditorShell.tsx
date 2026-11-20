@@ -9,25 +9,27 @@ export function EditorShell({
   caption,
   actions,
   aside,
+  back,
   children,
 }: {
   title: string
   caption: string
   actions?: ReactNode
   aside?: ReactNode
+  /** The back link (defaults to the mock list); style it with `backLinkClass`. */
+  back?: ReactNode
   children: ReactNode
 }) {
   const t = useT()
   return (
     <div className="fade-up flex flex-col gap-5">
       <header className="flex flex-col gap-3">
-        <Link
-          to="/mocks"
-          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground hover:text-signal-fg"
-        >
-          <ArrowLeftIcon aria-hidden className="size-3.5" />
-          {t('editor.back')}
-        </Link>
+        {back ?? (
+          <Link to="/mocks" className={backLinkClass}>
+            <ArrowLeftIcon aria-hidden className="size-3.5" />
+            {t('editor.back')}
+          </Link>
+        )}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h1 className="glow-text font-display text-4xl font-bold tracking-tight break-words uppercase">{title}</h1>
@@ -48,11 +50,14 @@ export function EditorShell({
   )
 }
 
+export const backLinkClass = 'inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground hover:text-signal-fg'
+
 /** A small uppercase section eyebrow (`— Match`). */
 export function Eyebrow({ children, id }: { children: ReactNode; id?: string }) {
   return (
     <h2 id={id} className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
-      — {children}
+      <span aria-hidden="true">— </span>
+      {children}
     </h2>
   )
 }

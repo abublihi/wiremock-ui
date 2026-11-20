@@ -4,7 +4,7 @@ import { buildStub } from '@/server/catalog/build'
 import type { Endpoint, Integration, KeyLocation } from '@/server/catalog/types'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
 import { buildCurl, curlFromLoggedRequest, curlFromStub, joinUrl, shellQuote } from '@/ui/lib/curl'
-import { draftFromLoggedRequest, draftFromStub, samplePath } from '@/ui/lib/test-request'
+import { draftFromEndpoint, draftFromLoggedRequest, draftFromStub, samplePath } from '@/ui/lib/test-request'
 
 /** The argv a POSIX shell hands to `curl` for this command (a shell function prints its arguments NUL-separated). */
 function argvOf(command: string): string[] {
@@ -294,5 +294,41 @@ describe('logged requests', () => {
       ],
       body: `{"x":"it's $x"}`,
     })
+  })
+})
+
+describe('draftFromEndpoint (Try it)', () => {
+  const nic = { prefix: '/nic' }
+  const base = { method: 'POST', path: '/citizens/fetch', pathType: 'exact' as const, contentType: 'json' as const }
+
+  it('sends the example request to the prefixed path with the catalog content type', () => {
+    const { draft, pathIsPattern } = draftFromEndpoint(nic, { ...base, lookup: { location: 'jsonPath', expression: '$.idNo' }, exampleRequest: '{"idNo":"1012345678"}' })
+    expect(pathIsPattern).toBe(false)
+    expect(draft).toEqual({
+      method: 'POST',
+      path: '/nic/citizens/fetch',
+      query: [],
+      headers: [{ name: 'Content-Type', value: 'application/json' }],
+      body: '{"idNo":"1012345678"}',
+    })
+  })
+
+  it('fills template variables and regex pieces, and treats ANY as GET', () => {
+    expect(draftFromEndpoint(nic, { ...base, method: 'ANY', path: '/citizens/{id}', pathType: 'template' }).draft).toMatchObject({ method: 'GET', path: '/nic/citizens/example', body: '' })
+    expect(draftFromEndpoint({ prefix: '/' }, { ...base, path: '/citizens/[0-9]+', pathType: 'regex' }).draft.path).toBe('/citizens/1')
+    expect(draftFromEndpoint(nic, { ...base, path: '/(a|b)', pathType: 'regex' }).pathIsPattern).toBe(true)
+  })
+
+  it('puts a query or header key where the endpoint looks for it', () => {
+    expect(draftFromEndpoint(nic, { ...base, method: 'GET', lookup: { location: 'query', expression: 'id' } }).draft.query).toEqual([{ name: 'id', value: 'example' }])
+    expect(draftFromEndpoint(nic, { ...base, method: 'GET', lookup: { location: 'header', expression: 'X-Account-Id' } }).draft.headers).toEqual([{ name: 'X-Account-Id', value: 'example' }])
+    const form = draftFromEndpoint(nic, { ...base, lookup: { location: 'form', expression: 'accountId' } }).draft
+    expect(form.body).toBe('accountId=example')
+    expect(form.headers).toEqual([{ name: 'Content-Type', value: 'application/x-www-form-urlencoded' }])
+  })
+
+  it('keeps an XML example typed as XML', () => {
+    const { draft } = draftFromEndpoint(nic, { ...base, contentType: 'xml', exampleRequest: '<id>1</id>' })
+    expect(draft.headers).toEqual([{ name: 'Content-Type', value: 'application/xml' }])
   })
 })

@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
-import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
-import { AlertCircleIcon, InboxIcon } from 'lucide-react'
+import { Link, createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
+import { AlertCircleIcon, DatabaseIcon, InboxIcon } from 'lucide-react'
 import { useIntegrations, useMocks } from '@/ui/api/queries'
 import { NewMockButton, ResetMineButton } from '@/ui/components/mocks/MockActions'
 import { MockFilters, type MocksSearch } from '@/ui/components/mocks/MockFilters'
@@ -55,6 +55,8 @@ export function MocksPage({
   // 'all' is the UI's word for no owner filter; the API treats an owner value literally.
   const mocks = useMocks({ owner: owner === 'all' ? undefined : owner, integration: search.integration, status: search.status, q: search.q })
   const integrations = useIntegrations()
+  // Nothing to build mocks from yet: the first step is the catalog, not New mock.
+  const noCatalog = integrations.data?.length === 0
   const filtered = Boolean(search.integration || search.status || search.q || (!wiremockOnly && owner !== 'me'))
 
   const count = mocks.data?.length ?? 0
@@ -101,6 +103,21 @@ export function MocksPage({
             </Button>
           </AlertDescription>
         </Alert>
+      ) : mocks.data.length === 0 && !filtered && noCatalog ? (
+        <Empty className="rounded-md border border-dashed border-line">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <DatabaseIcon />
+            </EmptyMedia>
+            <EmptyTitle>{t('mocks.startTitle')}</EmptyTitle>
+            <EmptyDescription>{t('mocks.startBody')}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button asChild>
+              <Link to="/catalog">{t('mocks.openCatalog')}</Link>
+            </Button>
+          </EmptyContent>
+        </Empty>
       ) : mocks.data.length === 0 ? (
         <Empty className="rounded-md border border-dashed border-line">
           <EmptyHeader>

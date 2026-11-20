@@ -129,8 +129,23 @@ const LOOKUP_KEY = {
   form: 'editor.key.form',
 } as const
 
+const KEY_WHERE = {
+  jsonPath: 'editor.keyWhere.jsonPath',
+  xPath: 'editor.keyWhere.xPath',
+  query: 'editor.keyWhere.query',
+  path: 'editor.keyWhere.path',
+  header: 'editor.keyWhere.header',
+  form: 'editor.keyWhere.form',
+} as const
+
+/** What the key is, in plain words ("Mocks of this endpoint are told apart by …"). */
+export function keyExplanation(t: ReturnType<typeof useT>, endpoint: Pick<Endpoint, 'lookup'>): string {
+  if (!endpoint.lookup) return t('editor.keyExplainNone')
+  return t('editor.keyExplain', { where: t(KEY_WHERE[endpoint.lookup.location], { expr: endpoint.lookup.expression }) })
+}
+
 /** The label for the key value input, naming where the endpoint looks for the key. */
-export function keyLabel(t: ReturnType<typeof useT>, endpoint: Endpoint): string {
+export function keyLabel(t: ReturnType<typeof useT>, endpoint: Pick<Endpoint, 'lookup'>): string {
   return endpoint.lookup ? t(LOOKUP_KEY[endpoint.lookup.location], { expr: endpoint.lookup.expression }) : ''
 }
 
@@ -156,6 +171,7 @@ export function EndpointInfo({ integration, endpoint }: { integration: Integrati
         <dt className="text-muted-foreground">{t('editor.contentType')}</dt>
         <dd className="font-mono">{endpoint.contentType}</dd>
       </dl>
+      <p className="rounded-sm border-s-2 border-signal/50 bg-signal/5 px-2.5 py-1.5 text-xs leading-relaxed">{keyExplanation(t, endpoint)}</p>
       <p className="text-xs leading-relaxed whitespace-pre-line text-muted-foreground">
         {endpoint.description || t('editor.noDescription')}
       </p>

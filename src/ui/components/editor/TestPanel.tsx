@@ -64,6 +64,9 @@ export async function copyCurl(command: string | undefined, t: ReturnType<typeof
   }
 }
 
+const TITLES = { mock: 'test.titleMock', resend: 'test.titleResend', endpoint: 'test.titleEndpoint' } as const
+const CAPTIONS = { mock: 'test.captionMock', resend: 'test.captionResend', endpoint: 'test.captionEndpoint' } as const
+
 export type TestPanelProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -73,7 +76,8 @@ export type TestPanelProps = {
   mockId?: string
   /** The initial path is a regex the user must replace. */
   pathIsPattern?: boolean
-  variant?: 'mock' | 'resend'
+  /** mock: test a saved mock; resend: a logged request; endpoint: "Try it" on a catalog endpoint. */
+  variant?: 'mock' | 'resend' | 'endpoint'
 }
 
 /**
@@ -113,8 +117,8 @@ function PanelBody({ initial, mockId, pathIsPattern = false, variant = 'mock' }:
     <>
       <SheetHeader className="gap-1 border-b border-line pe-12">
         <p className="text-[9.5px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">— {t('test.open')}</p>
-        <SheetTitle>{t(variant === 'mock' ? 'test.titleMock' : 'test.titleResend')}</SheetTitle>
-        <SheetDescription className="text-xs">{t(variant === 'mock' ? 'test.captionMock' : 'test.captionResend')}</SheetDescription>
+        <SheetTitle>{t(TITLES[variant])}</SheetTitle>
+        <SheetDescription className="text-xs">{t(CAPTIONS[variant])}</SheetDescription>
       </SheetHeader>
 
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto px-4 py-4">

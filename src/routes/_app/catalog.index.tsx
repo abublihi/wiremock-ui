@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { AlertCircleIcon, ChevronRightIcon, DatabaseIcon, InfoIcon, PlusIcon, XIcon } from 'lucide-react'
 import { useEndpoints, useIntegrations } from '@/ui/api/queries'
+import { HowItFits, ShowExplainerButton, useExplainer } from '@/ui/components/catalog/HowItFits'
 import { IntegrationForm } from '@/ui/components/catalog/IntegrationForm'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
@@ -17,6 +18,7 @@ export function CatalogPage() {
   const t = useT()
   const integrations = useIntegrations()
   const [adding, setAdding] = useState(false)
+  const explainer = useExplainer()
   const count = integrations.data?.length ?? 0
   const add = (
     <Button onClick={() => setAdding(true)}>
@@ -33,10 +35,14 @@ export function CatalogPage() {
             {integrations.data ? t(count === 1 ? 'catalog.captionOne' : 'catalog.caption', { count }) : '//'}
           </p>
         </div>
-        {add}
+        <div className="flex flex-wrap items-center gap-2">
+          {explainer.shown === false && <ShowExplainerButton onClick={explainer.show} />}
+          {add}
+        </div>
       </header>
 
       <MemoryNotice />
+      {explainer.shown && <HowItFits onHide={explainer.hide} />}
 
       {integrations.isPending ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

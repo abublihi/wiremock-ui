@@ -140,7 +140,7 @@ describe('WireMock-only mode (STORE_DRIVER=none)', () => {
   it('with a store none of this changes: the catalog shows no banner', async () => {
     server.use(http.get(`${BASE}/api/integrations`, () => HttpResponse.json([])))
     await renderApp(<CatalogPage />)
-    await screen.findByText('No integrations yet')
+    await screen.findByText('Add the system your app calls')
     expect(screen.queryByText(/kept in memory/)).toBeNull()
   })
 })

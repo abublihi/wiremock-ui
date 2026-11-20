@@ -3,10 +3,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { AlertCircleIcon, ArrowLeftIcon, ListTreeIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Endpoint } from '@/server/catalog/types'
 import { forgetIntegration, useDeleteIntegration, useEndpoints, useIntegrations } from '@/ui/api/queries'
 import { DeleteConfirm } from '@/ui/components/catalog/DeleteConfirm'
-import { EndpointForm } from '@/ui/components/catalog/EndpointForm'
 import { EndpointList } from '@/ui/components/catalog/EndpointList'
 import { IntegrationForm } from '@/ui/components/catalog/IntegrationForm'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
@@ -15,7 +13,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { useT } from '@/ui/i18n'
 
-export const Route = createFileRoute('/_app/catalog/$key')({ component: IntegrationRoute })
+export const Route = createFileRoute('/_app/catalog/$key/')({ component: IntegrationRoute })
 
 function IntegrationRoute() {
   const { key } = Route.useParams()
@@ -30,13 +28,6 @@ export function IntegrationPage({ integrationKey }: { integrationKey: string }) 
   const endpoints = useEndpoints(integrationKey)
   const removeIntegration = useDeleteIntegration()
   const [editingIntegration, setEditingIntegration] = useState(false)
-  // The endpoint form keeps its last content while the sheet animates closed.
-  const [form, setForm] = useState<{ endpoint?: Endpoint }>({})
-  const [formOpen, setFormOpen] = useState(false)
-  const openForm = (endpoint?: Endpoint) => {
-    setForm({ endpoint })
-    setFormOpen(true)
-  }
 
   const integration = integrations.data?.find((i) => i.key === integrationKey)
   const back = (
@@ -72,9 +63,11 @@ export function IntegrationPage({ integrationKey }: { integrationKey: string }) 
 
   const count = endpoints.data?.length ?? 0
   const addEndpoint = (
-    <Button onClick={() => openForm()}>
-      <PlusIcon data-icon="inline-start" />
-      {t('catalog.endpoints.add')}
+    <Button asChild>
+      <Link to="/catalog/$key/endpoints/new" params={{ key: integration.key }}>
+        <PlusIcon data-icon="inline-start" />
+        {t('catalog.endpoints.add')}
+      </Link>
     </Button>
   )
 
@@ -149,11 +142,10 @@ export function IntegrationPage({ integrationKey }: { integrationKey: string }) 
           <EmptyContent>{addEndpoint}</EmptyContent>
         </Empty>
       ) : (
-        <EndpointList integration={integration} endpoints={endpoints.data} onEdit={openForm} />
+        <EndpointList integration={integration} endpoints={endpoints.data} />
       )}
 
       <IntegrationForm integration={integration} open={editingIntegration} onOpenChange={setEditingIntegration} />
-      <EndpointForm integration={integration} endpoint={form?.endpoint} open={formOpen} onOpenChange={setFormOpen} />
     </div>
   )
 }
