@@ -33,6 +33,12 @@ export class RedisCatalogStore implements CatalogStore {
     await m.exec()
   }
 
+  async insertIntegration(i: Integration): Promise<boolean> {
+    if ((await this.redis.set(integrationKey(i.key), JSON.stringify(i), 'NX')) !== 'OK') return false
+    await this.redis.sadd(ALL, i.key)
+    return true
+  }
+
   async deleteIntegration(key: string): Promise<void> {
     const endpoints = await this.redis.smembers(endpointSet(key))
     const m = this.redis.multi()
@@ -63,6 +69,12 @@ export class RedisCatalogStore implements CatalogStore {
     m.set(endpointKey(e.integration, e.key), JSON.stringify(e))
     m.sadd(endpointSet(e.integration), e.key)
     await m.exec()
+  }
+
+  async insertEndpoint(e: Endpoint): Promise<boolean> {
+    if ((await this.redis.set(endpointKey(e.integration, e.key), JSON.stringify(e), 'NX')) !== 'OK') return false
+    await this.redis.sadd(endpointSet(e.integration), e.key)
+    return true
   }
 
   async deleteEndpoint(integration: string, key: string): Promise<void> {

@@ -26,6 +26,13 @@ export class SqliteCatalogStore implements CatalogStore {
       .run(i.key, JSON.stringify(i))
   }
 
+  async insertIntegration(i: Integration): Promise<boolean> {
+    const result = this.sql
+      .stmt('INSERT INTO integrations (key, json) VALUES (?, ?) ON CONFLICT (key) DO NOTHING')
+      .run(i.key, JSON.stringify(i))
+    return Number(result.changes) === 1
+  }
+
   async deleteIntegration(key: string): Promise<void> {
     this.sql.tx(() => {
       this.sql.stmt('DELETE FROM endpoints WHERE integration = ?').run(key)
@@ -53,6 +60,13 @@ export class SqliteCatalogStore implements CatalogStore {
          ON CONFLICT (integration, key) DO UPDATE SET json = excluded.json`,
       )
       .run(e.integration, e.key, JSON.stringify(e))
+  }
+
+  async insertEndpoint(e: Endpoint): Promise<boolean> {
+    const result = this.sql
+      .stmt('INSERT INTO endpoints (integration, key, json) VALUES (?, ?, ?) ON CONFLICT (integration, key) DO NOTHING')
+      .run(e.integration, e.key, JSON.stringify(e))
+    return Number(result.changes) === 1
   }
 
   async deleteEndpoint(integration: string, key: string): Promise<void> {

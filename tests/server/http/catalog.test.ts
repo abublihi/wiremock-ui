@@ -137,3 +137,26 @@ test('preview and create mocks from an endpoint over HTTP', async () => {
   const text = await previewMock(rt, req(`${base}/preview`, 'POST', JSON.stringify(form), { ...as(tester), 'Content-Type': 'text/plain' }), params)
   expect(text.status).toBe(415)
 })
+
+test('If-None-Match: * creates only: an existing integration or endpoint key → 409 and stays unchanged', async () => {
+  const createOnly = { ...as(developer), 'If-None-Match': '*' }
+  const first = await putIntegration(rt, req('/api/integrations/once', 'PUT', { name: 'First', prefix: '/one' }, createOnly), { key: 'once' })
+  expect(first.status).toBe(200)
+  const again = await putIntegration(rt, req('/api/integrations/once', 'PUT', { name: 'Second', prefix: '/two' }, createOnly), { key: 'once' })
+  expect(again.status).toBe(409)
+  expect(await again.json()).toEqual({ error: 'An integration with this key already exists' })
+  expect(await rt.catalog.getIntegration('once')).toMatchObject({ name: 'First', prefix: '/one' })
+  // Without the header a PUT is still an upsert.
+  expect((await putInt(developer, 'once', { name: 'Edited', prefix: '/one' })).status).toBe(200)
+  expect(await rt.catalog.getIntegration('once')).toMatchObject({ name: 'Edited' })
+
+  const path = '/api/integrations/once/endpoints/ep'
+  const params = { key: 'once', endpoint: 'ep' }
+  expect((await putEndpoint(rt, req(path, 'PUT', endpointBody(), createOnly), params)).status).toBe(200)
+  const dup = await putEndpoint(rt, req(path, 'PUT', endpointBody({ name: 'Other' }), createOnly), params)
+  expect(dup.status).toBe(409)
+  expect(await dup.json()).toEqual({ error: 'An endpoint with this key already exists' })
+  expect(await rt.catalog.getEndpoint('once', 'ep')).toMatchObject({ name: 'Get user' })
+  expect((await putEndpoint(rt, req(path, 'PUT', endpointBody({ name: 'Edited' }), as(developer)), params)).status).toBe(200)
+  expect(await rt.catalog.getEndpoint('once', 'ep')).toMatchObject({ name: 'Edited' })
+})

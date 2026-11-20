@@ -19,13 +19,18 @@ async function putBody(request: Request, fields: Record<string, string>): Promis
   return { ...body, ...fields }
 }
 
+/** `If-None-Match: *` asks for create-only: an existing key is a 409 instead of an overwrite. */
+const createOnly = (request: Request) => ({ createOnly: request.headers.get('if-none-match')?.trim() === '*' })
+
 const noContent = () => new Response(null, { status: 204 })
 
 export const listIntegrations = withAuth('catalog.read', async ({ rt }) => json(await rt.catalog.listIntegrations()))
 
 export const putIntegration = withAuth('catalog.write', async ({ rt, request, params, principal }) => {
   const key = need(params.key, 'key')
-  return json(await rt.catalog.upsertIntegration(await putBody(request, { key }), principal.user.username))
+  return json(
+    await rt.catalog.upsertIntegration(await putBody(request, { key }), principal.user.username, createOnly(request)),
+  )
 })
 
 export const deleteIntegration = withAuth('catalog.delete', async ({ rt, params, principal }) => {
@@ -44,7 +49,13 @@ export const getEndpoint = withAuth('catalog.read', async ({ rt, params }) =>
 export const putEndpoint = withAuth('catalog.write', async ({ rt, request, params, principal }) => {
   const key = need(params.endpoint, 'endpoint')
   const integration = need(params.key, 'key')
-  return json(await rt.catalog.upsertEndpoint(await putBody(request, { integration, key }), principal.user.username))
+  return json(
+    await rt.catalog.upsertEndpoint(
+      await putBody(request, { integration, key }),
+      principal.user.username,
+      createOnly(request),
+    ),
+  )
 })
 
 export const deleteEndpoint = withAuth('catalog.delete', async ({ rt, params, principal }) => {
