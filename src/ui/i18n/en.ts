@@ -221,6 +221,7 @@ export const en = {
   'history.restore': 'Restore this version',
   'history.restoring': 'Restoring…',
   'history.restored': 'Version {version} restored',
+  'history.restoredDraftKept': 'Your unsaved changes are kept — saving them will ask you to reload.',
   'history.restoreFailed': 'Could not restore the version',
   'editor.fromRequestCaption': '// from request {method} {url}',
   'editor.fromRequestUnavailable': 'This mock starts from a logged request, not a catalog endpoint.',

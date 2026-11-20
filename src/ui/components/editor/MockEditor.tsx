@@ -238,7 +238,7 @@ export function MockEditor({
               {t('editor.mode.advanced')}
             </TabsTrigger>
           </TabsList>
-          {mock && onRestored && <HistorySheet id={mock.id} onRestored={(stub) => onRestored(stub, dirty)} />}
+          {mock && onRestored && <HistorySheet id={mock.id} keepsDraft={dirty} onRestored={(stub) => onRestored(stub, dirty)} />}
         </div>
 
         <TabsContent value="simple">

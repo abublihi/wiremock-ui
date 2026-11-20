@@ -16,8 +16,19 @@ import { Eyebrow } from './EditorShell'
 
 const versionOf = (stub: StubMapping) => stub.metadata?.wiremockUi?.version ?? 0
 
-/** Earlier versions of a mock: pick one to read its JSON, then restore it as the new live version. */
-export function HistorySheet({ id, onRestored }: { id: string; onRestored: (stub: StubMapping) => void }) {
+/**
+ * Earlier versions of a mock: pick one to read its JSON, then restore it as the new live version.
+ * `keepsDraft`: the editor has unsaved changes it keeps over a restore, so the toast says so.
+ */
+export function HistorySheet({
+  id,
+  keepsDraft = false,
+  onRestored,
+}: {
+  id: string
+  keepsDraft?: boolean
+  onRestored: (stub: StubMapping) => void
+}) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<number | null>(null)
@@ -28,7 +39,7 @@ export function HistorySheet({ id, onRestored }: { id: string; onRestored: (stub
   const onRestore = async (version: number) => {
     try {
       const stub = await restore.mutateAsync({ id, version })
-      toast.success(t('history.restored', { version }))
+      toast.success(t('history.restored', { version }), keepsDraft ? { description: t('history.restoredDraftKept') } : undefined)
       setSelected(null)
       onRestored(stub)
     } catch (error) {
@@ -44,7 +55,7 @@ export function HistorySheet({ id, onRestored }: { id: string; onRestored: (stub
           {t('history.open')}
         </Button>
       </SheetTrigger>
-      <SheetContent className="glass-panel flex w-full flex-col gap-0 sm:max-w-xl">
+      <SheetContent className="glass-panel flex flex-col gap-0 data-[side=end]:w-full data-[side=end]:sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>{t('history.title')}</SheetTitle>
           <SheetDescription className="text-xs">{t('history.caption')}</SheetDescription>

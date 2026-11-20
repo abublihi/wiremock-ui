@@ -74,6 +74,36 @@ describe('history', () => {
     await waitFor(() => expect(screen.getByText(/version 4/)).toBeTruthy())
   })
 
+  it('restoring while a draft exists keeps the draft and says what saving it will do', async () => {
+    const calls: Call[] = []
+    historyServer(calls)
+    await renderApp(<EditMockPage id="m-1" />)
+    const ue = userEvent.setup()
+    const key = (await screen.findByLabelText('Value of $.idNo in the request body')) as HTMLInputElement
+    await ue.type(key, '9')
+    const draft = key.value
+    await ue.click(screen.getByRole('button', { name: 'History' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Version history' })
+    await ue.click(await within(sheet).findByRole('button', { name: /^Version 1/ }))
+    await ue.click(within(sheet).getByRole('button', { name: 'Restore this version' }))
+    expect(await screen.findByText('Version 1 restored')).toBeTruthy()
+    expect(screen.getByText('Your unsaved changes are kept — saving them will ask you to reload.')).toBeTruthy()
+    expect(calls).toEqual([{ method: 'POST', path: 'restore', body: { version: 1 } }])
+    expect((screen.getByLabelText('Value of $.idNo in the request body', { selector: 'input' }) as HTMLInputElement).value).toBe(draft)
+  })
+
+  it('restoring without a draft has no draft note', async () => {
+    historyServer([])
+    await renderApp(<EditMockPage id="m-1" />)
+    const ue = userEvent.setup()
+    await ue.click(await screen.findByRole('button', { name: 'History' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Version history' })
+    await ue.click(await within(sheet).findByRole('button', { name: /^Version 1/ }))
+    await ue.click(within(sheet).getByRole('button', { name: 'Restore this version' }))
+    await screen.findByText('Version 1 restored')
+    expect(screen.queryByText(/unsaved changes are kept/)).toBeNull()
+  })
+
   it('says so when there are no previous versions', async () => {
     mockCatalog(server)
     server.use(
