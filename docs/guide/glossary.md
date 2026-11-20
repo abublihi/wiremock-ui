@@ -20,7 +20,7 @@ Short definitions of the words the UI and WireMock use. The same definitions app
 | **Priority** | A number on a stub; when several stubs match, the lowest wins. Key mocks use 5, default mocks 10. |
 | **Journal** / **request log** | WireMock's in-memory list of the requests it received. |
 | **Near miss** | A stub that almost matched an unmatched request, with the fields that differed. |
-| **No match** | WireMock found no stub for a request; it answered 404 (unless a default or proxy mock catches it). |
+| **No match** | WireMock found no stub for a request and answered 404. A catch-all default or proxy mock is a match, so requests it answers are not "no match". |
 | **Scenario** | Several stubs sharing a `scenarioName`, answering in turn as the scenario's state changes. |
 | **Scenario state** | Where a scenario is now. Every scenario starts in `Started`; a stub can require a state and move the scenario to a new one. |
 | **Proxy** | A stub that forwards the request to a real service (`proxyBaseUrl`) and returns its answer. |
@@ -44,7 +44,7 @@ Short definitions of the words the UI and WireMock use. The same definitions app
 
 ## How to
 
-Search this guide (the box at the top) for any of these words to find where it is used.
+**Find a section** (top of the side menu) narrows the menu to section titles and headings; it does not search the text. The pages that use these words show them as tooltips.
 
 ## Tips and limits
 
