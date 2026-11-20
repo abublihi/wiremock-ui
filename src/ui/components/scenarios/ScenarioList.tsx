@@ -88,7 +88,7 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
     >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1.5">
-          <p aria-hidden className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          <p aria-hidden className="text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
             — {t(scenario.mocks.length === 1 ? 'scenarios.mockCountOne' : 'scenarios.mockCount', { count: scenario.mocks.length })}
           </p>
           <h2 id={titleId} dir="ltr" className="font-mono text-base font-semibold break-all">
@@ -197,7 +197,7 @@ function DeleteScenarioButton({ scenario }: { scenario: Scenario }) {
             <li key={mock.id} className="flex min-w-0 items-center gap-2 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
               {mock.method && <MethodBadge method={mock.method} />}
               <span className="truncate font-medium">{mock.name || t('scenarios.unnamedMock')}</span>
-              <span dir="ltr" className="ms-auto shrink-0 font-mono text-[11px] text-muted-foreground">
+              <span dir="ltr" className="ms-auto shrink-0 font-mono text-xs text-muted-foreground">
                 {mock.requiredState ?? t('scenarios.anyState')}
               </span>
             </li>

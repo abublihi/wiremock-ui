@@ -220,7 +220,7 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 {(['colMethod', 'colPath', 'colEndpoint', 'colExamples', 'colMocks', 'colDefault', 'colStatus'] as const).map((col) => (
-                  <TableHead key={col} className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+                  <TableHead key={col} className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
                     {t(`postman.${col}`)}
                   </TableHead>
                 ))}
@@ -240,7 +240,7 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
 
       {skipped.length > 0 && (
         <div className="flex flex-col gap-2">
-          <h3 className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{t('postman.skippedTitle', { count: skipped.length })}</h3>
+          <h3 className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">{t('postman.skippedTitle', { count: skipped.length })}</h3>
           <ul className="flex flex-col gap-1 text-xs">
             {skipped.map((s, i) => (
               <li key={`${s.row.id}-${i}`}>
@@ -382,11 +382,11 @@ function RequestRow({ row, onChoose }: { row: PlanRow; onChoose: (patch: RowChoi
       <TableCell className="max-w-64 min-w-36 whitespace-normal">
         <div className="flex flex-col gap-0.5">
           <span className="text-sm">{row.name}</span>
-          <span className="font-mono text-[11px] text-muted-foreground" dir="ltr">
+          <span className="font-mono text-xs text-muted-foreground" dir="ltr">
             {row.proposedKey}
             {row.key !== row.proposedKey && <span className="text-hazard-fg"> · {t('postman.renamed', { key: row.key })}</span>}
           </span>
-          {row.request.folder.length > 0 && <span className="text-[10px] text-muted-foreground">{row.request.folder.join(' / ')}</span>}
+          {row.request.folder.length > 0 && <span className="text-[11px] text-muted-foreground">{row.request.folder.join(' / ')}</span>}
         </div>
       </TableCell>
       <TableCell className="text-center tabular-nums">{examples.length}</TableCell>
@@ -407,7 +407,7 @@ function RequestRow({ row, onChoose }: { row: PlanRow; onChoose: (patch: RowChoi
             <SelectContent>
               {examples.map((e) => (
                 <SelectItem key={e.id} value={e.id}>
-                  <span className="font-mono text-[11px] tabular-nums">{e.status}</span> {e.name}
+                  <span className="font-mono text-xs tabular-nums">{e.status}</span> {e.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -416,7 +416,7 @@ function RequestRow({ row, onChoose }: { row: PlanRow; onChoose: (patch: RowChoi
       </TableCell>
       <TableCell className="min-w-40">
         <div className="flex flex-col gap-1">
-          <span className={cn('text-[10px] tracking-[0.14em] uppercase', row.conflict ? 'text-hazard-fg' : 'text-signal-fg')}>{t(status)}</span>
+          <span className={cn('text-[11px] tracking-[0.14em] uppercase', row.conflict ? 'text-hazard-fg' : 'text-signal-fg')}>{t(status)}</span>
           <Select value={row.action} onValueChange={(action) => onChoose({ action: action as RowAction })}>
             <SelectTrigger size="sm" className="w-full" aria-label={t('postman.actionFor', { name: row.name })}>
               <SelectValue />

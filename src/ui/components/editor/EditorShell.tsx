@@ -59,7 +59,7 @@ export const backLinkClass = 'inline-flex w-fit items-center gap-1.5 text-xs tex
 /** A small uppercase section eyebrow (`— Match`). */
 export function Eyebrow({ children, id }: { children: ReactNode; id?: string }) {
   return (
-    <h2 id={id} className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+    <h2 id={id} className="text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
       <span aria-hidden="true">— </span>
       {children}
     </h2>

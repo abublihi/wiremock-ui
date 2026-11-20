@@ -102,7 +102,7 @@ export function AdvancedEditor({
               {problem}
             </FieldError>
           ) : (
-            <FieldDescription className="text-[11px]">{t('editor.jsonHint')}</FieldDescription>
+            <FieldDescription className="text-xs">{t('editor.jsonHint')}</FieldDescription>
           )}
         </Field>
       </section>

@@ -39,12 +39,12 @@ export function CountTool() {
           <h2 id={ids.title} className="text-xs font-semibold">
             {t('count.title')}
           </h2>
-          <p className="text-[11px] text-muted-foreground">{t('count.caption')}</p>
+          <p className="text-xs text-muted-foreground">{t('count.caption')}</p>
         </div>
         <form onSubmit={submit} className="flex flex-col gap-3">
           <FieldGroup className="flex-row gap-2">
             <Field className="w-28 shrink-0">
-              <FieldLabel htmlFor={ids.method} className="text-[11px]">
+              <FieldLabel htmlFor={ids.method} className="text-xs">
                 {t('count.method')}
               </FieldLabel>
               <Select value={method} onValueChange={setMethod}>
@@ -61,7 +61,7 @@ export function CountTool() {
               </Select>
             </Field>
             <Field className="min-w-0">
-              <FieldLabel htmlFor={ids.path} className="text-[11px]">
+              <FieldLabel htmlFor={ids.path} className="text-xs">
                 {t('count.path')}
               </FieldLabel>
               <Input
@@ -73,7 +73,7 @@ export function CountTool() {
                 aria-describedby={`${ids.path}-hint`}
                 onChange={(e) => setPath(e.target.value)}
               />
-              <p id={`${ids.path}-hint`} className="text-[11px] text-muted-foreground">
+              <p id={`${ids.path}-hint`} className="text-xs text-muted-foreground">
                 {t('count.pathHint')}
               </p>
             </Field>

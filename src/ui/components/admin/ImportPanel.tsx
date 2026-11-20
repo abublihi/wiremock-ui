@@ -225,7 +225,7 @@ export function ImportPanel() {
           </ul>
 
           {loaded.skipped.length > 0 && (
-            <p className="text-[11px] break-all text-hazard-fg">
+            <p className="text-xs break-all text-hazard-fg">
               {t(loaded.skipped.length === 1 ? 'import.skippedEntriesOne' : 'import.skippedEntries', { count: loaded.skipped.length, names: loaded.skipped.join(', ') })}
             </p>
           )}
@@ -260,10 +260,10 @@ export function ImportPanel() {
                 className="mt-0.5 size-4 shrink-0 accent-[var(--signal)]"
               />
               <div className="flex flex-col gap-0.5">
-                <label htmlFor={`${inputId}-prune`} className="cursor-pointer text-[11px]">
+                <label htmlFor={`${inputId}-prune`} className="cursor-pointer text-xs">
                   {t('import.prune')}
                 </label>
-                <p id={`${inputId}-prune-hint`} className="text-[10px] text-muted-foreground">
+                <p id={`${inputId}-prune-hint`} className="text-[11px] text-muted-foreground">
                   {t('import.pruneHint')}
                 </p>
               </div>
@@ -299,7 +299,7 @@ function countsText(t: ReturnType<typeof useT>, s: ImportSummary): string {
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <dt className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{label}</dt>
+      <dt className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">{label}</dt>
       <dd className="font-display text-3xl font-bold tabular-nums">{value}</dd>
     </div>
   )
@@ -325,7 +325,7 @@ function ReportCard({ report, name, integration, onAgain }: { report: ImportRepo
       </dl>
       {report.skipped.length > 0 && (
         <div className="flex flex-col gap-2">
-          <h3 className="text-[10px] tracking-[0.14em] text-hazard-fg uppercase">{t('import.reportSkipped', { count: report.skipped.length })}</h3>
+          <h3 className="text-[11px] tracking-[0.14em] text-hazard-fg uppercase">{t('import.reportSkipped', { count: report.skipped.length })}</h3>
           <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
             {report.skipped.map((s, i) => (
               <li key={`${s.id}-${i}`} className="flex flex-col gap-0.5 px-3 py-2 text-xs sm:flex-row sm:gap-3">

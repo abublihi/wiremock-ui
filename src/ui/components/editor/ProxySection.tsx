@@ -72,7 +72,7 @@ export function ProxySection({
               type="button"
               variant="link"
               size="xs"
-              className="h-auto p-0 font-mono text-[11px] text-signal-fg"
+              className="h-auto p-0 font-mono text-xs text-signal-fg"
               onClick={() => onChange({ stripPrefix: suggestion })}
             >
               {t('editor.proxy.usePrefix', { prefix: suggestion })}
@@ -96,7 +96,7 @@ export function ProxySection({
         </FieldDescription>
         {error('stripPrefix')}
         {route && (
-          <p dir="ltr" className="font-mono text-[11px] break-all text-muted-foreground">
+          <p dir="ltr" className="font-mono text-xs break-all text-muted-foreground">
             {t('editor.proxy.route', route)}
           </p>
         )}
@@ -135,7 +135,7 @@ export function ProxySection({
         </Field>
       </div>
 
-      <p className="text-[11px] text-muted-foreground">{t('editor.proxy.realAnswer')}</p>
+      <p className="text-xs text-muted-foreground">{t('editor.proxy.realAnswer')}</p>
     </div>
   )
 }

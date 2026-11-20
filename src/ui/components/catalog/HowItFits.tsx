@@ -56,7 +56,7 @@ export function HowItFits({ onHide }: { onHide: () => void }) {
   return (
     <section aria-labelledby={titleId} className="glass-panel fade-up relative flex flex-col gap-4 rounded-md border border-line p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
-        <h2 id={titleId} className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+        <h2 id={titleId} className="text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
           <span aria-hidden="true">— </span>
           {t('catalog.explainer.title')}
         </h2>
@@ -75,13 +75,13 @@ export function HowItFits({ onHide }: { onHide: () => void }) {
             )}
             <li className="flex flex-col gap-2 rounded-md border border-line bg-surface p-3">
               <div className="flex items-baseline gap-2">
-                <span className="font-mono text-[10px] text-signal-fg">{step.n}</span>
+                <span className="font-mono text-[11px] text-signal-fg">{step.n}</span>
                 <h3 className="font-display text-lg leading-none font-semibold tracking-wide uppercase">{step.title}</h3>
               </div>
               <p className="text-xs leading-relaxed text-muted-foreground">{step.body}</p>
               <div className="mt-auto flex flex-col gap-0.5 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
                 {step.example.map((line) => (
-                  <code key={line} dir="ltr" className="font-mono text-[11px] break-all">
+                  <code key={line} dir="ltr" className="font-mono text-xs break-all">
                     {line}
                   </code>
                 ))}

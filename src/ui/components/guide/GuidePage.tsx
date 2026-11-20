@@ -34,7 +34,7 @@ export function GuidePage({ sections = GUIDE_SECTIONS }: { sections?: GuideSecti
       <header>
         <h1 className="glow-text font-display text-4xl font-bold tracking-tight uppercase">{t('guide.title')}</h1>
         <p className="text-xs text-muted-foreground">{t('guide.caption')}</p>
-        <p className="mt-1 text-[11px] text-muted-foreground">{t('guide.shortcut')}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t('guide.shortcut')}</p>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
@@ -117,7 +117,7 @@ function GuideMenu({ sections, current }: { sections: GuideSection[]; current: s
   return (
     <nav aria-label={t('guide.contents')} className="flex flex-col gap-2">
       <div>
-        <label htmlFor={`${id}-find`} className="mb-1 block px-1 text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+        <label htmlFor={`${id}-find`} className="mb-1 block px-1 text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
           <span aria-hidden>// </span>
           {t('guide.find')}
         </label>
@@ -145,7 +145,7 @@ function GuideMenu({ sections, current }: { sections: GuideSection[]; current: s
             </InputGroupAddon>
           )}
         </InputGroup>
-        <p id={`${id}-count`} aria-live="polite" className={cn('mt-1 px-1 text-[11px] text-muted-foreground', !query && 'sr-only')}>
+        <p id={`${id}-count`} aria-live="polite" className={cn('mt-1 px-1 text-xs text-muted-foreground', !query && 'sr-only')}>
           {query
             ? entries.length === 0
               ? t('guide.noSection', { query: query.trim() })
@@ -157,7 +157,7 @@ function GuideMenu({ sections, current }: { sections: GuideSection[]; current: s
         {entries.map(({ section, topics }) => (
           <li key={section.slug}>
             <Link to="/guide" hash={section.slug} data-menu-link="" className={linkClass} aria-current={current === section.slug ? 'true' : undefined}>
-              <span aria-hidden className="me-2 font-mono text-[10px] text-signal-fg/70">
+              <span aria-hidden className="me-2 font-mono text-[11px] text-signal-fg/70">
                 {String(section.order).padStart(2, '0')}
               </span>
               <Highlight text={section.title} query={query} />
@@ -189,7 +189,7 @@ function GuideSectionView({ section }: { section: GuideSection }) {
       aria-labelledby={`${section.slug}-title`}
       className="scroll-mt-16 rounded-md border border-line bg-surface/70 p-4 backdrop-blur-sm sm:p-6"
     >
-      <p aria-hidden className="font-mono text-[10px] tracking-[0.18em] text-signal-fg uppercase">
+      <p aria-hidden className="font-mono text-[11px] tracking-[0.18em] text-signal-fg uppercase">
         // {String(section.order).padStart(2, '0')} · {section.slug}
       </p>
       <h2 id={`${section.slug}-title`} tabIndex={-1} className="font-display text-2xl font-bold tracking-wide uppercase outline-none">

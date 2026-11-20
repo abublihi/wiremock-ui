@@ -23,7 +23,7 @@ export function Part({ title, children }: { title: string; children: ReactNode }
   const headingId = useId()
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <h3 id={headingId} className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+      <h3 id={headingId} className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
         <span aria-hidden>— </span>
         {title}
       </h3>
@@ -35,7 +35,7 @@ export function Part({ title, children }: { title: string; children: ReactNode }
 export function HeaderTable({ headers }: { headers: Headers }) {
   const t = useT()
   const entries = Object.entries(headers ?? {})
-  if (entries.length === 0) return <p className="text-[11px] text-muted-foreground">{t('request.noHeaders')}</p>
+  if (entries.length === 0) return <p className="text-xs text-muted-foreground">{t('request.noHeaders')}</p>
   return (
     <div className="overflow-hidden rounded-md border border-line">
       <table className="w-full table-fixed text-xs">
@@ -60,7 +60,7 @@ export function HeaderTable({ headers }: { headers: Headers }) {
                 {headerValue(value)}
                 {/* WireMock sends the mock name as Latin-1: anything else (an em dash, Arabic…) arrives as "?". */}
                 {name.toLowerCase() === 'matched-stub-name' && (
-                  <span className="mt-0.5 block font-sans text-[10.5px] text-muted-foreground">{t('request.stubNameHeaderNote')}</span>
+                  <span className="mt-0.5 block font-sans text-[11px] text-muted-foreground">{t('request.stubNameHeaderNote')}</span>
                 )}
               </td>
             </tr>
@@ -73,7 +73,7 @@ export function HeaderTable({ headers }: { headers: Headers }) {
 
 export function Body({ text }: { text: string | null }) {
   const t = useT()
-  if (text === null) return <p className="text-[11px] text-muted-foreground">{t('request.noBody')}</p>
+  if (text === null) return <p className="text-xs text-muted-foreground">{t('request.noBody')}</p>
   return (
     <pre dir="ltr" aria-label={t('request.body')} className="max-h-80 overflow-auto rounded-md border border-line bg-canvas p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">
       {text}

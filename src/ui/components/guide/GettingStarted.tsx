@@ -151,7 +151,7 @@ export function GettingStartedChecklist() {
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p aria-hidden className="font-mono text-[10px] tracking-[0.18em] text-signal-fg uppercase">
+          <p aria-hidden className="font-mono text-[11px] tracking-[0.18em] text-signal-fg uppercase">
             // {t('checklist.eyebrow', { done: doneCount, total: steps.length })}
           </p>
           <h2 id="getting-started-title" className="font-display text-xl font-semibold tracking-wide uppercase">
@@ -209,12 +209,12 @@ export function GettingStartedChecklist() {
                 </span>
                 <span className="sr-only">{step.done ? t('checklist.stepDone') : t('checklist.stepTodo')}</span>
               </span>
-              <span className="text-[11px] text-muted-foreground">{t(step.hint)}</span>
+              <span className="text-xs text-muted-foreground">{t(step.hint)}</span>
               {!step.done && (
                 <Link
                   to={step.to as '/'}
                   hash={step.id === 'request' ? 'testing' : undefined}
-                  className="mt-auto inline-flex items-center gap-1 text-[11px] font-medium text-signal-fg hover:underline"
+                  className="mt-auto inline-flex items-center gap-1 text-xs font-medium text-signal-fg hover:underline"
                 >
                   {t(step.action)}
                   <ArrowRightIcon aria-hidden className="size-3" />

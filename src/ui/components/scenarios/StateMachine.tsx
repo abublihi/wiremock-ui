@@ -79,7 +79,7 @@ export function StateMachine({
 
       {(layout.jumps.length > 0 || layout.anyState.length > 0) && (
         <div className="flex flex-col gap-2">
-          <p className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{t('scenarios.otherMoves')}</p>
+          <p className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">{t('scenarios.otherMoves')}</p>
           <ul className="flex flex-col gap-2">
             {layout.jumps.map(({ from, to, mock }) => (
               <li key={mock.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-line bg-surface-2/60 px-3 py-2">
@@ -248,9 +248,9 @@ function MockLabel({ mock, linked }: { mock: ScenarioMock; linked: boolean }) {
       )}
       {(mock.method || mock.url) && (
         <span className="flex min-w-0 items-center gap-1.5">
-          {mock.method && <MethodBadge method={mock.method} className="h-4 px-1 text-[9px]" />}
+          {mock.method && <MethodBadge method={mock.method} className="h-4 px-1 text-[11px]" />}
           {mock.url && (
-            <span dir="ltr" className="truncate font-mono text-[10px] text-muted-foreground" title={mock.url}>
+            <span dir="ltr" className="truncate font-mono text-[11px] text-muted-foreground" title={mock.url}>
               {mock.url}
             </span>
           )}

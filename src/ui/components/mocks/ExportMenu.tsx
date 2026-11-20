@@ -27,14 +27,14 @@ export function ExportMenu({ scope }: { scope: ExportScope }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-64">
-        <DropdownMenuLabel className="font-mono text-[10px] text-muted-foreground">{label}</DropdownMenuLabel>
+        <DropdownMenuLabel className="font-mono text-[11px] text-muted-foreground">{label}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <a href={exportUrl(scope, 'bundle')} download>
             <FileJsonIcon data-icon="inline-start" />
             <span className="flex flex-col">
               <span>{t('export.bundle')}</span>
-              <span className="text-[10px] text-muted-foreground">{t('export.bundleHint')}</span>
+              <span className="text-[11px] text-muted-foreground">{t('export.bundleHint')}</span>
             </span>
           </a>
         </DropdownMenuItem>
@@ -43,7 +43,7 @@ export function ExportMenu({ scope }: { scope: ExportScope }) {
             <FileArchiveIcon data-icon="inline-start" />
             <span className="flex flex-col">
               <span>{t('export.mappings')}</span>
-              <span className="text-[10px] text-muted-foreground">{t('export.mappingsHint')}</span>
+              <span className="text-[11px] text-muted-foreground">{t('export.mappingsHint')}</span>
             </span>
           </a>
         </DropdownMenuItem>

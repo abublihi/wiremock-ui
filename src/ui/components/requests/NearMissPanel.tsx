@@ -29,11 +29,11 @@ export function NearMissPanel({ requestId }: { requestId: string }) {
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <header>
-        <h3 id={headingId} className="text-[10px] font-semibold tracking-[0.18em] text-hazard-fg uppercase">
+        <h3 id={headingId} className="text-[11px] font-semibold tracking-[0.18em] text-hazard-fg uppercase">
           <span aria-hidden>— </span>
           <Term name="near miss">{t('near.title')}</Term>
         </h3>
-        <p className="text-[11px] text-muted-foreground">{t('near.caption')}</p>
+        <p className="text-xs text-muted-foreground">{t('near.caption')}</p>
       </header>
       {misses.isPending ? (
         <div className="flex flex-col gap-2">
@@ -95,7 +95,7 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
                 {name}
               </Link>
             </h4>
-            <dl className="flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
+            <dl className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
               {miss.stub.owner && (
                 <div className="flex gap-1">
                   <dt>{t('near.owner')}</dt>
@@ -112,10 +112,10 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <span className={cn('text-[11px] font-medium', summary.mismatch > 0 ? 'text-mismatch' : 'text-muted-foreground')}>
+          <span className={cn('text-xs font-medium', summary.mismatch > 0 ? 'text-mismatch' : 'text-muted-foreground')}>
             {summary.mismatch > 0 ? t('near.summary', { mismatch: summary.mismatch, total: summary.total }) : t('near.summaryNone')}
           </span>
-          <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground" title={`${t('near.distance')} ${miss.distance}`}>
+          <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground" title={`${t('near.distance')} ${miss.distance}`}>
             <span aria-hidden className="h-1 w-16 overflow-hidden rounded-full bg-surface-2">
               <span className="block h-full rounded-full bg-hazard" style={{ width: `${closeness}%` }} />
             </span>
@@ -126,7 +126,7 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
         </div>
       </header>
       {rows.length === 0 ? (
-        <p className="px-3 py-3 text-[11px] text-muted-foreground">{t('near.noFields')}</p>
+        <p className="px-3 py-3 text-xs text-muted-foreground">{t('near.noFields')}</p>
       ) : (
         <DiffTable rows={rows} />
       )}
@@ -136,7 +136,7 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
 
 function DiffTable({ rows }: { rows: DiffRow[] }) {
   const t = useT()
-  const head = 'px-3 py-1.5 text-start text-[9.5px] font-medium tracking-[0.14em] text-muted-foreground uppercase'
+  const head = 'px-3 py-1.5 text-start text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase'
   return (
     <table className="w-full table-fixed border-collapse text-xs">
       <colgroup>
@@ -177,8 +177,8 @@ function DiffTable({ rows }: { rows: DiffRow[] }) {
                     <code dir="ltr" className="block font-mono font-medium wrap-anywhere">
                       {row.field}
                     </code>
-                    <span className={cn('text-[10px] tracking-wide', STATE_TEXT[row.state])}>{t(STATE_LABEL[row.state])}</span>
-                    {row.state === 'unchecked' && <p className="mt-0.5 text-[10px] leading-snug">{t('near.uncheckedHint')}</p>}
+                    <span className={cn('text-[11px] tracking-wide', STATE_TEXT[row.state])}>{t(STATE_LABEL[row.state])}</span>
+                    {row.state === 'unchecked' && <p className="mt-0.5 text-[11px] leading-snug">{t('near.uncheckedHint')}</p>}
                   </div>
                 </div>
               </td>

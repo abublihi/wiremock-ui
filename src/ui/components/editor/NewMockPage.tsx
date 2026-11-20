@@ -231,7 +231,7 @@ function NoIntegrations({ onQuick, onBlank, scenario }: { onQuick: () => void; o
             <PlusIcon data-icon="inline-start" />
             {t('editor.noIntegrations.add')}
           </Button>
-          <span id={hintId} className="text-[11px] text-muted-foreground">
+          <span id={hintId} className="text-xs text-muted-foreground">
             {t('editor.noIntegrations.addHint')}
           </span>
         </div>

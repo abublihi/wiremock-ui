@@ -49,13 +49,13 @@ export function UserMenu({ user }: { user: PublicUser }) {
           >
             <span
               aria-hidden
-              className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-surface-2 text-[10px] font-semibold text-signal-fg uppercase"
+              className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-surface-2 text-[11px] font-semibold text-signal-fg uppercase"
             >
               {initials(user.displayName)}
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate text-[11px] leading-none font-medium text-foreground">{user.displayName}</span>
-              <span className="truncate text-[10px] leading-none text-muted-foreground">@{user.username}</span>
+              <span className="truncate text-xs leading-none font-medium text-foreground">{user.displayName}</span>
+              <span className="truncate text-[11px] leading-none text-muted-foreground">@{user.username}</span>
             </span>
             {/* Named by its visible text plus this hint (WCAG 2.5.3: the label contains the visible text). */}
             <span className="sr-only">{t('user.menu')}</span>

@@ -12,7 +12,7 @@ export function NoMatchStamp({ onClick, size = 'sm', className }: { onClick?: ()
     <span
       className={cn(
         'flex items-center rounded-[2px] bg-surface font-bold tracking-[0.16em] text-hazard-fg uppercase',
-        size === 'sm' ? 'h-4 px-1.5 text-[9.5px]' : 'h-6 px-2.5 text-[11px]',
+        size === 'sm' ? 'h-4 px-1.5 text-[11px]' : 'h-6 px-2.5 text-xs',
       )}
     >
       {t('requests.noMatch')}

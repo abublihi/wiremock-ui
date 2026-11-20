@@ -18,7 +18,7 @@ const GROUPS: { id: NavGroup; label: MessageKey }[] = [
 ]
 
 const LINK =
-  "group/nav relative flex items-center gap-2.5 rounded-md px-3 py-2.5 text-xs text-muted-foreground transition-colors duration-150 hover:bg-surface-2 hover:text-foreground data-[status=active]:bg-signal/8 data-[status=active]:font-medium data-[status=active]:text-signal-fg data-[status=active]:before:absolute data-[status=active]:before:start-0 data-[status=active]:before:top-1/2 data-[status=active]:before:h-5 data-[status=active]:before:w-[3px] data-[status=active]:before:-translate-y-1/2 data-[status=active]:before:rounded-e-full data-[status=active]:before:bg-signal data-[status=active]:after:text-[9px] data-[status=active]:after:opacity-60 data-[status=active]:after:content-['●']"
+  "group/nav relative flex items-center gap-2.5 rounded-md px-3 py-2.5 text-xs text-muted-foreground transition-colors duration-150 hover:bg-surface-2 hover:text-foreground data-[status=active]:bg-signal/8 data-[status=active]:font-medium data-[status=active]:text-signal-fg data-[status=active]:before:absolute data-[status=active]:before:start-0 data-[status=active]:before:top-1/2 data-[status=active]:before:h-5 data-[status=active]:before:w-[3px] data-[status=active]:before:-translate-y-1/2 data-[status=active]:before:rounded-e-full data-[status=active]:before:bg-signal data-[status=active]:after:text-[11px] data-[status=active]:after:opacity-60 data-[status=active]:after:content-['●']"
 
 export function Rail({ nav, counts, onNavigate }: { nav: NavItem[]; counts?: NavCounts; onNavigate?: () => void }) {
   const t = useT()
@@ -29,7 +29,7 @@ export function Rail({ nav, counts, onNavigate }: { nav: NavItem[]; counts?: Nav
         if (items.length === 0) return null
         return (
           <div key={group.id} role="group" aria-label={t(group.label)} className="flex flex-col gap-0.5">
-            <p aria-hidden className="mb-2 px-2 text-[9px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            <p aria-hidden className="mb-2 px-2 text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
               // {t(group.label)}
             </p>
             {items.map((item) => {
@@ -47,7 +47,7 @@ export function Rail({ nav, counts, onNavigate }: { nav: NavItem[]; counts?: Nav
                   {t(item.label)}
                   {count > 0 && (
                     <span
-                      className="ms-auto rounded-sm border border-mismatch/40 bg-mismatch/10 px-1.5 py-0.5 font-mono text-[10px] leading-none text-mismatch tabular-nums"
+                      className="ms-auto rounded-sm border border-mismatch/40 bg-mismatch/10 px-1.5 py-0.5 font-mono text-[11px] leading-none text-mismatch tabular-nums"
                       title={t('nav.unmatchedCount', { count })}
                     >
                       <span aria-hidden>{count > 99 ? '99+' : count}</span>

@@ -151,7 +151,7 @@ export function EndpointPicker({
             </div>
           )}
           {!loading && total > shown && (
-            <p role="status" className="border-t border-line px-3 py-2 text-[11px] text-muted-foreground">
+            <p role="status" className="border-t border-line px-3 py-2 text-xs text-muted-foreground">
               {t('editor.pickCapped', { shown: shown.toLocaleString('en'), total: total.toLocaleString('en') })}
             </p>
           )}
@@ -168,7 +168,7 @@ function EmptyIntegration({ integration, returnHere }: { integration: Integratio
   const t = useT()
   return (
     <div role="group" aria-label={integration.name} className="overflow-hidden p-1 text-foreground">
-      <p aria-hidden className="px-2 py-1.5 text-[10px] font-medium tracking-[0.16em] text-muted-foreground uppercase">
+      <p aria-hidden className="px-2 py-1.5 text-[11px] font-medium tracking-[0.16em] text-muted-foreground uppercase">
         {integration.name}
       </p>
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-dashed border-line px-2 py-2 text-xs text-muted-foreground">
@@ -212,7 +212,7 @@ function IntegrationGroup({
   return (
     <CommandGroup
       heading={integration.name}
-      className="**:[[cmdk-group-heading]]:text-[10px] **:[[cmdk-group-heading]]:tracking-[0.16em] **:[[cmdk-group-heading]]:uppercase"
+      className="**:[[cmdk-group-heading]]:text-[11px] **:[[cmdk-group-heading]]:tracking-[0.16em] **:[[cmdk-group-heading]]:uppercase"
     >
       {endpoints.map((endpoint) => (
         <CommandItem
@@ -224,12 +224,12 @@ function IntegrationGroup({
           <MethodBadge method={endpoint.method} className="w-14 justify-center" />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate font-medium">{endpoint.name}</span>
-            <span dir="ltr" className="truncate font-mono text-[11px] text-muted-foreground">
+            <span dir="ltr" className="truncate font-mono text-xs text-muted-foreground">
               <span className="opacity-70">{prefixOf(integration)}</span>
               <span>{endpoint.path}</span>
             </span>
           </span>
-          <span className="hidden text-[10px] text-muted-foreground sm:inline">
+          <span className="hidden text-[11px] text-muted-foreground sm:inline">
             {t('editor.endpointRef', { integration: integration.name, endpoint: endpoint.name })}
           </span>
         </CommandItem>

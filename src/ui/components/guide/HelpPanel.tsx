@@ -30,7 +30,7 @@ export function HelpPanel() {
       </SheetTrigger>
       <SheetContent side="end" className="w-[92vw] gap-0 p-0 data-[side=end]:sm:max-w-xl">
         <SheetHeader className="border-b border-line/60 px-5 pt-5 pb-4">
-          <p aria-hidden className="font-mono text-[10px] tracking-[0.18em] text-signal-fg uppercase">
+          <p aria-hidden className="font-mono text-[11px] tracking-[0.18em] text-signal-fg uppercase">
             // {t('help.eyebrow')}
           </p>
           <SheetTitle className="font-display text-2xl font-bold tracking-wide uppercase">{section.title}</SheetTitle>

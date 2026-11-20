@@ -133,13 +133,13 @@ function IntegrationCard({ integration }: { integration: Integration }) {
           <h2 className="font-medium group-hover:text-signal-fg">{integration.name}</h2>
           <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
         </div>
-        <p dir="ltr" className="font-mono text-[11px] text-muted-foreground">
+        <p dir="ltr" className="font-mono text-xs text-muted-foreground">
           {integration.key}
         </p>
         <p dir="ltr" className="truncate font-mono text-xs">
           {integration.prefix}
         </p>
-        <p className="mt-auto pt-2 text-[11px] text-muted-foreground">
+        <p className="mt-auto pt-2 text-xs text-muted-foreground">
           {n === undefined ? t('catalog.endpointCountLoading') : t(n === 1 ? 'catalog.endpointCountOne' : 'catalog.endpointCount', { count: n })}
         </p>
       </Link>

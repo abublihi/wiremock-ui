@@ -176,7 +176,7 @@ function TableShell({ children }: { children: React.ReactNode }) {
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             {COLUMNS.map(([col, className]) => (
-              <TableHead key={col} className={cn('text-[10px] tracking-[0.14em] text-muted-foreground uppercase', className)}>
+              <TableHead key={col} className={cn('text-[11px] tracking-[0.14em] text-muted-foreground uppercase', className)}>
                 {t(`requests.col${col}`)}
               </TableHead>
             ))}

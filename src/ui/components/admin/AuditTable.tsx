@@ -22,7 +22,7 @@ function TableShell({ children }: { children: React.ReactNode }) {
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             {COLUMNS.map((col) => (
-              <TableHead key={col.key} className={cn('text-[10px] tracking-[0.14em] text-muted-foreground uppercase', col.hide && 'hidden md:table-cell')}>
+              <TableHead key={col.key} className={cn('text-[11px] tracking-[0.14em] text-muted-foreground uppercase', col.hide && 'hidden md:table-cell')}>
                 {t(col.key)}
               </TableHead>
             ))}
@@ -85,12 +85,12 @@ export function AuditTable({ entries }: { entries: AuditEntry[] }) {
                 <span dir="ltr" className="font-mono text-xs text-signal-fg">
                   {entry.action}
                 </span>
-                {entry.target && <p dir="ltr" className="max-w-40 truncate font-mono text-[10px] text-muted-foreground md:hidden">{entry.target}</p>}
+                {entry.target && <p dir="ltr" className="max-w-40 truncate font-mono text-[11px] text-muted-foreground md:hidden">{entry.target}</p>}
               </TableCell>
               <TableCell dir="ltr" className="hidden max-w-48 truncate font-mono text-xs md:table-cell" title={entry.target}>
                 {entry.target ?? '—'}
               </TableCell>
-              <TableCell dir="ltr" className="hidden max-w-80 truncate font-mono text-[11px] text-muted-foreground md:table-cell" title={details}>
+              <TableCell dir="ltr" className="hidden max-w-80 truncate font-mono text-xs text-muted-foreground md:table-cell" title={details}>
                 {details || '—'}
               </TableCell>
             </TableRow>

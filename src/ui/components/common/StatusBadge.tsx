@@ -13,7 +13,7 @@ export function StatusBadge({ status, className }: { status: number; className?:
   return (
     <span
       className={cn(
-        'inline-flex h-5 shrink-0 items-center rounded-sm border px-1.5 font-mono text-[10px] font-semibold tabular-nums',
+        'inline-flex h-5 shrink-0 items-center rounded-sm border px-1.5 font-mono text-[11px] font-semibold tabular-nums',
         statusClass(status),
         className,
       )}

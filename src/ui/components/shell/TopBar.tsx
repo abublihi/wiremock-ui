@@ -99,7 +99,7 @@ export function TopBar({ nav, counts, user }: { nav: NavItem[]; counts?: NavCoun
         <Brand />
       </span>
       {/* A shell prompt with the current path: decoration, the page title says where you are. */}
-      <p aria-hidden className="hidden truncate text-[11px] text-muted-foreground md:block">
+      <p aria-hidden className="hidden truncate text-xs text-muted-foreground md:block">
         <span className="text-signal-fg">$</span> cd ~{pathname}
       </p>
       <div className="ms-auto flex items-center gap-1">

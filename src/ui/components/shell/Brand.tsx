@@ -46,7 +46,7 @@ export function Brand({ caption = false, size = 'sm' }: { caption?: boolean; siz
         </span>
       </span>
       {caption && (
-        <span className={cn('text-[10px] leading-none text-muted-foreground', lg ? 'ps-[50px]' : 'ps-[42px]')}>
+        <span className={cn('text-[11px] leading-none text-muted-foreground', lg ? 'ps-[50px]' : 'ps-[42px]')}>
           {t('app.caption')}
         </span>
       )}

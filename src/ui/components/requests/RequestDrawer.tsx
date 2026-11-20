@@ -72,7 +72,7 @@ function DrawerBody({ id }: { id: string }) {
   return (
     <>
       <SheetHeader className="gap-2 border-b border-line pe-12">
-        <p className="text-[9.5px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">— {t('request.title')}</p>
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">— {t('request.title')}</p>
         <SheetTitle className="flex min-w-0 items-center gap-2 text-sm">
           <MethodBadge method={e.request.method} />
           <span dir="ltr" className="min-w-0 font-mono font-medium wrap-anywhere">

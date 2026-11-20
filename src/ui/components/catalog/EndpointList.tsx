@@ -40,7 +40,7 @@ export function EndpointList({ integration, endpoints }: { integration: Integrat
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="font-medium">{endpoint.name}</h3>
-                  <p dir="ltr" className="font-mono text-[11px] text-muted-foreground">
+                  <p dir="ltr" className="font-mono text-xs text-muted-foreground">
                     {endpoint.key}
                   </p>
                 </div>
@@ -89,7 +89,7 @@ export function EndpointList({ integration, endpoints }: { integration: Integrat
                 <span dir="ltr" className="min-w-0 break-all font-mono text-xs">
                   {url}
                 </span>
-                <Badge variant="outline" className="font-mono text-[10px]">
+                <Badge variant="outline" className="font-mono text-[11px]">
                   {t(`catalog.endpoint.pathType.${endpoint.pathType}`)}
                 </Badge>
               </div>

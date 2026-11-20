@@ -480,7 +480,7 @@ export function SimpleEditor({
                     className={cn('gap-1.5', ON)}
                   >
                     {t(PRESET_LABEL[preset])}
-                    <span aria-hidden className="font-mono text-[10px] opacity-60">
+                    <span aria-hidden className="font-mono text-[11px] opacity-60">
                       {presetToStatus(preset).status}
                     </span>
                   </ToggleGroupItem>
@@ -546,7 +546,7 @@ export function SimpleEditor({
                 )}
                 <span className="flex flex-wrap items-center gap-2">
                   {!broken && !bodyTouched && form.body !== '' && (
-                    <span className="text-[11px] text-muted-foreground">{t('editor.bodyFromExample', { status: exampleStatus })}</span>
+                    <span className="text-xs text-muted-foreground">{t('editor.bodyFromExample', { status: exampleStatus })}</span>
                   )}
                   {!broken && !form.binary && <BodyFileButton onFile={onBodyFile} onError={setFileError} />}
                 </span>
@@ -559,7 +559,7 @@ export function SimpleEditor({
                 >
                   <FileIcon aria-hidden className="size-4 shrink-0 text-signal-fg" />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{t('editor.bodyFile.binary')}</span>
+                    <span className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">{t('editor.bodyFile.binary')}</span>
                     <span dir="ltr" className="font-mono text-xs [overflow-wrap:anywhere]">
                       {form.binary.name
                         ? t('editor.bodyFile.binaryDetails', { name: form.binary.name, size: formatSize(form.binary.size), type: form.binary.contentType })

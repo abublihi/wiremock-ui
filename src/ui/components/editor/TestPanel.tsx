@@ -121,7 +121,7 @@ function PanelBody({ initial, mockId, pathIsPattern = false, variant = 'mock' }:
   return (
     <>
       <SheetHeader className="gap-1 border-b border-line pe-12">
-        <p className="text-[9.5px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">— {t('test.open')}</p>
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">— {t('test.open')}</p>
         <SheetTitle>{t(TITLES[variant])}</SheetTitle>
         <SheetDescription className="text-xs">{t(CAPTIONS[variant])}</SheetDescription>
       </SheetHeader>
@@ -160,11 +160,11 @@ function PanelBody({ initial, mockId, pathIsPattern = false, variant = 'mock' }:
               className="min-w-0 flex-1 font-mono text-xs"
             />
           </div>
-          <p id={pathHintId} className="text-[11px] text-muted-foreground">
+          <p id={pathHintId} className="text-xs text-muted-foreground">
             {t('test.pathHint')}
           </p>
           {stillPattern && (
-            <p role="note" className="flex items-start gap-2 text-[11px] text-hazard-fg">
+            <p role="note" className="flex items-start gap-2 text-xs text-hazard-fg">
               <AlertTriangleIcon aria-hidden className="mt-px size-3.5 shrink-0" />
               {t('test.pathPattern')}
             </p>
@@ -184,7 +184,7 @@ function PanelBody({ initial, mockId, pathIsPattern = false, variant = 'mock' }:
               rows={Math.min(12, Math.max(4, body.split('\n').length))}
               className="font-mono text-xs leading-relaxed"
             />
-            {bodyless && body !== '' && <p className="text-[11px] text-muted-foreground">{t('test.bodyNotSent')}</p>}
+            {bodyless && body !== '' && <p className="text-xs text-muted-foreground">{t('test.bodyNotSent')}</p>}
           </Part>
         </form>
 
@@ -202,7 +202,7 @@ function PanelBody({ initial, mockId, pathIsPattern = false, variant = 'mock' }:
           ) : send.data ? (
             <Result result={send.data} mockId={mockId} />
           ) : (
-            <p className="text-[11px] text-muted-foreground">{t('test.empty')}</p>
+            <p className="text-xs text-muted-foreground">{t('test.empty')}</p>
           )}
         </section>
       </div>
@@ -290,11 +290,11 @@ function Result({ result, mockId }: { result: TestRequestResult; mockId?: string
       </div>
       <HeaderTable headers={result.headers} />
       {result.bodyIsBase64 ? (
-        <p className="text-[11px] text-muted-foreground">{t('test.base64', { size: formatSize(binarySize) })}</p>
+        <p className="text-xs text-muted-foreground">{t('test.base64', { size: formatSize(binarySize) })}</p>
       ) : (
         <Body text={prettyBody(result.body)} />
       )}
-      {result.bodyTruncated && <p className="text-[11px] text-hazard-fg">{t('test.truncated')}</p>}
+      {result.bodyTruncated && <p className="text-xs text-hazard-fg">{t('test.truncated')}</p>}
     </Part>
   )
 }

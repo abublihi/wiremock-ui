@@ -680,14 +680,14 @@ function TesterPreview({ integration, form }: { integration: Integration; form: 
     <section aria-labelledby={titleId} className="flex flex-col gap-4 rounded-md border border-line bg-surface p-4">
       <Eyebrow id={titleId}>{t('catalog.endpoint.preview.title')}</Eyebrow>
       <div className="flex flex-col gap-1.5">
-        <p className="text-[10px] tracking-[0.12em] text-muted-foreground uppercase">{t('catalog.endpoint.preview.picker')}</p>
+        <p className="text-[11px] tracking-[0.12em] text-muted-foreground uppercase">{t('catalog.endpoint.preview.picker')}</p>
         <div className="flex items-center gap-3 rounded-sm border border-signal/40 bg-surface px-2 py-2">
           <MethodBadge method={form.method} className="w-14 justify-center" />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className={form.name.trim() ? 'truncate text-sm font-medium' : 'truncate text-sm text-muted-foreground italic'}>
               {form.name.trim() || t('catalog.endpoint.preview.untitled')}
             </span>
-            <span dir="ltr" className="truncate font-mono text-[11px] text-muted-foreground">
+            <span dir="ltr" className="truncate font-mono text-xs text-muted-foreground">
               {prefixOf(integration) && <span>{prefixOf(integration)}</span>}
               <span>{form.path}</span>
             </span>
@@ -695,14 +695,14 @@ function TesterPreview({ integration, form }: { integration: Integration; form: 
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
-        <p className="text-[10px] tracking-[0.12em] text-muted-foreground uppercase">{t('catalog.endpoint.preview.keyField')}</p>
+        <p className="text-[11px] tracking-[0.12em] text-muted-foreground uppercase">{t('catalog.endpoint.preview.keyField')}</p>
         {lookup ? (
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">{keyLabel(t, { lookup })}</span>
             <div aria-hidden className="h-8 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-muted-foreground">
               {t('editor.keyPlaceholder')}
             </div>
-            <p className="text-[11px] text-muted-foreground">{t('catalog.endpoint.preview.keyHint')}</p>
+            <p className="text-xs text-muted-foreground">{t('catalog.endpoint.preview.keyHint')}</p>
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">{t('catalog.endpoint.preview.noKey')}</p>

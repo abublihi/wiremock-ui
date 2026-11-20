@@ -80,7 +80,7 @@ export function MockFilters({
         value={search.integration ?? ANY}
         onValueChange={(value) => onChange({ integration: value === ANY ? undefined : value })}
       >
-        <SelectTrigger aria-label={t('mocks.integration')} className="w-44">
+        <SelectTrigger aria-label={t('mocks.integration')} className="w-52">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -94,7 +94,7 @@ export function MockFilters({
       </Select>
 
       <Select value={search.status ?? ANY} onValueChange={(value) => onChange({ status: value === ANY ? undefined : value })}>
-        <SelectTrigger aria-label={t('mocks.status')} className="w-36">
+        <SelectTrigger aria-label={t('mocks.status')} className="w-40">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

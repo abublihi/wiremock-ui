@@ -64,7 +64,7 @@ function FilterFields({ value, onChange }: { value: Filters; onChange: (next: Fi
   const problem = path?.kind === 'regex' ? path.problem : null
   return (
     <fieldset className="flex flex-col gap-4">
-      <legend className="mb-3 text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">// {t('recording.filters')}</legend>
+      <legend className="mb-3 text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">// {t('recording.filters')}</legend>
       <div className="grid gap-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
         <Field>
           <FieldLabel htmlFor={id('method')}>{t('recording.method')}</FieldLabel>
@@ -295,7 +295,7 @@ export function RecordPanel({ state }: { state: RecordingState | undefined }) {
         </div>
       </form>
       <aside aria-labelledby={`${ids}-how`} className="flex flex-col gap-3 self-start rounded-md border border-dashed border-line p-4 text-sm">
-        <h2 id={`${ids}-how`} className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+        <h2 id={`${ids}-how`} className="text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
           // {t('recording.howTitle')}
         </h2>
         <ol className="flex list-decimal flex-col gap-2 ps-4 marker:font-mono marker:text-signal-fg">

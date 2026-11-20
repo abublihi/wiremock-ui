@@ -233,7 +233,7 @@ export function ReviewList({ recording }: { recording: Recording }) {
             </ToggleGroupItem>
           </ToggleGroup>
           {seedPrune && (
-            <span id={`${ids}-prune`} className="basis-full text-[11px] text-muted-foreground sm:basis-auto sm:max-w-md">
+            <span id={`${ids}-prune`} className="basis-full text-xs text-muted-foreground sm:basis-auto sm:max-w-md">
               {t('recording.ownerBaselineSeedPrune')}
             </span>
           )}
@@ -300,7 +300,7 @@ function ScenarioGroup({ group, busy, onKeepFirst, children }: { group: ReviewGr
         <Button size="sm" variant="outline" className="ms-auto h-7 text-xs" disabled={busy} onClick={onKeepFirst}>
           {t('recording.keepFirst')}
         </Button>
-        <p className="basis-full text-[11px] text-muted-foreground">{t('recording.groupHint', { name: group.scenario ?? '' })}</p>
+        <p className="basis-full text-xs text-muted-foreground">{t('recording.groupHint', { name: group.scenario ?? '' })}</p>
       </div>
       <ol className="flex flex-col gap-2">{children}</ol>
     </li>
@@ -350,11 +350,11 @@ function ReviewRow({
         <label htmlFor={id('check')} className="min-w-0 flex-1 font-mono text-xs break-all">
           {item.url}
         </label>
-        {item.status !== null ? <StatusBadge status={item.status} /> : <span className="font-mono text-[10px] text-mismatch">{t('recording.fault')}</span>}
-        <span className="font-mono text-[10px] text-muted-foreground tabular-nums">{item.bodySize > 0 ? formatBytes(item.bodySize) : t('recording.noBody')}</span>
+        {item.status !== null ? <StatusBadge status={item.status} /> : <span className="font-mono text-[11px] text-mismatch">{t('recording.fault')}</span>}
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{item.bodySize > 0 ? formatBytes(item.bodySize) : t('recording.noBody')}</span>
       </div>
       {(item.duplicateOf || item.unmatched || item.tooLarge || scenario || plain) && (
-        <div className="flex flex-wrap gap-2 text-[11px]">
+        <div className="flex flex-wrap gap-2 text-xs">
           {item.duplicateOf && (
             <Link
               to="/mocks/$id"
@@ -388,13 +388,13 @@ function ReviewRow({
       )}
       <div className="grid gap-2 sm:grid-cols-3">
         <div className="flex flex-col gap-1">
-          <label htmlFor={id('name')} className="text-[11px] text-muted-foreground">
+          <label htmlFor={id('name')} className="text-xs text-muted-foreground">
             {t('recording.name')}
           </label>
           <Input id={id('name')} className="h-8 text-xs" placeholder={label} value={choice.name} onChange={(e) => onChoice({ name: e.target.value })} />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor={id('integration')} className="text-[11px] text-muted-foreground">
+          <label htmlFor={id('integration')} className="text-xs text-muted-foreground">
             {t('recording.integration')}
           </label>
           <Select
@@ -418,7 +418,7 @@ function ReviewRow({
           </Select>
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor={id('endpoint')} className="text-[11px] text-muted-foreground">
+          <label htmlFor={id('endpoint')} className="text-xs text-muted-foreground">
             {t('recording.endpoint')}
           </label>
           <Select value={choice.endpoint || NONE} disabled={!integration} onValueChange={(v) => onChoice({ endpoint: v === NONE ? '' : v })}>
@@ -453,11 +453,11 @@ function RecordedAnswer({ item }: { item: ReviewItem }) {
   const [open, setOpen] = useState(false)
   return (
     <details className="group rounded-md border border-line/70 bg-surface-2" onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="cursor-pointer px-2.5 py-1.5 text-[11px] text-muted-foreground select-none hover:text-foreground">
+      <summary className="cursor-pointer px-2.5 py-1.5 text-xs text-muted-foreground select-none hover:text-foreground">
         {t('recording.showBody', { size: formatBytes(item.bodySize) })}
       </summary>
       {open && (
-        <pre dir="ltr" className="max-h-64 overflow-auto border-t border-line/70 px-2.5 py-2 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+        <pre dir="ltr" className="max-h-64 overflow-auto border-t border-line/70 px-2.5 py-2 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap">
           {bodyText(item)}
         </pre>
       )}

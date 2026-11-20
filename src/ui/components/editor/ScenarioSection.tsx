@@ -188,7 +188,7 @@ function Suggestions({ label, options, onPick }: { label: string; options: strin
   if (options.length === 0) return null
   return (
     <div role="group" aria-label={label} className="flex flex-wrap items-center gap-1.5">
-      <span aria-hidden className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+      <span aria-hidden className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
         {label}
       </span>
       {options.map((option) => (
@@ -197,7 +197,7 @@ function Suggestions({ label, options, onPick }: { label: string; options: strin
           type="button"
           onClick={() => onPick(option)}
           className={cn(
-            'max-w-full truncate rounded-full border border-line bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors',
+            'max-w-full truncate rounded-full border border-line bg-surface-2 px-2 py-0.5 font-mono text-xs text-muted-foreground transition-colors',
             'hover:border-signal/40 hover:text-signal-fg focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
           )}
         >

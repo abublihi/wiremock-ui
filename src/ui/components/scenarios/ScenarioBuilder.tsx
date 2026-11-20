@@ -604,7 +604,7 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
                       <MethodBadge method={endpoint.method} />
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate text-sm font-medium">{t('editor.endpointRef', { integration: integration.name, endpoint: endpoint.name })}</span>
-                        <span dir="ltr" className="truncate font-mono text-[11px] text-muted-foreground">
+                        <span dir="ltr" className="truncate font-mono text-xs text-muted-foreground">
                           {(integration.prefix === '/' ? '' : integration.prefix) + endpoint.path}
                         </span>
                       </span>
@@ -968,7 +968,7 @@ function StepCard({
 
       {/* The answer: what the arrows move between positions. */}
       <div role="group" aria-labelledby={id('answer')} className="flex flex-col gap-4 rounded-md border border-dashed border-line bg-canvas/40 p-3">
-        <p id={id('answer')} className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+        <p id={id('answer')} className="text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
           {t('builder.answerOf', { n })}
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -1035,7 +1035,7 @@ function StepCard({
             ) : (
               <FieldLabel htmlFor={id('body')}>{t('builder.body')}</FieldLabel>
             )}
-            {exampleShown && <span className="text-[11px] text-muted-foreground">{t('editor.bodyFromExample', { status: step.status })}</span>}
+            {exampleShown && <span className="text-xs text-muted-foreground">{t('editor.bodyFromExample', { status: step.status })}</span>}
           </div>
           {bodyLanguage ? (
             <CodeEditor
@@ -1075,14 +1075,14 @@ function Explainer({ editing = false }: { editing?: boolean }) {
   return (
     <section aria-labelledby={titleId} className="glass-panel flex flex-col gap-3 rounded-md border border-line p-4 sm:p-5 md:flex-row md:items-center md:gap-6">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <h2 id={titleId} className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+        <h2 id={titleId} className="text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
           <span aria-hidden="true">— </span>
           {t('builder.explainTitle')}
         </h2>
         <p className="text-sm leading-relaxed">{t('builder.explain')}</p>
         <p className="text-xs leading-relaxed text-muted-foreground">{editing ? t('builder.editExplainMore') : t('builder.explainMore')}</p>
       </div>
-      <ol aria-hidden className="flex shrink-0 flex-col gap-1.5 font-mono text-[11px]">
+      <ol aria-hidden className="flex shrink-0 flex-col gap-1.5 font-mono text-xs">
         <li className="flex items-center gap-2 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
           <span className="text-muted-foreground">#1</span>
           <span className="text-signal-fg">{STARTED}</span>
