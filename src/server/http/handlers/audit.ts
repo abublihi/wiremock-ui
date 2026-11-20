@@ -1,4 +1,5 @@
 import { ValidationError } from '../../errors'
+import { listAuditView, parseAuditFilter } from '../../audit/view'
 import { json, withAuth } from '../wrap'
 
 export const listAudit = withAuth('audit.read', async ({ rt, request }) => {
@@ -11,5 +12,6 @@ export const listAudit = withAuth('audit.read', async ({ rt, request }) => {
   }
   const cursor = q.get('cursor')
   if (cursor === '') throw new ValidationError('cursor is invalid')
-  return json(await rt.audit.list({ limit, cursor: cursor ?? undefined }))
+  const filter = parseAuditFilter(q)
+  return json(await listAuditView(rt, { limit, cursor: cursor ?? undefined, filter }))
 })
