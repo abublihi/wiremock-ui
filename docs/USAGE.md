@@ -1,12 +1,30 @@
 # Using wiremock-ui
 
-A walkthrough for testers: describe the systems you call, mock their answers, point your application at WireMock and see what it received. Installation is in [INSTALL.md](INSTALL.md).
+A walkthrough for testers: describe the systems you call, mock their answers, point your application at WireMock and see what it received. New here? Read [Concepts](#concepts-integration--endpoint--mock) first. Installation is in [INSTALL.md](INSTALL.md).
 
 The examples use a made-up citizen lookup: `POST /nic/citizens/fetch` with a body like `{"idNo":"1012345678"}`.
 
 > **Test environments only.** Never put real personal data in a mock.
 
 Every signed-in user can do everything: create, edit and delete any mock, manage the catalog, users and imports. Each mock still records its owner, so "my mocks" stays useful.
+
+## Concepts: integration → endpoint → mock
+
+Three words carry the whole UI. Using the citizen lookup as the example:
+
+| | What it is | In the example |
+|---|---|---|
+| **Integration** | One external system your application calls, and the URL prefix its requests use on WireMock. | **NIC** (the national information center), prefix `/nic` |
+| **Endpoint** | One operation of that system: method, path, and **where the key is**. | **Fetch citizen**: `POST /nic/citizens/fetch`, key `$.idNo` in the JSON body |
+| **Mock** | One answer WireMock gives for one **key value** of an endpoint. | `idNo` `1012345678` → `200 {"name":"Test Citizen"}`; `idNo` `999` → `404` |
+
+**The key** is the value in each request that tells one mock from another. Your application calls `POST /nic/citizens/fetch` for every citizen; only the `idNo` in the body changes. So the endpoint says "the key is `$.idNo`", and each mock answers one `idNo`. A **default mock** answers every request whose key no other mock has.
+
+Why the catalog: someone (often a developer or lead tester) describes each system and endpoint **once**, with example requests and responses. After that, anyone makes a mock in a few clicks: pick the endpoint, type a key value, pick a status. The catalog is not a list of mocks and does not answer requests itself; only mocks do.
+
+The **endpoint ID** (`fetch-citizen`) is just the endpoint's name in URLs and the API. It is not the key.
+
+The Catalog page shows this as a "How it fits together" strip. Hide it with **×**; **How it fits together** in the page header brings it back.
 
 ## Sign in
 
@@ -30,14 +48,32 @@ The catalog lists the external systems your application calls (integrations) and
 - **Name:** `NIC`
 - **URL prefix:** `/nic` (put in front of every endpoint path)
 
-**Add an endpoint.** Open the integration → **Add endpoint**:
+**Add an endpoint.** Open the integration → **Add endpoint**. The form is a page of its own; the panel on the right, **How testers will see this**, shows the endpoint's row in the New mock picker and the key field the mock editor will show, as you type.
 
-- **Key** `fetch-citizen`, **Name** `Fetch citizen`, **Method** `POST`
-- **Path** `/citizens/fetch`, **Path type** `Exact` (use `Template` for `/citizens/{id}`, `Regex` for a pattern)
-- **Lookup location** `JSON body (JSONPath)`, **Lookup expression** `$.idNo`: the value that tells one mock from another
-- **Content type** `JSON`
-- **Allowed statuses** `200` and `404`, with an example response for each. The examples prefill the body of new mocks.
-- Optional: an example request, a description and links to the real system's documentation.
+![Endpoint page](screenshots/endpoint-dark.png)
+
+- **Request:** **Name** `Fetch citizen`, **Endpoint ID** `fetch-citizen`, **Method** `POST`, **Path** `/citizens/fetch`, **Path type**, **Content type** `JSON`.
+  - `Exact`: the path must equal the text. `/citizens/fetch` matches only `/nic/citizens/fetch`.
+  - `Template`: `{name}` marks a segment that changes. `/citizens/{id}` matches `/nic/citizens/42`.
+  - `Regex`: a regular expression (Java dialect). `/citizens/[0-9]+` matches `/nic/citizens/42` but not `/nic/citizens/abc`.
+- **Key:** **Where the key is** `JSON body (JSONPath)` and **Key expression** `$.idNo`. The other places:
+
+  | Where the key is | Expression | Reads `1012345678` from |
+  |---|---|---|
+  | JSON body (JSONPath) | `$.idNo` | `{"idNo":"1012345678"}` |
+  | XML body (XPath) | `/Envelope/Body/id` | `<Envelope><Body><id>1012345678</id></Body></Envelope>` |
+  | Query parameter | `id` | `/nic/citizens?id=1012345678` |
+  | Path variable (Template paths) | `id` | `/nic/citizens/1012345678` with path `/citizens/{id}` |
+  | Header | `X-Account-Id` | `X-Account-Id: 1012345678` |
+  | Form field | `accountId` | `accountId=1012345678&lang=en` |
+
+  **No key** means every mock of the endpoint answers every request to it (only a default answer makes sense).
+- **Examples:** an **example request** (what **Try it** sends), the **allowed statuses** `200` and `404`, and one tab per status with its **example response**. The examples prefill the body of new mocks.
+- **About:** a description and links to the real system's documentation.
+
+**Save endpoint** goes back to the integration and offers **New mock from this endpoint** in the toast. Leaving the page with unsaved changes asks first. Editing an endpoint (the pencil on its row) uses the same page; its ID cannot change.
+
+**Try it** on an endpoint's row opens the test panel with the endpoint's example request, so you can see which mock (if any) answers it today.
 
 ## Create a mock in Simple mode
 
@@ -57,6 +93,8 @@ Other status presets: **Not found** (404), **Validation error** (400), **Server 
 **A default mock** answers every request that no key mock matches. Turn on **Default answer (when no key matches)**, pick for example **Not found**, and save. Key mocks always win over the default.
 
 **Preview** shows the exact WireMock stub that will be saved.
+
+The **About this endpoint** panel beside the form says what the key is in plain words. The same form can also forward to a real service, call back after responding and take part in a scenario (see below).
 
 ## Point your application at WireMock and check
 
@@ -91,6 +129,66 @@ The details drawer lists the **near misses**: the mocks that came closest, each 
 For the request above you would see the key mock `Fetch citizen — 1012345678` with the `body` row expecting `matchesJsonPath $.idNo equalTo 1012345678` while the request had `999`. Rows marked **Not checked** use matchers the UI cannot evaluate itself; WireMock still applies them.
 
 **Create mock from this request** starts a new mock with the request's method, path and JSON body.
+
+## Test a mock and copy it as curl
+
+**Test** in the header of a saved mock opens the test panel with a request that mock should match: its method, a concrete path, the key value where the endpoint looks for it, and the catalog example body. Edit anything, then **Send**. The UI sends the request to WireMock (the stub port only) and shows the status, the time it took, the headers and the body, and a stamp:
+
+- **Matched this mock**: the saved version answered.
+- **Matched another mock: <name>**: another mock won (a link opens it).
+- **No match**: WireMock found nothing; **See unmatched requests** opens the request log.
+
+![Test panel](screenshots/test-panel-dark.png)
+
+**Copy as curl** (in the test panel, the editor header, a mock's row menu and the request-log drawer) copies a curl command for the same request, using `WIREMOCK_PUBLIC_URL` (the URL your machines use to reach WireMock). It pastes into any POSIX shell as is, quotes, newlines and `$` included. When a mock matches a regex path the UI cannot fill, the path is left as the pattern for you to edit.
+
+In the request log, **Resend** opens the test panel with a logged request.
+
+## Forward to a real service (proxy)
+
+A mock can forward the request to a real service instead of answering itself: in Simple mode, **Answer with** → **Forward to a real service**.
+
+![Proxy and webhook](screenshots/proxy-webhook-dark.png)
+
+- **Service base URL** `https://nic.test.example`: the request goes there plus its path.
+- **Remove path prefix** `/nic` (optional): cut from the path first, so `/nic/citizens/fetch` goes to `https://nic.test.example/citizens/fetch`. **Use /nic** fills in the integration's prefix; the line below shows the route.
+- **Headers to add** and **Headers to remove** (for example `Authorization, Cookie`).
+
+The real service's status, headers and body come back unchanged, so there is no status or body to fill in. A typical use: mock a few key values and forward every other one (a default mock that forwards). The request goes out from wherever WireMock runs. The mock list marks forwarding mocks **Proxy**.
+
+## Call back after responding (webhooks)
+
+Turn on **Call back after responding** to have WireMock send a request of its own after it answers, for example the "status changed" callback your application waits for.
+
+- **Method** and **Callback URL** (`http://` or `https://`; the URL may use templates).
+- **Headers** and **Body**. The body is a WireMock template; copy values from the request that triggered it with `originalRequest`, for example `{"citizen":"{{jsonPath originalRequest.body '$.idNo'}}"}`. Use `originalRequest`, not `request`: in a webhook WireMock 3.13.1 names the incoming request `originalRequest`, and `request.body` is empty there.
+- **Wait before calling**: none, a fixed number of milliseconds, or a random time between two values (at most 600000 ms).
+
+The callback is sent from WireMock's machine: `http://localhost:…` means WireMock's own host, not yours.
+
+## Scenarios: answer differently on later calls
+
+Some flows need the same request to get a different answer the second time: "pending" first, "approved" after. WireMock does this with scenarios, a named state shared by several mocks.
+
+In the mock editor, turn on **Answer differently on later calls** (section **Scenario (stateful)**):
+
+- **Scenario name**: pick one other mocks use or type a new one. Mocks with the same name share one state.
+- **Only answers when the scenario is in state**: every scenario starts in `Started`; leave it blank for `Started`.
+- **Then move the scenario to state** (optional): where the scenario goes after this mock answers.
+
+For the loan example: mock **Loan pending** answers in `Started` and moves to `approved`; mock **Loan approved** answers in `approved` and stays. The first call gets "pending", every later call "approved".
+
+![Scenarios](screenshots/scenarios-dark.png)
+
+**Scenarios** in the sidebar lists every scenario as a small state machine: the states as boxes, the mocks as arrows from the state they answer in to the state they move to, and the **live state** from WireMock (refreshed every 2 seconds while the page is visible). **Set as current** on a state moves the scenario there; **Reset** puts one scenario back to `Started`, **Reset all** every scenario. A WireMock restart also resets every scenario to `Started`.
+
+## WireMock-only mode (no store)
+
+When the UI runs with `STORE_DRIVER=none` (see [Installing](INSTALL.md#run-against-an-existing-wiremock-no-storage)), it works directly on a WireMock you already have: the mock list is WireMock's own stubs, and your edits go straight into WireMock. Nothing is kept by the UI, so:
+
+- there is one account (`ADMIN_USER`), no **Users** management, no **History** or restore, and no My/All mocks switch (everything is listed);
+- the catalog lives in memory: the Catalog page says "Catalog changes are kept in memory and lost on restart (WireMock-only mode)". Put the catalog in a `SEED_PATH` file to keep it;
+- the request log, test panel, curl, proxies, webhooks and scenarios work as usual.
 
 ## Advanced JSON mode, history and conflicts
 
@@ -197,8 +295,8 @@ WM=http://localhost:8080
 AUTH=ci-bot:its-password
 JSON='Content-Type: application/json'
 
-# Catalog: an integration and an endpoint (PUT creates or replaces)
-curl -u $AUTH -X PUT $UI/api/integrations/nic -H "$JSON" -d '{"name":"NIC","prefix":"/nic"}'
+# Catalog: an integration and an endpoint. PUT creates or replaces; add If-None-Match: * to only create
+curl -u $AUTH -X PUT $UI/api/integrations/nic -H 'If-None-Match: *' -H "$JSON" -d '{"name":"NIC","prefix":"/nic"}'
 curl -u $AUTH -X PUT $UI/api/integrations/nic/endpoints/fetch-citizen -H "$JSON" -d '{
   "name": "Fetch citizen", "method": "POST", "path": "/citizens/fetch", "pathType": "exact",
   "lookup": { "location": "jsonPath", "expression": "$.idNo" },
@@ -266,6 +364,7 @@ curl -b jar -X POST $UI/api/mocks/reset-mine -H 'X-CSRF-Token: <token>'
 - **Accounts:** `POST /api/users` takes `username`, `password` and an optional `displayName`. `POST /api/session/password` with `{ "current", "next" }` changes your own password. Resetting your own password through `/api/users` keeps the session you did it from and ends your other sessions.
 - **Rate limit:** browser sign-in and Basic auth share one limit of 10 failed attempts per 15 minutes per client IP; after that every attempt from that IP gets `429`, even with the right password, until the window ends. No `WWW-Authenticate` challenge is sent, so browsers never pop up a login dialog.
 - **Cookies** are `Secure` when `PUBLIC_UI_URL` is https, or when `TRUST_PROXY` is on and the proxy sends `X-Forwarded-Proto: https`.
+- **Create-only catalog writes:** `PUT /api/integrations/<key>` and `PUT /api/integrations/<key>/endpoints/<endpoint>` replace what is there. Send `If-None-Match: *` to create only: when the key already exists the answer is `409` (`An integration with this key already exists` / `An endpoint with this key already exists`) and nothing changes. The UI uses this when you add an integration or an endpoint, so two people adding the same key cannot overwrite each other.
 - **Catalog:** endpoints with `pathType: regex` are matched by WireMock, so the pattern uses Java's regex dialect; the UI only checks that it parses as a JavaScript regex. An endpoint cannot be deleted while mocks built from it exist, and an integration cannot be deleted while it has mocks (`409`).
 - **Imports** over 10 MB get `413`.
 - **Test requests** (`POST /api/test-request`) go only to `WIREMOCK_URL`'s stub port, without WireMock's admin credentials, and never follow redirects. Paths must start with `/`; absolute URLs, `/__admin`, `.`/`..` segments and encoded slashes are refused (`400`). `Host`, `Content-Length` and hop-by-hop headers are dropped; line breaks or characters beyond Latin-1 in header values are refused. `Accept-Encoding: identity` is sent unless you set it, so the headers shown describe the body. Bodies are limited to 1 MB each way (a longer response comes back cut, with `bodyTruncated: true`); binary responses come back base64 (`bodyIsBase64: true`). The relay waits 30 s.

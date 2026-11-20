@@ -38,6 +38,8 @@ for (const theme of ['dark', 'light'] as const) {
         ['/scenarios', 'Scenarios'],
         ['/catalog', 'Catalog'],
         ['/catalog/nic', 'NIC'],
+        ['/catalog/nic/endpoints/new', 'Add endpoint'],
+        ['/catalog/nic/endpoints/fetch-citizen/edit', 'Edit endpoint'],
         ['/users', 'Users'],
       ]
       for (const [url, heading] of pages) {
