@@ -29,7 +29,13 @@ export type TestRequestResult = {
   /** True when the response body was longer than 1 MB and was cut there. */
   bodyTruncated: boolean
   durationMs: number
+  /** The mock that answered (from WireMock's request log; null when none matched). */
   matchedStubId: string | null
+  /**
+   * Set when a proxy mock matched but could not reach its service (WireMock answered its own 500): the cause
+   * ("Connect to http://localhost:3999 failed: Connection refused") and the service's origin.
+   */
+  forwardError?: { message: string; target: string | null }
 }
 
 class PayloadTooLargeError extends AppError {

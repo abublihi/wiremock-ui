@@ -188,3 +188,31 @@ test('a body under 1 MB that JSON escaping makes several times longer is still r
   const res = await sendTestRequest(rt, req({ method: 'POST', path: '/escaped', body }))
   expect(res.status).toBe(200)
 })
+
+test('the relayed request carries only the tester\'s headers: no User-Agent, Accept, Accept-Language or Sec-Fetch-Mode added', async () => {
+  await relay({ method: 'GET', path: '/plain-headers', headers: { 'X-Only': '1' } })
+  const [entry] = await journal()
+  const names = Object.keys(entry.request.headers).map((h) => h.toLowerCase())
+  expect(names).toContain('x-only')
+  for (const added of ['user-agent', 'accept', 'accept-language', 'sec-fetch-mode']) expect(names, added).not.toContain(added)
+})
+
+test('a proxy mock: matchedStubId is the proxy mock (not the mock of the WireMock it forwards to); a failed forward says why', async () => {
+  const create = async (stub: unknown) => (await (await createMock(rt, baseReq('/api/mocks', 'POST', stub, auth))).json()).id as string
+  const upstream = await create({ request: { method: 'GET', urlPath: '/upstream/item' }, response: { status: 200, body: 'from upstream' } })
+  // WireMock forwards to itself (inside its container it listens on 8080): the answer carries the upstream mock's Matched-Stub-Id.
+  const proxy = await create({ request: { method: 'GET', urlPath: '/via/upstream/item' }, response: { proxyBaseUrl: 'http://localhost:8080', proxyUrlPrefixToRemove: '/via' } })
+  const ok = await relay({ method: 'GET', path: '/via/upstream/item' })
+  expect(ok.json).toMatchObject({ status: 200, body: 'from upstream', matchedStubId: proxy })
+  expect(ok.json.headers['matched-stub-id']).toBe(upstream)
+  expect(ok.json.forwardError).toBeUndefined()
+
+  const dead = await create({ request: { method: 'GET', urlPath: '/dead/x' }, response: { proxyBaseUrl: 'http://localhost:3999' } })
+  const failed = await relay({ method: 'GET', path: '/dead/x' })
+  expect(failed.json).toMatchObject({
+    status: 500,
+    matchedStubId: dead,
+    forwardError: { target: 'http://localhost:3999', message: expect.stringMatching(/^Connect to http:\/\/localhost:3999 failed: Connection refused/) },
+  })
+  expect((await relay({ method: 'GET', path: '/nothing-here' })).json.matchedStubId).toBeNull()
+})

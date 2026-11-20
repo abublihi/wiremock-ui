@@ -1,8 +1,31 @@
 import { AppError, ConfigError, NotFoundError, UpstreamError, ValidationError } from '../errors'
 import { decodeRelayBody, readLimited, relayHeaders, relayTarget, RELAY_TIMEOUT_MS, type TestRequestInput, type TestRequestResult } from './relay'
+import { rawFetch } from './raw-http'
 import type { LoggedEvent, LoggedRequest, NearMiss, ScenarioState, StubMapping } from './types'
 
 const PAGE = 1000
+
+const PROXY_FAILURE = 'Network failure trying to make a proxied request'
+
+/**
+ * WireMock's answer when a proxy mock could not reach its service: a 500 whose body starts "Network failure trying
+ * to make a proxied request from WireMock to <url>", then the cause. null for any other response.
+ */
+export function proxyFailure(body: string): { message: string; target: string | null } | null {
+  if (!body.startsWith(PROXY_FAILURE)) return null
+  const [first, ...rest] = body.split('\n')
+  const to = first.lastIndexOf(' to ')
+  let target: string | null = null
+  if (to !== -1) {
+    try {
+      target = new URL(first.slice(to + 4).trim()).origin
+    } catch {
+      target = null
+    }
+  }
+  const cause = rest.join(' ').replace(/\{\}$/, '').trim()
+  return { message: cause || first, target }
+}
 
 // WireMock 3.13.1 matches the scenario name in /__admin/scenarios/{name}/state without percent-decoding it, so
 // only names made of characters a path segment carries unencoded can be addressed (pinned in power-features.test.ts).
@@ -38,6 +61,8 @@ export class WireMockClient {
   private readonly baseUrl: string
   private readonly authHeader?: string
   private readonly fetchFn: typeof fetch
+  /** The relay's own: node:http, so no fetch default headers reach the mock (tests inject `fetch` for both). */
+  private readonly relayFetchFn: typeof fetch
   private readonly timeoutMs: number
   private readonly importTimeoutMs: number
   private readonly relayTimeoutMs: number
@@ -54,6 +79,7 @@ export class WireMockClient {
   }) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '')
     this.fetchFn = opts.fetch ?? fetch
+    this.relayFetchFn = opts.fetch ?? (rawFetch as unknown as typeof fetch)
     this.timeoutMs = opts.timeoutMs ?? 5000
     this.importTimeoutMs = opts.importTimeoutMs ?? 30000
     this.relayTimeoutMs = opts.relayTimeoutMs ?? RELAY_TIMEOUT_MS
@@ -238,7 +264,7 @@ export class WireMockClient {
     const signal = AbortSignal.timeout(this.relayTimeoutMs)
     const seconds = Math.round(this.relayTimeoutMs / 1000)
     try {
-      res = await this.fetchFn(target, { method: input.method, headers, body: input.body, redirect: 'manual', signal })
+      res = await this.relayFetchFn(target, { method: input.method, headers, body: input.body, redirect: 'manual', signal })
     } catch (err) {
       const name = (err as Error).name
       if (name === 'TimeoutError' || name === 'AbortError') throw new GatewayTimeoutError(`WireMock did not answer within ${seconds} s`)
@@ -257,13 +283,33 @@ export class WireMockClient {
     res.headers.forEach((value, name) => {
       responseHeaders[name] = value
     })
+    const decoded = decodeRelayBody(read.bytes, res.headers.get('content-type'), read.truncated)
+    const forwardError = res.status === 500 && !decoded.bodyIsBase64 ? proxyFailure(decoded.body) : null
     return {
       status: res.status,
       headers: responseHeaders,
-      ...decodeRelayBody(read.bytes, res.headers.get('content-type'), read.truncated),
+      ...decoded,
       bodyTruncated: read.truncated,
       durationMs,
-      matchedStubId: res.headers.get('matched-stub-id'),
+      matchedStubId: await this.matchedInJournal(input.method, target, res.headers.get('matched-stub-id')),
+      ...(forwardError ? { forwardError } : {}),
+    }
+  }
+
+  /**
+   * Which mock answered the relayed request, from WireMock's request log (the newest entry for this method and URL).
+   * The Matched-Stub-Id response header is not enough: a proxy mock passes on the header of the service it forwards
+   * to (another WireMock names its own mock), and a failed forward has none. Falls back to the header when the log
+   * cannot be read or has no entry.
+   */
+  private async matchedInJournal(method: string, target: URL, header: string | null): Promise<string | null> {
+    try {
+      const url = target.pathname + target.search
+      const entry = (await this.listRequests({ limit: 20 })).find((e) => e.request.method === method && e.request.url === url)
+      if (!entry) return header
+      return entry.wasMatched ? (entry.stubMapping?.id ?? header) : null
+    } catch {
+      return header
     }
   }
 
