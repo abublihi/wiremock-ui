@@ -351,3 +351,224 @@ describe('the mock editor of a step mock', () => {
     expect(link.parentElement!.textContent).toContain('Part of scenario loan')
   })
 })
+
+describe('editing a scenario: retries, undo and the live state', () => {
+  const shipped = {
+    id: 'm3',
+    name: 'loan — shipped',
+    request: REQUEST,
+    response: { status: 200, body: 'shipped' },
+    scenarioName: 'loan',
+    requiredScenarioState: 'shipped',
+    metadata: meta(1),
+  } as StubMapping
+  const ver = (s: StubMapping) => s.metadata!.wiremockUi!.version
+  const withVersion = (s: StubMapping, version: number, over: Record<string, unknown> = {}) =>
+    ({ ...s, ...over, metadata: { ...s.metadata, wiremockUi: { ...s.metadata!.wiremockUi!, version } } }) as StubMapping
+
+  /**
+   * A small stateful server: mocks with versions (a stale version is 409), restore (or 404 without history), import,
+   * the live scenario state and reset. `beforePut`/`beforeDelete` can change the store or fail a call once.
+   */
+  function statefulApi(
+    initial: StubMapping[],
+    opts: {
+      live?: string
+      noHistory?: boolean
+      restoreError?: number
+      beforePut?: (id: string, store: Map<string, StubMapping>) => Response | void
+      beforeDelete?: (id: string) => Response | void
+    } = {},
+  ) {
+    const store = new Map(initial.map((s) => [s.id, s]))
+    const history = new Map(initial.map((s) => [s.id, [s]]))
+    const calls: Call[] = []
+    let live = opts.live ?? 'Started'
+    const keep = (s: StubMapping) => {
+      store.set(s.id, s)
+      history.set(s.id, [...(history.get(s.id) ?? []), s])
+    }
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
+      http.get(`${BASE}/api/integrations/nic/endpoints`, () => HttpResponse.json([endpoint])),
+      http.get(`${BASE}/api/scenarios`, () => HttpResponse.json({ scenarios: [{ name: 'loan', state: live, possibleStates: [], settable: true, mocks: [] }] })),
+      http.post(`${BASE}/api/scenarios/reset`, async ({ request }) => {
+        calls.push({ method: 'RESET', path: 'scenarios', body: await request.json() })
+        live = 'Started'
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.get(`${BASE}/api/mocks`, ({ request }) => {
+        const scenario = new URL(request.url).searchParams.get('scenario')
+        calls.push({ method: 'GET', path: `mocks?scenario=${scenario}` })
+        return HttpResponse.json([...store.values()].filter((s) => s.scenarioName === scenario))
+      }),
+      http.post(`${BASE}/api/mocks`, async ({ request }) => {
+        const body = (await request.json()) as StubMapping
+        calls.push({ method: 'POST', path: 'mocks', body })
+        const stub = { ...body, id: `new-${store.size + 1}`, metadata: { wiremockUi: { ...meta(1).wiremockUi } } } as StubMapping
+        keep(stub)
+        return HttpResponse.json(stub, { status: 201 })
+      }),
+      http.put(`${BASE}/api/mocks/:id`, async ({ request, params }) => {
+        const id = String(params.id)
+        const body = (await request.json()) as { stub: StubMapping; version: number }
+        calls.push({ method: 'PUT', path: id, body })
+        const early = opts.beforePut?.(id, store)
+        if (early) return early
+        const current = store.get(id)!
+        if (ver(current) !== body.version) return HttpResponse.json({ error: 'Someone else saved this mock first' }, { status: 409 })
+        const next = withVersion({ ...body.stub, id } as StubMapping, body.version + 1)
+        keep(next)
+        return HttpResponse.json(next)
+      }),
+      http.delete(`${BASE}/api/mocks/:id`, ({ request, params }) => {
+        const id = String(params.id)
+        calls.push({ method: 'DELETE', path: `${id}?version=${new URL(request.url).searchParams.get('version')}` })
+        const early = opts.beforeDelete?.(id)
+        if (early) return early
+        store.delete(id)
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.post(`${BASE}/api/mocks/:id/restore`, async ({ request, params }) => {
+        const id = String(params.id)
+        const body = (await request.json()) as { version: number }
+        calls.push({ method: 'RESTORE', path: id, body })
+        if (opts.restoreError) return HttpResponse.json({ error: 'store is down' }, { status: opts.restoreError })
+        const target = opts.noHistory ? undefined : history.get(id)?.find((s) => ver(s) === body.version)
+        if (!target) return HttpResponse.json({ error: 'Version not found' }, { status: 404 })
+        const highest = Math.max(...history.get(id)!.map(ver))
+        const next = withVersion(target, highest + 1)
+        keep(next)
+        return HttpResponse.json(next)
+      }),
+      http.post(`${BASE}/api/import`, async ({ request }) => {
+        const body = (await request.json()) as { mocks: StubMapping[] }
+        calls.push({ method: 'IMPORT', path: 'import', body })
+        for (const m of body.mocks) keep(withVersion(m, 1))
+        return HttpResponse.json({ integrations: 0, endpoints: 0, created: body.mocks.length, updated: 0, unchanged: 0, skipped: [], pruned: 0, ignoredOidcIdentities: 0 })
+      }),
+    )
+    return { calls, store }
+  }
+  const summary = (calls: Call[]) => calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.path}`)
+
+  it('a refused save re-reads the scenario: the retry uses the new versions, keeps the edit and takes the other change', async () => {
+    let bobSaved = false
+    const { calls, store } = statefulApi([pending, approved, cancel], {
+      // Bob saves m2 (a new body) just before our update reaches it.
+      beforePut: (id, s) => {
+        if (id === 'm2' && !bobSaved) {
+          bobSaved = true
+          s.set('m2', withVersion(s.get('m2')!, 3, { response: { status: 200, body: 'approved by Bob' } }))
+        }
+      },
+    })
+    const { ue, router } = await open()
+    await ue.clear(textbox('Scenario name'))
+    await ue.type(textbox('Scenario name'), 'loan-v2')
+    await ue.click(screen.getByRole('button', { name: 'Save scenario' }))
+    expect(await screen.findByText(/Step 2 \(approved\) was refused: Someone else saved this mock first\. Nothing was changed/)).toBeTruthy()
+    expect(screen.getByText(/Steps marked below were changed by someone else meanwhile/)).toBeTruthy()
+    expect(screen.getByText(/Someone else changed this mock meanwhile/)).toBeTruthy()
+    // Bob's body shows (the user had not edited it); the rename is kept.
+    expect(textbox('Step 2 response body').value).toBe('approved by Bob')
+    expect(textbox('Scenario name').value).toBe('loan-v2')
+
+    await ue.click(screen.getByRole('button', { name: 'Save scenario' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/scenarios'))
+    expect(summary(calls)).toEqual(['PUT m1', 'PUT m2', 'RESTORE m1', 'PUT m1', 'PUT m2'])
+    const retry = calls.filter((c) => c.method === 'PUT').slice(-2) as { body: { version: number; stub: StubMapping } }[]
+    expect(retry.map((c) => c.body.version)).toEqual([5, 3]) // m1: 3 → update 4 → restore 5; m2: Bob's 3
+    expect(store.get('m2')!.response).toEqual({ status: 200, body: 'approved by Bob' })
+    expect(store.get('m2')!.scenarioName).toBe('loan-v2')
+  })
+
+  it('without history, an undone delete comes back through import under the same id and owner', async () => {
+    const { calls, store } = statefulApi([pending, approved, shipped], {
+      noHistory: true,
+      beforeDelete: (id) => (id === 'm3' ? HttpResponse.json({ error: 'WireMock is not reachable' }, { status: 502 }) : undefined),
+    })
+    const { ue } = await open()
+    await ue.click(screen.getByRole('button', { name: 'Remove step 3' }))
+    await ue.click(screen.getByRole('button', { name: 'Remove step 2' }))
+    await ue.click(screen.getByRole('button', { name: 'Save scenario' }))
+    expect(await screen.findByText(/Removing loan — shipped was refused: WireMock is not reachable\. Nothing was changed/)).toBeTruthy()
+    expect(summary(calls)).toEqual(['PUT m1', 'DELETE m2?version=2', 'DELETE m3?version=1', 'RESTORE m2', 'IMPORT import', 'RESTORE m1', 'PUT m1'])
+    const imported = (calls.find((c) => c.method === 'IMPORT')!.body as { mocks: StubMapping[] }).mocks[0]
+    expect(imported.id).toBe('m2')
+    expect(imported.metadata?.wiremockUi).toEqual({ integration: 'nic', endpoint: 'loan', owner: 'sara' })
+    expect(store.get('m2')!.response).toEqual(approved.response)
+    expect(store.get('m1')!.newScenarioState).toBe('approved')
+  })
+
+  it('an undo that fails for another reason is named with that reason', async () => {
+    statefulApi([pending, approved], {
+      restoreError: 503,
+      beforePut: (id) => (id === 'm2' ? HttpResponse.json({ error: 'Someone else saved this mock first' }, { status: 409 }) : undefined),
+    })
+    const { ue } = await open()
+    await ue.clear(textbox('Scenario name'))
+    await ue.type(textbox('Scenario name'), 'loan-v2')
+    await ue.click(screen.getByRole('button', { name: 'Save scenario' }))
+    expect(await screen.findByText(/could not be put back as they were: loan — Started \(store is down\)/)).toBeTruthy()
+  })
+
+  it('a live state the edit renamed is reset to Started, and the toast says so', async () => {
+    const { calls } = statefulApi([pending, approved], { live: 'approved' })
+    const { ue, router } = await open()
+    const state = textbox('Step 2 state')
+    await ue.clear(state)
+    await ue.type(state, 'done')
+    await ue.click(screen.getByRole('button', { name: 'Save scenario' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/scenarios'))
+    expect(await screen.findByText('Scenario loan saved: 0 added, 2 changed, 0 removed; state reset to Started because approved no longer exists')).toBeTruthy()
+    expect(calls.find((c) => c.method === 'RESET')!.body).toEqual({ name: 'loan' })
+  })
+
+  it('a live state that still exists is left alone', async () => {
+    const { calls } = statefulApi([pending, approved], { live: 'approved' })
+    const { ue, router } = await open()
+    await ue.clear(textbox('Step 2 response body'))
+    await ue.type(textbox('Step 2 response body'), 'yes')
+    await ue.click(screen.getByRole('button', { name: 'Save scenario' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/scenarios'))
+    expect(calls.some((c) => c.method === 'RESET')).toBe(false)
+  })
+
+  it('warns when the edit renames a state a kept mock answers in', async () => {
+    const proxy = { ...approved, id: 'k2', name: 'Live proxy', response: { proxyBaseUrl: 'https://real.example' } } as StubMapping
+    statefulApi([pending, approved, proxy])
+    const { ue } = await open()
+    expect(screen.queryByText(/Mocks kept as is still use/)).toBeNull()
+    await ue.clear(textbox('Step 2 state'))
+    await ue.type(textbox('Step 2 state'), 'done')
+    expect(screen.getByText('Mocks kept as is still use approved, which no step answers in after this edit: Live proxy. Update them in the mock editor, or they stop being reached.')).toBeTruthy()
+  })
+
+  it('Delete scenario leaves mocks that joined after the list was shown, and says so', async () => {
+    const late = { ...approved, id: 'late', name: 'Late step', requiredScenarioState: 'late' } as StubMapping
+    const { calls } = statefulApi([pending, approved, late])
+    const scenario: Scenario = {
+      name: 'loan',
+      state: 'Started',
+      possibleStates: ['Started', 'approved'],
+      settable: true,
+      mocks: [
+        { id: 'm1', name: 'loan — Started', requiredState: 'Started', newState: 'approved' },
+        { id: 'm2', name: 'loan — approved', requiredState: 'approved' },
+      ],
+    }
+    await renderApp(<ScenarioList scenarios={[scenario]} />)
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('button', { name: 'Delete scenario' }))
+    await ue.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete 2 mocks' }))
+    expect(await screen.findByText('Not deleted: Late step joined loan after the list was shown. Delete them from Mocks if you meant to.')).toBeTruthy()
+    expect(summary(calls)).toEqual(['DELETE m1?version=3', 'DELETE m2?version=2'])
+  })
+
+  it('the caption counts mocks', async () => {
+    statefulApi([pending, approved, cancel])
+    await open()
+    expect(screen.getByText('// loan · 3 mocks')).toBeTruthy()
+  })
+})

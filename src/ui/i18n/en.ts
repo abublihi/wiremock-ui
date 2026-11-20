@@ -305,6 +305,7 @@ export const en = {
   'scenarios.deleted': 'Scenario {name} deleted ({count} mocks)',
   'scenarios.deletedOne': 'Scenario {name} deleted (1 mock)',
   'scenarios.deleteAll': 'all of its mocks',
+  'scenarios.deleteNewKept': 'Not deleted: {names} joined {name} after the list was shown. Delete them from Mocks if you meant to.',
   'scenarios.deleteFailed': "Couldn't delete every mock of {name}: {names} are left. Try again, or delete them from Mocks.",
   'builder.title': 'New scenario',
   'builder.caption': '// one request, several answers in order',
@@ -381,7 +382,7 @@ export const en = {
   'builder.rollbackFailed':
     'Step {n} ({state}) was refused: {message}. These mocks made before it could not be removed: {names}. Delete them from Mocks before trying again.',
   'builder.editTitle': 'Edit scenario',
-  'builder.editCaption': '// {name} · {count} mocks, one per step',
+  'builder.editCaption': '// {name} · {count} mocks',
   'builder.editExplainMore':
     'WireMock answers one response per mock, so each step is stored as one mock. Here you edit them together: saving updates the changed mocks, adds new steps and removes the ones you took out — all of it or none.',
   'builder.editLoadFailed': "Couldn't load the scenario's mocks",
@@ -407,6 +408,14 @@ export const en = {
   'builder.editSaving': 'Saving…',
   'builder.noChanges': 'Nothing to save: no step changed',
   'builder.saved': 'Scenario {name} saved: {added} added, {changed} changed, {removed} removed',
+  'builder.savedReset':
+    'Scenario {name} saved: {added} added, {changed} changed, {removed} removed; state reset to Started because {state} no longer exists',
+  'builder.editRebased': 'Steps marked below were changed by someone else meanwhile: check them, then save again.',
+  'builder.editReloadFailed': "Couldn't read the scenario again: reload the page before saving.",
+  'builder.stepChanged': 'Someone else changed this mock meanwhile. Fields you had not edited now show their version; yours are kept.',
+  'builder.stepGone': 'Someone else deleted this mock meanwhile. Saving creates it again; remove the step to leave it deleted.',
+  'builder.keptLostStates':
+    'Mocks kept as is still use {states}, which no step answers in after this edit: {names}. Update them in the mock editor, or they stop being reached.',
   'builder.editFailedTitle': "Couldn't save the scenario",
   'builder.editStep': 'Step {n} ({state})',
   'builder.editRemoving': 'Removing {name}',

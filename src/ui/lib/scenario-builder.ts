@@ -97,8 +97,15 @@ export function moveStep(steps: BuilderStep[], id: string, by: -1 | 1): BuilderS
 
 const isInt = (text: string) => /^-?\d+$/.test(text.trim())
 
-/** `keepName`: editing a scenario whose name WireMock can't address — keeping it is allowed (its mocks work as before). */
-export function validateDraft(draft: BuilderDraft, opts: { keepName?: string } = {}): BuilderErrors {
+/**
+ * `keepName`: editing a scenario whose name WireMock can't address — keeping it is allowed (its mocks work as before).
+ * `endpointOf`: editing steps of different requests — the catalog endpoint each step's status and body are checked
+ * against (else the request's).
+ */
+export function validateDraft(
+  draft: BuilderDraft,
+  opts: { keepName?: string; endpointOf?: (step: BuilderStep, i: number) => Endpoint | undefined } = {},
+): BuilderErrors {
   const errors: BuilderErrors = { steps: {} }
   const name = draft.name.trim()
   if (name === '') errors.name = { key: 'builder.nameRequired' }
@@ -109,10 +116,11 @@ export function validateDraft(draft: BuilderDraft, opts: { keepName?: string } =
   else if (request.kind === 'catalog') {
     if (!request.isDefault && request.endpoint.lookup && request.keyValue.trim() === '') errors.request = { key: 'builder.keyRequired' }
   } else if (request.kind === 'free' && !request.url.trim().startsWith('/')) errors.request = { key: 'builder.urlInvalid' }
-  const endpoint = request?.kind === 'catalog' || request?.kind === 'existing' ? request.endpoint : undefined
+  const shared = request?.kind === 'catalog' || request?.kind === 'existing' ? request.endpoint : undefined
 
   const seen = new Set<string>()
   draft.steps.forEach((step, i) => {
+    const endpoint = opts.endpointOf ? opts.endpointOf(step, i) : shared
     const e: Partial<Record<StepField, Message>> = {}
     const state = stepState(draft.steps, i)
     if (i > 0) {
@@ -265,6 +273,10 @@ function canonical(value: unknown): string {
 /**
  * Whether two mocks match the same calls: the same method, URL field (url, urlPath, urlPattern, urlPathTemplate…) and
  * query, header and body matchers. Field order does not matter; anything else does.
+ *
+ * It is a structural comparison, so some equivalent requests compare unequal: header names in another case, matchers
+ * in another array order, `url: "/a?x=1"` versus `urlPath: "/a"` with a query matcher. Those false negatives are safe
+ * where this is used: a mock is only left alone (not moved on, not picked as a step), never changed by mistake.
  */
 export const sameRequest = (a: Pick<StubMapping, 'request'>, b: Pick<StubMapping, 'request'>) => canonical(a.request ?? {}) === canonical(b.request ?? {})
 
@@ -545,4 +557,72 @@ export function groupMocks(stubs: StubMapping[]): MockRow[] {
     group.sort((a, b) => at(a) - at(b) || byId(a, b))
   }
   return rows
+}
+
+// ── After a failed save: rebasing the draft on the mocks as they are now ─────
+
+/** Why a step's mock looks different after re-reading the scenario: someone changed it, or deleted it. */
+export type RebaseNote = 'changed' | 'gone'
+
+const ANSWER_FIELDS = ['status', 'headers', 'body', 'delaySeconds'] as const
+
+/**
+ * Re-bases an edit on the scenario's mocks as they are now (after a refused save and its undo, or another person's
+ * save): each step's mock gets its current version and content. The user's edits stay; an answer field the user did
+ * not touch takes the current value. Steps whose mock someone else changed are noted, and so are steps whose mock is
+ * gone (saving creates it again).
+ */
+export function rebaseScenario(
+  base: LoadedScenario,
+  steps: BuilderStep[],
+  fresh: StubMapping[],
+): { base: LoadedScenario; steps: BuilderStep[]; notes: Record<string, RebaseNote> } {
+  const byId = new Map(fresh.map((s) => [s.id, s]))
+  const notes: Record<string, RebaseNote> = {}
+  const nextSteps = steps.map((step) => {
+    if (!step.source) return step
+    const now = byId.get(step.source.id)
+    if (!now) {
+      notes[step.id] = 'gone'
+      return { ...step, source: undefined }
+    }
+    if (canonical(saved(now)) === canonical(saved(step.source))) return { ...step, source: now }
+    notes[step.id] = 'changed'
+    const was = stepFromStub(step.source)
+    const current = stepFromStub(now)
+    const merged: BuilderStep = { ...step, source: now }
+    for (const field of ANSWER_FIELDS) {
+      if (canonical(step[field]) === canonical(was[field])) (merged as Record<string, unknown>)[field] = current[field]
+    }
+    return merged
+  })
+  const nextBase: LoadedScenario = {
+    ...base,
+    steps: base.steps.flatMap((s) => {
+      const now = s.source && byId.get(s.source.id)
+      return now ? [{ ...s, source: now }] : []
+    }),
+  }
+  return { base: nextBase, steps: nextSteps, notes }
+}
+
+/**
+ * The state a scenario is stranded in after an edit: its live state, when it is not Started and no mock of the
+ * scenario answers in it any more (renamed or removed). Calls would get no answer until the scenario is reset.
+ */
+export function strandedState(live: string | undefined, stubs: StubMapping[], name: string): string | undefined {
+  if (!live || live === STARTED) return undefined
+  return stubs.some((s) => s.scenarioName === name && required(s) === live) ? undefined : live
+}
+
+/** Kept-as-is mocks that use a state the edited steps no longer have (renamed or removed): they would be left hanging. */
+export function keptOnLostStates(loaded: LoadedScenario, steps: BuilderStep[]): { states: string[]; mocks: StubMapping[] } {
+  const before = new Set(loaded.steps.map((s) => required(s.source!)).filter((s): s is string => Boolean(s)))
+  const after = new Set(steps.map((_, i) => stepState(steps, i)))
+  const lost = new Set([...before].filter((s) => !after.has(s)))
+  const mocks = loaded.kept
+    .map((k) => k.stub)
+    .filter((s) => [required(s), leadsTo(s)].some((state) => state !== undefined && lost.has(state)))
+  const states = [...lost].filter((state) => mocks.some((s) => required(s) === state || leadsTo(s) === state)).sort()
+  return { states, mocks }
 }

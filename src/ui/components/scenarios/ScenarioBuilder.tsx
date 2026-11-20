@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
 import {
   AlertCircleIcon,
@@ -16,7 +16,9 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { StubMapping } from '@/server/wiremock/types'
+import { ApiError, apiFetch } from '@/ui/api/client'
 import {
+  endpointsQueryOptions,
   queryKeys,
   restoreMock,
   useCreateCatalogMock,
@@ -56,7 +58,11 @@ import {
   type EditChange,
   type KeptMock,
   type LoadedScenario,
+  type RebaseNote,
   editChanges,
+  keptOnLostStates,
+  rebaseScenario,
+  strandedState,
   loadScenario,
   type BuilderErrors,
   type BuilderStep,
@@ -159,6 +165,9 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
   const counter = useRef(2)
   const nextId = () => `step-${++counter.current}`
   const [name, setName] = useState(edit?.name ?? '')
+  // Editing: the scenario as last read (re-read after a refused save), and what changed in it meanwhile, per step.
+  const [base, setBase] = useState(edit)
+  const [notes, setNotes] = useState<Record<string, RebaseNote>>({})
   const [steps, setSteps] = useState<BuilderStep[]>(() => edit?.steps ?? [newStep('step-1'), newStep('step-2')])
   const [kind, setKind] = useState<'catalog' | 'free'>('catalog')
   // Editing: the catalog endpoint of the scenario's first step, for its status and body checks.
@@ -179,6 +188,15 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
   const catalogRequest: CatalogRequest | null =
     integration && endpoint ? { kind: 'catalog', integration, endpoint, isDefault: key.isDefault || !endpoint.lookup, keyValue: key.keyValue } : null
   const firstRequest = requestOf(edit?.steps[0]?.source)
+  // Editing steps of different requests: each step is checked against its own catalog endpoint.
+  const sourceOf = (i: number) => steps.slice(0, i + 1).reverse().find((s) => s.source)?.source ?? edit?.steps[0]?.source
+  const linkedIntegrations = [...new Set((edit?.steps ?? []).map((s) => linkOf(s.source ?? {})?.integration).filter((k): k is string => Boolean(k)))]
+  const linkedEndpoints = useQueries({ queries: linkedIntegrations.map((key) => endpointsQueryOptions(key)) })
+  const endpointOfStep = (i: number) => {
+    const link = linkOf(sourceOf(i) ?? {})
+    if (!link) return undefined
+    return linkedEndpoints[linkedIntegrations.indexOf(link.integration)]?.data?.find((e) => e.key === link.endpoint)
+  }
   const draft: BuilderDraft = {
     name,
     request: edit
@@ -188,7 +206,7 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
         : { kind: 'free', ...free },
     steps,
   }
-  const errors = validateDraft(draft, { keepName: edit?.name })
+  const errors = validateDraft(draft, { keepName: edit?.name, ...(edit && !edit.sameRequest ? { endpointOf: (_step: BuilderStep, i: number) => endpointOfStep(i) } : {}) })
   const shown: BuilderErrors = attempted ? errors : { steps: {}, ...(errors.name?.key === 'builder.nameUnsettable' ? { name: errors.name } : {}) }
   const msg = (m: Message | undefined) => (m ? t(m.key, m.vars) : undefined)
   // Another scenario of that name (editing: renaming onto it would merge the two).
@@ -292,7 +310,7 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
     setSaving(true)
     if (edit) {
       try {
-        await saveEdit(edit)
+        await saveEdit(base ?? edit)
       } finally {
         setSaving(false)
       }
@@ -333,29 +351,69 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
 
   /**
    * Editing: writes the difference — creates, then updates (with versions), then deletes. A refused write undoes the
-   * ones before it, newest first: created mocks are deleted, changed and deleted ones restored to their version.
+   * ones before it, newest first: created mocks are deleted, changed and deleted ones restored to their version (in
+   * WireMock-only mode, which keeps no history, put back as they were under the same id).
    */
   type Done = { kind: 'created'; stub: StubMapping } | { kind: 'updated'; before: StubMapping; after: StubMapping } | { kind: 'deleted'; before: StubMapping }
-  const undo = async (done: Done[]): Promise<StubMapping[]> => {
-    const left: StubMapping[] = []
-    const version = (stub: StubMapping) => stub.metadata?.wiremockUi?.version ?? 0
+  const version = (stub: StubMapping) => stub.metadata?.wiremockUi?.version ?? 0
+  const noHistory = (error: unknown) => error instanceof ApiError && error.status === 404 && /version not found/i.test(error.message)
+  const undo = async (done: Done[]): Promise<{ stub: StubMapping; reason: string }[]> => {
+    const left: { stub: StubMapping; reason: string }[] = []
     for (const step of [...done].reverse()) {
       try {
         if (step.kind === 'created') await deleteMock.mutateAsync({ id: step.stub.id, version: version(step.stub) })
         else {
           try {
             await restoreMock(queryClient, step.before.id, version(step.before))
-          } catch {
-            // No history (WireMock-only mode): put the old stub back by hand.
+          } catch (error) {
+            // Only "no such version" (no history: WireMock-only mode) falls back; anything else is reported.
+            if (!noHistory(error)) throw error
             if (step.kind === 'updated') await updateMock.mutateAsync({ id: step.before.id, stub: asSaved(step.before), version: version(step.after) })
-            else await createFree.mutateAsync(asSaved(step.before))
+            else await putBack(step.before)
           }
         }
-      } catch {
-        left.push(step.kind === 'created' ? step.stub : step.before)
+      } catch (error) {
+        left.push({ stub: step.kind === 'created' ? step.stub : step.before, reason: messageOf(error, t('error.generic')).replace(/\.$/, '') })
       }
     }
     return left
+  }
+  /** A deleted mock back under its own id, owner and content (the import path keeps ids; it works without history). */
+  const putBack = async (stub: StubMapping) => {
+    const ui = stub.metadata?.wiremockUi
+    const meta = { ...stub.metadata, wiremockUi: { ...(ui?.integration ? { integration: ui.integration, endpoint: ui.endpoint } : {}), owner: ui?.owner ?? 'baseline' } }
+    const { uuid: _uuid, ...rest } = stub as StubMapping & { uuid?: unknown }
+    await apiFetch('/api/import', { method: 'POST', body: { integrations: [], catalog: [], mocks: [{ ...rest, metadata: meta }], oidcIdentities: [] } })
+    await queryClient.invalidateQueries({ queryKey: queryKeys.mocks })
+  }
+  /** After a refused save: re-read the scenario and rebase the draft on its mocks as they are now. */
+  const rebase = async (loaded: LoadedScenario): Promise<boolean> => {
+    try {
+      const fresh = await apiFetch<StubMapping[]>('/api/mocks', { query: { scenario: loaded.name } })
+      const next = rebaseScenario(loaded, steps, fresh)
+      setBase(next.base)
+      setSteps(next.steps)
+      setNotes(next.notes)
+      return Object.keys(next.notes).length > 0
+    } catch {
+      setFailure((f) => (f ? `${f} ${t('builder.editReloadFailed')}` : f))
+      return false
+    }
+  }
+  /** A scenario left in a state no mock answers in any more (renamed or removed) is reset to Started. */
+  const unstrand = async (scenarioName: string): Promise<string | undefined> => {
+    try {
+      const [{ scenarios: live }, stubs] = await Promise.all([
+        apiFetch<{ scenarios: { name: string; state: string }[] }>('/api/scenarios'),
+        apiFetch<StubMapping[]>('/api/mocks', { query: { scenario: scenarioName } }),
+      ])
+      const stranded = strandedState(live.find((s) => s.name === scenarioName)?.state, stubs, scenarioName)
+      if (!stranded) return undefined
+      await apiFetch('/api/scenarios/reset', { method: 'POST', body: { name: scenarioName } })
+      return stranded
+    } catch {
+      return undefined
+    }
   }
   const saveEdit = async (loaded: LoadedScenario) => {
     const scenarioName = name.trim()
@@ -365,7 +423,6 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
       return
     }
     const done: Done[] = []
-    const version = (stub: StubMapping) => stub.metadata?.wiremockUi?.version ?? 0
     const what = (change: EditChange) =>
       change.kind === 'delete'
         ? t('builder.editRemoving', { name: change.before.name ?? change.before.id })
@@ -381,15 +438,23 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
         }
       } catch (error) {
         const left = await undo(done)
-        const vars = { what: what(change), message: messageOf(error, t('error.generic')).replace(/\.$/, ''), names: left.map((s) => s.name ?? s.id).join(', ') }
+        const vars = {
+          what: what(change),
+          message: messageOf(error, t('error.generic')).replace(/\.$/, ''),
+          names: left.map((l) => `${l.stub.name ?? l.stub.id} (${l.reason})`).join(', '),
+        }
         setFailure(t(left.length > 0 ? 'builder.editRollbackFailed' : 'builder.editFailed', vars))
+        // Versions moved (the undo saves too) and someone may have saved meanwhile: the next try starts from now.
+        if (await rebase(loaded)) setFailure((f) => (f ? `${f} ${t('builder.editRebased')}` : f))
         await queryClient.invalidateQueries({ queryKey: queryKeys.scenarios })
         return
       }
     }
+    const stranded = await unstrand(scenarioName)
     await queryClient.invalidateQueries({ queryKey: queryKeys.scenarios })
     const count = (kind: EditChange['kind']) => changes.filter((c) => c.kind === kind).length
-    toast.success(t('builder.saved', { name: scenarioName, added: count('create'), changed: count('update'), removed: count('delete') }))
+    const vars = { name: scenarioName, added: count('create'), changed: count('update'), removed: count('delete'), state: stranded ?? '' }
+    toast.success(t(stranded ? 'builder.savedReset' : 'builder.saved', vars))
     leaving.current = true
     await navigate({ to: '/scenarios', search: { scenario: scenarioName } })
   }
@@ -398,11 +463,11 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
   const bodyLanguage =
     kind === 'free' || (edit && !endpoint) ? 'json' : endpoint?.contentType === 'json' || endpoint?.contentType === 'xml' ? endpoint.contentType : null
   // Editing steps that match different requests: each step shows its own (a new step uses the one before it).
-  const stepRequest = (i: number) => {
-    if (!edit || edit.sameRequest) return undefined
-    const source = steps.slice(0, i + 1).reverse().find((s) => s.source)?.source ?? edit.steps[0]?.source
-    return requestOf(source)
-  }
+  const stepRequest = (i: number) => (!edit || edit.sameRequest ? undefined : requestOf(sourceOf(i)))
+  const languageOf = (e: typeof endpoint): 'json' | 'xml' | null => (!e ? 'json' : e.contentType === 'json' || e.contentType === 'xml' ? e.contentType : null)
+  const stepLanguage = (i: number) => (edit && !edit.sameRequest ? languageOf(endpointOfStep(i)) : bodyLanguage)
+  // Kept-as-is mocks that use a state this edit renames or removes.
+  const lostForKept = base ? keptOnLostStates(base, steps) : { states: [], mocks: [] }
 
   return (
     <EditorShell
@@ -634,7 +699,8 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
                 steps={steps}
                 errors={shown.steps[step.id] ?? {}}
                 msg={msg}
-                bodyLanguage={bodyLanguage}
+                bodyLanguage={stepLanguage(i)}
+                note={notes[step.id]}
                 exampleShown={kind === 'catalog' && step.bodyFromExample && step.body !== ''}
                 catalog={kind === 'catalog' && !edit}
                 request={stepRequest(i)}
@@ -653,6 +719,17 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
           <p aria-live="polite" className="sr-only">
             {announcement}
           </p>
+          {lostForKept.mocks.length > 0 && (
+            <p className="flex items-start gap-1.5 text-xs text-hazard-fg">
+              <TriangleAlertIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+              <span>
+                {t('builder.keptLostStates', {
+                  states: lostForKept.states.join(', '),
+                  names: lostForKept.mocks.map((m) => m.name || m.id).join(', '),
+                })}
+              </span>
+            </p>
+          )}
         </Section>
 
         {edit && edit.kept.length > 0 && <KeptSection kept={edit.kept} />}
@@ -701,6 +778,7 @@ function StepCard({
   catalog,
   request,
   mockId,
+  note,
   onChange,
   onStatus,
   onMove,
@@ -720,6 +798,8 @@ function StepCard({
   request?: { method?: string; url?: string }
   /** Editing: the mock this step was loaded from. */
   mockId?: string
+  /** Editing, after a refused save: someone changed or deleted this step's mock meanwhile. */
+  note?: RebaseNote
   onChange: (patch: Partial<BuilderStep>) => void
   onStatus: (status: string) => void
   onMove: (dir: 'up' | 'down') => void
@@ -796,6 +876,12 @@ function StepCard({
         </div>
       </div>
 
+      {note && (
+        <p role="status" className="flex items-start gap-1.5 text-xs text-hazard-fg">
+          <TriangleAlertIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+          <span>{t(note === 'changed' ? 'builder.stepChanged' : 'builder.stepGone')}</span>
+        </p>
+      )}
       {request && (
         <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <span className="shrink-0">{t('builder.stepRequest')}</span>

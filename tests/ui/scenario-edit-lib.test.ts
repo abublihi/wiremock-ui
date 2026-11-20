@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest'
+import type { Endpoint } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
 import {
   type BuilderDraft,
   type LoadedScenario,
   editChanges,
   groupMocks,
+  keptOnLostStates,
   loadScenario,
   moveStep,
   newStep,
+  rebaseScenario,
   removeStep,
+  strandedState,
   targetOf,
+  validateDraft,
 } from '@/ui/lib/scenario-builder'
 
 const REQUEST = { method: 'GET', urlPath: '/orders/42/status' }
@@ -206,5 +211,57 @@ describe('grouping the mocks list by scenario', () => {
       'p1',
       'other:x1',
     ])
+  })
+})
+
+describe('after a refused save', () => {
+  const bumped = (s: StubMapping, version: number, over: Record<string, unknown> = {}) =>
+    ({ ...s, ...over, metadata: { ...s.metadata, wiremockUi: { ...s.metadata!.wiremockUi!, version } } }) as StubMapping
+
+  it('rebases each step on the current mock: new versions, the user edits kept, untouched fields follow someone else', () => {
+    const loaded = load()
+    const steps = loaded.steps.map((s) => (s.id === 'm2' ? { ...s, status: '202' } : s))
+    const fresh = [
+      bumped(pending, 5), // same content, new version (our own undo)
+      bumped(paid, 4, { response: { status: 200, body: 'paid by Bob', fixedDelayMilliseconds: 2000 } }), // Bob changed the body
+      // m3 deleted by someone else
+    ]
+    const out = rebaseScenario(loaded, steps, fresh)
+    expect(out.notes).toEqual({ m2: 'changed', m3: 'gone' })
+    expect(out.steps.map((s) => s.source?.metadata?.wiremockUi?.version)).toEqual([5, 4, undefined])
+    expect(out.steps[1].status).toBe('202') // the user's edit
+    expect(out.steps[1].body).toBe('paid by Bob') // untouched: follows the current mock
+    expect(out.base.steps.map((s) => s.id)).toEqual(['m1', 'm2'])
+    // Saving now updates m2 on its new version and creates m3 again.
+    const changes = editChanges(out.base, draftOf(out.base, { steps: out.steps }))
+    expect(changes.map((c) => [c.kind, c.kind === 'create' ? c.state : c.kind === 'update' ? c.before.metadata?.wiremockUi?.version : c.before.id])).toEqual([
+      ['create', 'shipped'],
+      ['update', 4],
+    ])
+  })
+
+  it('finds a live state no mock answers in any more', () => {
+    expect(strandedState('paid', all, 'order')).toBeUndefined()
+    expect(strandedState('Started', [], 'order')).toBeUndefined()
+    expect(strandedState('gone', all, 'order')).toBe('gone')
+  })
+
+  it('names kept mocks that use a state the edit renamed or removed', () => {
+    const loaded = load()
+    // k2 (proxy) answers in paid, k3 (twin) in shipped; rename paid, keep shipped.
+    const steps = loaded.steps.map((s) => (s.id === 'm2' ? { ...s, state: 'settled' } : s))
+    const lost = keptOnLostStates(loaded, steps)
+    expect(lost.states).toEqual(['paid'])
+    expect(lost.mocks.map((m) => m.id)).toEqual(['k2'])
+    expect(keptOnLostStates(loaded, loaded.steps).mocks).toEqual([])
+  })
+
+  it('checks each step against its own endpoint when asked', () => {
+    const loaded = load()
+    const strict = { allowedStatuses: [201], contentType: 'json' } as unknown as Endpoint
+    const errors = validateDraft(draftOf(loaded), { endpointOf: (_step, i) => (i === 1 ? strict : undefined) })
+    expect(Object.keys(errors.steps)).toEqual(['m2'])
+    expect(errors.steps.m2.status?.key).toBe('builder.statusNotAllowed')
+    expect(errors.steps.m2.body?.key).toBe('builder.bodyJson')
   })
 })

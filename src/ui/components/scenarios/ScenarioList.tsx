@@ -150,8 +150,12 @@ function DeleteScenarioButton({ scenario }: { scenario: Scenario }) {
   const confirm = async () => {
     setBusy(true)
     try {
-      // The current versions: a mock changed meanwhile is refused rather than deleted blind.
-      const stubs = await apiFetch<StubMapping[]>('/api/mocks', { query: { scenario: scenario.name } })
+      // Only the mocks the dialog listed are deleted (at their current version, read now). Mocks that joined the
+      // scenario since the list was drawn are left alone and reported; listed ones already gone are skipped.
+      const listed = new Set(scenario.mocks.map((m) => m.id))
+      const current = await apiFetch<StubMapping[]>('/api/mocks', { query: { scenario: scenario.name } })
+      const stubs = current.filter((stub) => listed.has(stub.id))
+      const added = current.filter((stub) => !listed.has(stub.id))
       const left: string[] = []
       for (const stub of stubs) {
         try {
@@ -162,6 +166,10 @@ function DeleteScenarioButton({ scenario }: { scenario: Scenario }) {
       }
       if (left.length > 0) toast.error(t('scenarios.deleteFailed', { name: scenario.name, names: left.join(', ') }), { duration: Number.POSITIVE_INFINITY })
       else toast.success(t(stubs.length === 1 ? 'scenarios.deletedOne' : 'scenarios.deleted', { name: scenario.name, count: stubs.length }))
+      if (added.length > 0)
+        toast.warning(t('scenarios.deleteNewKept', { name: scenario.name, names: added.map((stub) => stub.name ?? stub.id).join(', ') }), {
+          duration: Number.POSITIVE_INFINITY,
+        })
     } catch (error) {
       toast.error(t('scenarios.deleteFailed', { name: scenario.name, names: t('scenarios.deleteAll') }), {
         description: error instanceof Error ? error.message : undefined,

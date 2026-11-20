@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { createCatalogMock } from '../../../src/server/http/handlers/catalog'
 import { createMock, deleteMock, listMocks, updateMock } from '../../../src/server/http/handlers/mocks'
+import { listScenarios, resetScenarios } from '../../../src/server/http/handlers/scenarios'
 import type { StubMapping } from '../../../src/server/wiremock/types'
 import type { Endpoint, Integration } from '../../../src/server/catalog/types'
 import {
@@ -12,6 +13,7 @@ import {
   newStep,
   nextStateName,
   removeStep,
+  strandedState,
   toCreates,
 } from '../../../src/ui/lib/scenario-builder'
 import { login, req, startTestRuntime } from '../../helpers/http'
@@ -151,7 +153,7 @@ test('a step added after the last one: the old last step answers first, then mov
 })
 
 /** Loads a scenario like the edit page (GET /api/mocks?scenario=), applies `edit`, saves the difference like the page. */
-async function editScenario(name: string, edit: (draft: BuilderDraft) => BuilderDraft): Promise<number[]> {
+async function editScenario(name: string, edit: (draft: BuilderDraft) => BuilderDraft, opts: { resetAll?: boolean } = {}): Promise<number[]> {
   const res = await listMocks(env.rt, req(`/api/mocks?scenario=${encodeURIComponent(name)}`, 'GET', undefined, as()))
   const loaded = loadScenario((await res.json()) as StubMapping[], name)
   const draft = edit({ name, request: { kind: 'existing' }, steps: loaded.steps })
@@ -166,7 +168,7 @@ async function editScenario(name: string, edit: (draft: BuilderDraft) => Builder
           : await deleteMock(env.rt, req(`/api/mocks/${change.before.id}?version=${version(change.before)}`, 'DELETE', undefined, as()), { id: change.before.id })
     statuses.push(out.status)
   }
-  await env.rt.wiremock.resetScenarios()
+  if (opts.resetAll !== false) await env.rt.wiremock.resetScenarios()
   return statuses
 }
 
@@ -206,4 +208,26 @@ test('editing a scenario as one unit: WireMock answers as edited (changed body, 
   const transit = (await editScenario('shipment-v2', (d) => ({ ...d, steps: removeStep(d.steps, d.steps[1].id) })))
   expect(transit).toEqual([200, 204])
   expect(await answers(3)).toEqual([{ status: 'packed' }, { status: 'delivered' }, { status: 'delivered' }])
+})
+
+test('an edit that renames the live state: the scenario is reset to Started (that scenario only) and the next call is answered', async () => {
+  const draft: BuilderDraft = {
+    name: 'parcel-live',
+    request: { kind: 'free', method: 'GET', url: '/parcel/live' },
+    steps: [newStep('a', { body: 'first' }), newStep('b', { state: 'second', body: 'second' })],
+  }
+  expect(await save(draft)).toEqual([201, 201])
+  expect((await call('/parcel/live')).body).toBe('first')
+  // Now in "second". The edit renames it to "later" (no blanket reset).
+  expect(await editScenario('parcel-live', (d) => ({ ...d, steps: d.steps.map((s, i) => (i === 1 ? { ...s, state: 'later' } : s)) }), { resetAll: false })).toEqual([200, 200])
+
+  // WireMock keeps the scenario in "second", where nothing answers any more…
+  const live = ((await (await listScenarios(env.rt, req('/api/scenarios', 'GET', undefined, as()))).json()) as { scenarios: { name: string; state: string }[] }).scenarios
+  const stubs = (await (await listMocks(env.rt, req('/api/mocks?scenario=parcel-live', 'GET', undefined, as()))).json()) as StubMapping[]
+  const stranded = strandedState(live.find((s) => s.name === 'parcel-live')?.state, stubs, 'parcel-live')
+  expect(stranded).toBe('second')
+  // …so the editor resets that scenario, as the page does after saving.
+  expect((await resetScenarios(env.rt, req('/api/scenarios/reset', 'POST', { name: 'parcel-live' }, as()))).status).toBe(204)
+  expect(await call('/parcel/live')).toEqual({ status: 200, body: 'first' })
+  expect(await call('/parcel/live')).toEqual({ status: 200, body: 'second' })
 })

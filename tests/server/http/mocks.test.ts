@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { healthz } from '../../../src/server/http/handlers/health'
 import { createMock, deleteMock, duplicateMock, getMock, listMocks, mockHistory, resetMine, restoreMock, updateMock } from '../../../src/server/http/handlers/mocks'
+import { runImport } from '../../../src/server/http/handlers/imports'
 import type { Runtime } from '../../../src/server/runtime'
 import { STORELESS, URL_, basic, req as baseReq, signIn, startTestRuntime } from '../../helpers/http'
 
@@ -254,6 +255,27 @@ test('GET /api/mocks?scenario=: one scenario by name, * for every scenario mock'
   expect(any).toEqual(expect.arrayContaining([a1.id, a2.id, b.id]))
   expect(any).not.toContain(plain.id)
   expect(await ids('scenario=nope')).toEqual([])
+})
+
+test('a deleted mock comes back under its own id and owner through import (the scenario editor undo, any mode)', async () => {
+  const made = await (await createMock(rt, req('/api/mocks', 'POST', input('/h/undo-delete', { scenarioName: 'undo-sc', requiredScenarioState: 'Started' })))).json()
+  const before = await (await getMock(rt, req(`/api/mocks/${made.id}`), { id: made.id })).json()
+  expect((await deleteMock(rt, req(`/api/mocks/${made.id}?version=1`, 'DELETE'), { id: made.id })).status).toBe(204)
+  // What the editor sends: the stub as it was, its id, its catalog link and owner in metadata.
+  const { metadata, ...rest } = before
+  const back = { ...rest, metadata: { wiremockUi: { owner: metadata.wiremockUi.owner } } }
+  const res = await runImport(rt, req('/api/import', 'POST', { integrations: [], catalog: [], mocks: [back], oidcIdentities: [] }))
+  expect(res.status).toBe(200)
+  expect((await res.json()).created).toBe(1)
+  const again = await getMock(rt, req(`/api/mocks/${made.id}`), { id: made.id })
+  expect(again.status).toBe(200)
+  const stub = await again.json()
+  expect(stub.id).toBe(made.id)
+  expect(stub.metadata.wiremockUi.owner).toBe('ui-admin')
+  expect(stub.response).toEqual(before.response)
+  expect(stub.requiredScenarioState).toBe('Started')
+  const served = await fetch(`${wm().url}/h/undo-delete`)
+  expect(served.status).toBe(200)
 })
 
 // History and restore need a store.
