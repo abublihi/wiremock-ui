@@ -68,6 +68,8 @@ npm start                     # http://localhost:3000 (PORT changes it)
 
 For development (`npm run dev`, hot reload on port 3000) on Node 22.12, set `NODE_OPTIONS=--experimental-sqlite` first.
 
+**Pointing it at a WireMock that already has stubs.** On a first start (a store with no mocks yet) the UI adopts every stub WireMock already serves: they keep their ids, show up in the mocks list owned by `wiremock`, and stay in WireMock. From then on the UI's store is the source of truth, so stubs added to WireMock behind the UI's back are removed by the next full sync.
+
 ## Configuration
 
 Everything is set through environment variables. Empty values count as unset.

@@ -94,6 +94,7 @@ Stub metadata carries `wiremockUi: {integration, endpoint, owner, version, updat
 3. Marker missing → take `sync:lock`, then full sync: `POST /__admin/mappings/import` with all stubs in batches of 500, duplicate policy `OVERWRITE` and `deleteAllNotInImport: true`, so WireMock ends equal to the store. *(See Amendment A1.)*
 4. Recreate the marker last, so a sync that breaks halfway retries on the next check.
 5. A full sync also runs at UI startup and every 10 minutes as a safety net.
+6. Before that first full sync, a store with no mocks at all **adopts** the stubs WireMock already serves (all but the marker): each is stored with its own id, owner `wiremock`, source `adopt` and an integration guessed from the catalog prefixes, so pointing the UI at a WireMock that has stubs keeps them instead of deleting them. The log says `adopted N existing WireMock stubs` and the audit log records `adopt`. Once the store holds any mock it stays the source of truth and nothing is adopted again.
 
 **What is not stored.** The request log and scenario state stay in WireMock memory. The log is capped with `--max-request-journal-entries` (default 5000).
 

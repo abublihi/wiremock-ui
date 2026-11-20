@@ -80,6 +80,19 @@ test('listStubIds pages past 1000', async () => {
   expect(new Set(ids).size).toBe(1500)
 })
 
+test('listStubs returns whole mappings and pages past 1000', async () => {
+  for (let c = 0; c < 3; c++) {
+    const batch = Array.from({ length: 400 }, (_, i) => stub(uid(c * 400 + i + 1)))
+    await wm.importStubs(batch, { deleteAllNotInImport: false })
+  }
+  const all = await wm.listStubs()
+  expect(all.length).toBe(1200)
+  expect(new Set(all.map((s) => s.id)).size).toBe(1200)
+  const one = all.find((s) => s.id === uid(7))
+  expect(one?.request).toEqual({ method: 'GET', urlPath: `/t/${uid(7)}` })
+  expect(one?.response).toMatchObject({ status: 200, jsonBody: { id: uid(7) } })
+})
+
 test('version() starts with 3.', async () => {
   expect(await wm.version()).toMatch(/^3\./)
 })

@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, verifyPasswordOrDummy } from './passwords
 import { toPublicUser } from './types'
 import type { PublicUser, Session, User, UserStore } from './types'
 
-const RESERVED = new Set(['baseline', 'system'])
+const RESERVED = new Set(['baseline', 'system', 'wiremock'])
 const USERNAME = /^[a-z0-9._-]{2,32}$/
 
 function normalizeUsername(raw: string): string {

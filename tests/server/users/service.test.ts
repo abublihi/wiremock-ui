@@ -115,7 +115,7 @@ describe.each(drivers)('UserService on %s', (_driver, start) => {
   test('reserved usernames, bad usernames, short/long passwords rejected (400)', async () => {
     await admin()
     const base = { password: 'longenough1' }
-    for (const username of ['baseline', 'System', 'a', 'has space']) {
+    for (const username of ['baseline', 'System', 'WireMock', 'a', 'has space']) {
       await expect(svc.create({ ...base, username }, 'root')).rejects.toMatchObject({ status: 400 })
     }
     await expect(svc.create({ ...base, username: 'okname', password: 'short' }, 'root')).rejects.toMatchObject({ status: 400, message: 'password must be 8–72 characters' })

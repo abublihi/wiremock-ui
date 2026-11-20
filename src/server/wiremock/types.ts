@@ -5,7 +5,7 @@ export type WireMockUiMeta = {
   version: number
   updatedAt: string
   updatedBy: string
-  source: 'ui' | 'import' | 'seed' | 'recording' | 'marker'
+  source: 'ui' | 'import' | 'seed' | 'adopt' | 'recording' | 'marker'
 }
 
 export type StubBase = {

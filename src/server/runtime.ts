@@ -9,6 +9,7 @@ import { MockService } from './mocks/service'
 import type { AuditLog } from './audit/log'
 import { createStores, type MockStore, type Stores } from './store'
 import { UserService } from './users/service'
+import { adoptStubs, stubsToAdopt } from './sync/adopt'
 import { Reconciler } from './sync/reconciler'
 import { WireMockClient } from './wiremock/client'
 import { assertWireMockReady } from './wiremock/startup'
@@ -102,6 +103,8 @@ export async function bootRuntime(
     const catalog = new CatalogService({ catalog: stores.catalog, audit, mocks: store })
     const requests = new RequestJournal({ wiremock, catalog, audit })
     const reconciler = new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000 })
+    // Read before the seed writes anything: an empty store takes over what WireMock already serves.
+    const adoptable = await stubsToAdopt(wiremock, store)
     if (config.seedPath) {
       try {
         const { bundle, skipped } = await readBundleFromPath(config.seedPath)
@@ -124,6 +127,8 @@ export async function bootRuntime(
         throw new ConfigError(`Seed import from ${config.seedPath} failed: ${(err as Error).message}`)
       }
     }
+    // After the seed, so its catalog prefixes can name the integrations; before the first full sync.
+    await adoptStubs(adoptable, { mocks, store, catalog, audit })
     await reconciler.start()
     return { config, wiremock, store, stores, users, audit, mocks, catalog, requests, reconciler }
   } catch (err) {

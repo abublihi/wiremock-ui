@@ -43,7 +43,8 @@ export function deterministicId(stub: Record<string, unknown>): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`
 }
 
-function guessIntegration(stub: StubMapping, prefixes: { key: string; prefix: string }[]): string | undefined {
+/** The integration whose prefix matches the stub URL best (longest prefix), if any. */
+export function guessIntegration(stub: StubMapping, prefixes: { key: string; prefix: string }[]): string | undefined {
   const urls = URL_FIELDS.map((f) => stub.request[f]).filter((u): u is string => typeof u === 'string')
   return longestPrefixMatch(urls, prefixes)
 }

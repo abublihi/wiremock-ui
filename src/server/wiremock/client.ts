@@ -98,13 +98,18 @@ export class WireMockClient {
   }
 
   async listStubIds(): Promise<string[]> {
-    const ids: string[] = []
+    return (await this.listStubs()).map((m) => m.id)
+  }
+
+  /** Every stub WireMock holds, whole, fetched in pages of 1000. */
+  async listStubs(): Promise<StubMapping[]> {
+    const all: StubMapping[] = []
     for (let offset = 0; ; offset += PAGE) {
       const res = await this.request(`/__admin/mappings?limit=${PAGE}&offset=${offset}`)
       if (!res.ok) await this.fail(res, 'list stubs')
-      const { mappings } = await this.json<{ mappings: { id: string }[] }>(res)
-      ids.push(...mappings.map((m) => m.id))
-      if (mappings.length < PAGE) return ids
+      const { mappings } = await this.json<{ mappings: StubMapping[] }>(res)
+      all.push(...mappings)
+      if (mappings.length < PAGE) return all
     }
   }
 
