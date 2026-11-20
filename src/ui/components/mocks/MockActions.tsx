@@ -146,7 +146,7 @@ export function ResetMineButton() {
                 ? t('mocks.resetCountFailed')
                 : count === undefined
                   ? t('mocks.resetCounting')
-                  : t('mocks.resetTitle', { count })}
+                  : t(count === 1 ? 'mocks.resetTitleOne' : 'mocks.resetTitle', { count })}
             </AlertDialogTitle>
             <AlertDialogDescription>{mine.isError ? mine.error.message : t('mocks.resetBody')}</AlertDialogDescription>
           </AlertDialogHeader>
@@ -162,7 +162,7 @@ export function ResetMineButton() {
               disabled={count === undefined || count === 0}
               onClick={() =>
                 reset.mutate(undefined, {
-                  onSuccess: ({ deleted }) => toast.success(t('mocks.resetDone', { count: deleted })),
+                  onSuccess: ({ deleted }) => toast.success(t(deleted === 1 ? 'mocks.resetDoneOne' : 'mocks.resetDone', { count: deleted })),
                   onError: (error) => toast.error(errorMessage(error, t('error.generic'))),
                 })
               }

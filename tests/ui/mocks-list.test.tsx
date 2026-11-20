@@ -169,7 +169,7 @@ describe('mock list', () => {
     expect(seen.some((u) => u.searchParams.get('owner') === 'me')).toBe(true)
     fail = false
     await ue.click(within(dialog).getByRole('button', { name: 'Retry' }))
-    await within(dialog).findByText(/Delete your 1 mocks\?/)
+    await within(dialog).findByText('Delete your 1 mock?')
   })
 
   it('reset my mocks shows the count in the confirm and the result toast', async () => {
@@ -186,6 +186,22 @@ describe('mock list', () => {
     await within(dialog).findByText(/Delete your 3 mocks\?/)
     await ue.click(within(dialog).getByRole('button', { name: 'Reset my mocks' }))
     await screen.findByText('Deleted 3 mocks')
+  })
+
+  it('reset my mocks uses the singular for one mock', async () => {
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/mocks`, () => HttpResponse.json([stub('a')])),
+      http.post(`${BASE}/api/mocks/reset-mine`, () => HttpResponse.json({ deleted: 1 })),
+    )
+    await renderApp(<Harness />)
+    await screen.findByText('Mock a')
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('button', { name: 'Reset my mocks' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await within(dialog).findByText('Delete your 1 mock?')
+    await ue.click(within(dialog).getByRole('button', { name: 'Reset my mocks' }))
+    await screen.findByText('Deleted 1 mock')
   })
 
   it('empty state for my mocks offers New mock', async () => {
