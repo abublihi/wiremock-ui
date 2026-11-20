@@ -40,7 +40,8 @@ export function layoutScenario(scenario: Pick<Scenario, 'possibleStates' | 'mock
 
 /**
  * A scenario's states as boxes in transition order (a row on wide cards, a column on narrow ones) with its mocks
- * as labelled arrows between them; the current state is highlighted. `onSetState` moves the scenario.
+ * as labelled arrows between them; the current state is highlighted. `onSetState` moves the scenario; without it the
+ * diagram is a preview (the scenario builder's): no "Set as current", and the mock labels are not links.
  */
 export function StateMachine({
   scenario,
@@ -48,10 +49,11 @@ export function StateMachine({
   onSetState,
 }: {
   scenario: Scenario
-  busy: boolean
-  onSetState: (state: string) => void
+  busy?: boolean
+  onSetState?: (state: string) => void
 }) {
   const t = useT()
+  const linked = onSetState !== undefined
   const layout = layoutScenario(scenario)
   const states = scenario.possibleStates
   return (
@@ -67,10 +69,10 @@ export function StateMachine({
               current={state === scenario.state}
               loops={layout.loops.get(state) ?? []}
               settable={scenario.settable}
-              busy={busy}
-              onSet={() => onSetState(state)}
+              busy={busy ?? false}
+              onSet={onSetState && (() => onSetState(state))}
             />
-            {i < states.length - 1 && <Step mocks={layout.steps.get(i) ?? []} />}
+            {i < states.length - 1 && <Step mocks={layout.steps.get(i) ?? []} linked={linked} />}
           </li>
         ))}
       </ol>
@@ -86,7 +88,7 @@ export function StateMachine({
                   <Arrow direction="right" className="w-10 text-signal" />
                   <span>{to}</span>
                 </span>
-                <MockLabel mock={mock} />
+                <MockLabel mock={mock} linked={linked} />
               </li>
             ))}
             {layout.anyState.map((mock) => (
@@ -95,7 +97,7 @@ export function StateMachine({
                   {t('scenarios.anyState')}
                   <LoopGlyph />
                 </span>
-                <MockLabel mock={mock} />
+                <MockLabel mock={mock} linked={linked} />
               </li>
             ))}
           </ul>
@@ -118,7 +120,8 @@ function StateBox({
   loops: ScenarioMock[]
   settable: boolean
   busy: boolean
-  onSet: () => void
+  /** Undefined in a preview: no "Set as current". */
+  onSet?: () => void
 }) {
   const t = useT()
   const set = (
@@ -148,12 +151,12 @@ function StateBox({
           {loops.map((mock) => (
             <li key={mock.id} className="flex min-w-0 items-start gap-1.5">
               <LoopGlyph />
-              <MockLabel mock={mock} />
+              <MockLabel mock={mock} linked={Boolean(onSet)} />
             </li>
           ))}
         </ul>
       )}
-      {!current && (
+      {!current && onSet && (
         <div className="-ms-2 mt-auto">
           {settable ? (
             set
@@ -175,7 +178,7 @@ function StateBox({
 }
 
 /** The arrow from one state to the next, labelled with the mocks that make that move. */
-function Step({ mocks }: { mocks: ScenarioMock[] }) {
+function Step({ mocks, linked }: { mocks: ScenarioMock[]; linked: boolean }) {
   const t = useT()
   return (
     <div className="flex min-h-12 items-stretch gap-3 ps-5 @2xl/diagram:min-w-40 @2xl/diagram:max-w-64 @2xl/diagram:flex-col @2xl/diagram:items-stretch @2xl/diagram:justify-center @2xl/diagram:gap-1 @2xl/diagram:px-2 @2xl/diagram:py-0">
@@ -183,7 +186,7 @@ function Step({ mocks }: { mocks: ScenarioMock[] }) {
       <ul aria-label={mocks.length > 0 ? t('scenarios.movesLabel') : undefined} className="flex min-w-0 flex-col justify-center gap-1 py-2 @2xl/diagram:order-first @2xl/diagram:py-0">
         {mocks.map((mock) => (
           <li key={mock.id} className="min-w-0">
-            <MockLabel mock={mock} />
+            <MockLabel mock={mock} linked={linked} />
           </li>
         ))}
       </ul>
@@ -226,19 +229,23 @@ function LoopGlyph() {
   )
 }
 
-/** A mock as an arrow label: its name (a link to it), method and URL. */
-function MockLabel({ mock }: { mock: ScenarioMock }) {
+/** A mock as an arrow label: its name (a link to it, unless `linked` is false), method and URL. */
+function MockLabel({ mock, linked }: { mock: ScenarioMock; linked: boolean }) {
   const t = useT()
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
-      <Link
-        to="/mocks/$id"
-        params={{ id: mock.id }}
-        className="truncate text-xs font-medium hover:text-signal-fg hover:underline"
-        title={mock.name ?? mock.id}
-      >
-        {mock.name ?? t('scenarios.unnamedMock')}
-      </Link>
+      {linked ? (
+        <Link
+          to="/mocks/$id"
+          params={{ id: mock.id }}
+          className="truncate text-xs font-medium hover:text-signal-fg hover:underline"
+          title={mock.name ?? mock.id}
+        >
+          {mock.name ?? t('scenarios.unnamedMock')}
+        </Link>
+      ) : (
+        <span className="truncate text-xs font-medium">{mock.name ?? t('scenarios.unnamedMock')}</span>
+      )}
       {(mock.method || mock.url) && (
         <span className="flex min-w-0 items-center gap-1.5">
           {mock.method && <MethodBadge method={mock.method} className="h-4 px-1 text-[9px]" />}

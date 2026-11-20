@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { RotateCcwIcon } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { PlusIcon, RotateCcwIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Scenario } from '@/server/scenarios/service'
 import { useResetScenarios, useSetScenarioState } from '@/ui/api/queries'
@@ -10,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/components/ui/tool
 import { useT } from '@/ui/i18n'
 import { StateMachine } from './StateMachine'
 
-/** One card per scenario: its name, live state, Reset, and the state diagram. */
+/** One card per scenario: its name, live state, Reset, "Add a mock to this scenario", and the state diagram. */
 export function ScenarioList({ scenarios, focus }: { scenarios: Scenario[]; focus?: string }) {
   return (
     <ul className="flex flex-col gap-4">
@@ -34,6 +35,8 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
   const reset = useResetScenarios()
   const busy = setState.isPending || reset.isPending
   const titleId = `scenario-${encodeURIComponent(scenario.name)}`
+  // A new step answers in the scenario's last state (the end of its transition order).
+  const lastState = scenario.possibleStates.at(-1) ?? 'Started'
 
   const onSetState = async (state: string) => {
     try {
@@ -79,18 +82,31 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
             <LiveDot label={scenario.state} className="normal-case tracking-normal" />
           </div>
         </div>
-        {scenario.settable ? (
-          resetButton
-        ) : (
+        <div className="flex flex-wrap items-center gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span tabIndex={0} className="inline-flex rounded-md">
-                {resetButton}
-              </span>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/mocks/new" search={{ scenario: scenario.name, state: lastState }}>
+                  <PlusIcon data-icon="inline-start" />
+                  {t('scenarios.addMock')}
+                </Link>
+              </Button>
             </TooltipTrigger>
-            <TooltipContent className="max-w-64">{t('scenarios.notSettable')}</TooltipContent>
+            <TooltipContent className="max-w-64">{t('scenarios.addMockHint', { state: lastState })}</TooltipContent>
           </Tooltip>
-        )}
+          {scenario.settable ? (
+            resetButton
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="inline-flex rounded-md">
+                  {resetButton}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-64">{t('scenarios.notSettable')}</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </header>
       <StateMachine scenario={scenario} busy={busy} onSetState={(state) => void onSetState(state)} />
     </article>

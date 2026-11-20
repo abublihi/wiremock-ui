@@ -94,6 +94,41 @@ test('a scenario answers pending then approved, and the page shows and resets th
   expect(await call()).toEqual({ status: 'pending' })
 })
 
+test('the scenario builder makes a 2-step scenario that the test panel runs step by step', async ({ page, request }) => {
+  const scenario = 'e2e-builder'
+  await signIn(page, USER_A)
+  await page.goto('/scenarios')
+  await page.getByRole('link', { name: 'New scenario' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'New scenario' })).toBeVisible()
+  await expect(page.getByText(/A scenario is a set of mocks for the same request/)).toBeVisible()
+
+  await page.getByLabel('Scenario name').fill(scenario)
+  await page.getByRole('option', { name: /Fetch citizen/ }).click()
+  await page.getByLabel('Value of $.idNo in the request body').fill('6000000006')
+  // Step 1 answers 200 with the catalog example; step 2 answers 404 with that status's example.
+  await page.getByRole('textbox', { name: 'Step 2 state' }).fill('gone')
+  await page.getByRole('spinbutton', { name: 'Step 2 response status' }).fill('404')
+  await expect(page.getByRole('textbox', { name: 'Step 2 response body' })).toContainText('citizen not found')
+  await page.getByRole('button', { name: 'Create scenario' }).click()
+
+  await expect(page.getByText(`Scenario ${scenario} created with 2 steps`)).toBeVisible()
+  await expect(page).toHaveURL(/\/scenarios\?scenario=e2e-builder$/)
+  const listed = (await (await request.get('/api/scenarios', { headers: AUTH })).json()) as { scenarios: { name: string; mocks: { id: string }[] }[] }
+  for (const m of listed.scenarios.find((s) => s.name === scenario)!.mocks) remember(m.id)
+
+  const card = page.getByRole('article', { name: scenario })
+  await expect(card.getByText('Now in')).toContainText('Started')
+  await card.getByRole('link', { name: `${scenario} — Started` }).click()
+  await page.getByRole('button', { name: 'Test', exact: true }).click()
+  const panel = page.getByRole('dialog', { name: 'Test this mock' })
+  await panel.getByRole('button', { name: 'Send' }).click()
+  await expect(panel.getByText('Matched this mock')).toBeVisible()
+  await expect(panel.getByText('Test Citizen')).toBeVisible()
+  await panel.getByRole('button', { name: 'Send' }).click()
+  await expect(panel.getByText('citizen not found')).toBeVisible()
+  await expect(panel.getByText('Matched another mock')).toBeVisible()
+})
+
 test('a proxy mock made in Simple mode forwards to the real service', async ({ page, request }) => {
   // The "real service" is WireMock itself, as seen from inside its container.
   await createStub(request, {

@@ -20,12 +20,14 @@ import { useT } from '@/ui/i18n'
 import {
   type ProxyForm,
   type ScenarioForm,
+  type ScenarioSeed,
   type SimpleForm,
   type WebhookForm,
   emptyForm,
   exampleFor,
   generatedName,
   isHttpUrl,
+  seedScenario,
   toSimpleInput,
 } from '@/ui/lib/editor-sync'
 import {
@@ -118,6 +120,7 @@ export function SimpleEditor({
   endpoint,
   initial,
   mock,
+  scenarioSeed,
   onChange,
   onSaved,
   onConflict,
@@ -126,6 +129,8 @@ export function SimpleEditor({
   endpoint: Endpoint
   initial?: SimpleForm
   mock?: StubMapping
+  /** A new mock's scenario (when `initial` is not given): the Scenario section starts on and filled in. */
+  scenarioSeed?: ScenarioSeed
   onChange?: (form: SimpleForm) => void
   onSaved?: (stub: StubMapping) => void | Promise<void>
   onConflict?: () => void
@@ -135,7 +140,7 @@ export function SimpleEditor({
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
 
-  const [form, setForm] = useState<SimpleForm>(() => initial ?? emptyForm(endpoint))
+  const [form, setForm] = useState<SimpleForm>(() => initial ?? seedScenario(emptyForm(endpoint), scenarioSeed))
   // An existing mock's body is the user's; a new form's body follows the example until the user types.
   const [bodyTouched, setBodyTouched] = useState(Boolean(initial))
   // The status whose catalog example is in the body (shown in the "prefilled from" caption).

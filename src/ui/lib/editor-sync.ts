@@ -131,6 +131,14 @@ export function emptyForm(endpoint: Endpoint): SimpleForm {
   }
 }
 
+/** A scenario a new mock starts in ("Add a mock to this scenario" on the Scenarios page). */
+export type ScenarioSeed = { name: string; requiredState: string }
+
+/** The form with its Scenario section turned on for `seed` (unchanged without one). */
+export function seedScenario(form: SimpleForm, seed: ScenarioSeed | undefined): SimpleForm {
+  return seed ? { ...form, scenario: { enabled: true, name: seed.name, requiredState: seed.requiredState, newState: '' } } : form
+}
+
 /** Rows with a name, as a header map (names trimmed); undefined when there are none. */
 export function headerMap(rows: HeaderRow[]): Record<string, string> | undefined {
   const named = rows.filter((r) => r.name.trim() !== '')

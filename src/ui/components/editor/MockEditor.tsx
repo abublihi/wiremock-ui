@@ -24,12 +24,14 @@ import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 import {
   type EditableStub,
+  type ScenarioSeed,
   type SimpleForm,
   emptyForm,
   fromEditable,
   fromStub,
   linkOf,
   parseStubJson,
+  seedScenario,
   toEditable,
   toSimpleInput,
 } from '@/ui/lib/editor-sync'
@@ -59,6 +61,7 @@ export function MockEditor({
   mock,
   catalog,
   initialStub,
+  scenarioSeed,
   simpleUnavailable,
   initialMode,
   onModeChange,
@@ -72,6 +75,8 @@ export function MockEditor({
   catalog?: Catalog
   /** A new free-form mock's starting JSON (instead of the blank stub); opens in Advanced and is created with POST. */
   initialStub?: EditableStub
+  /** A new mock's scenario ("Add a mock to this scenario"): the Scenario section, or the JSON, starts with it. */
+  scenarioSeed?: ScenarioSeed
   /** Why Simple mode can't be used at all (no catalog link, endpoint gone). */
   simpleUnavailable?: string
   initialMode?: EditorMode
@@ -87,8 +92,14 @@ export function MockEditor({
   const link = mock ? linkOf(mock) : catalog && { integration: catalog.integration.key, endpoint: catalog.endpoint.key }
 
   const [init] = useState(() => {
-    const form = catalog ? (mock ? fromStub(mock, catalog.integration, catalog.endpoint) : emptyForm(catalog.endpoint)) : null
-    const text = mock ? pretty(toEditable(mock)) : catalog ? '' : initialStub ? pretty(initialStub) : BLANK
+    const form = catalog
+      ? mock
+        ? fromStub(mock, catalog.integration, catalog.endpoint)
+        : seedScenario(emptyForm(catalog.endpoint), scenarioSeed)
+      : null
+    const start = initialStub ?? (JSON.parse(BLANK) as EditableStub)
+    const seeded = scenarioSeed ? { ...start, scenarioName: scenarioSeed.name, requiredScenarioState: scenarioSeed.requiredState } : start
+    const text = mock ? pretty(toEditable(mock)) : catalog ? '' : initialStub || scenarioSeed ? pretty(seeded) : BLANK
     const mode: EditorMode = form && initialMode !== 'advanced' ? 'simple' : 'advanced'
     return { form, text, mode }
   })
@@ -252,6 +263,7 @@ export function MockEditor({
               // A fresh new mock lets the body follow the catalog example; anything else is the user's draft.
               initial={mock || simple.n > 0 ? simple.form : undefined}
               mock={mock}
+              scenarioSeed={scenarioSeed}
               onChange={(form) => {
                 formRef.current = form
                 setSimpleChanged(!sameForm(form, simple.form))

@@ -23,7 +23,7 @@ import { useT } from '@/ui/i18n'
 
 export type ScenariosSearch = { scenario?: string }
 
-export const Route = createFileRoute('/_app/scenarios')({
+export const Route = createFileRoute('/_app/scenarios/')({
   validateSearch: (raw: Record<string, unknown>): ScenariosSearch => ({
     scenario: typeof raw.scenario === 'string' && raw.scenario !== '' ? raw.scenario : undefined,
   }),
@@ -57,7 +57,15 @@ export function ScenariosPage({ focus }: { focus?: string } = {}) {
             {scenarios.data ? t(list.length === 1 ? 'scenarios.captionOne' : 'scenarios.caption', { count: list.length }) : '//'}
           </p>
         </div>
-        {list.length > 0 && <ResetAllButton />}
+        <div className="flex flex-wrap items-center gap-2">
+          {list.length > 0 && <ResetAllButton />}
+          <Button asChild size="sm">
+            <Link to="/scenarios/new">
+              <PlusIcon data-icon="inline-start" />
+              {t('scenarios.new')}
+            </Link>
+          </Button>
+        </div>
       </header>
 
       {scenarios.isError && scenarios.data && (
@@ -94,7 +102,7 @@ export function ScenariosPage({ focus }: { focus?: string } = {}) {
           </EmptyHeader>
           <EmptyContent>
             <Button asChild>
-              <Link to="/mocks/new">
+              <Link to="/scenarios/new">
                 <PlusIcon data-icon="inline-start" />
                 {t('scenarios.create')}
               </Link>

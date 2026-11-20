@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { Scenario } from '@/server/scenarios/service'
-import { ScenariosPage } from '@/routes/_app/scenarios'
+import { ScenariosPage } from '@/routes/_app/scenarios.index'
 import { NewMockPage, type NewMockSearch } from '@/ui/components/editor/NewMockPage'
 import { layoutScenario } from '@/ui/components/scenarios/StateMachine'
 import { renderApp } from './helpers'
@@ -163,13 +163,24 @@ describe('Scenarios page', () => {
     expect(screen.getByRole('article', { name: 'loan-approval' }).hasAttribute('data-focused')).toBe(false)
   })
 
-  it('with no scenarios, explains them and links to a new mock', async () => {
+  it('with no scenarios, explains them and links to the scenario builder', async () => {
     mockScenarios([[]])
     await renderApp(<ScenariosPage />)
     expect(await screen.findByText('No stateful mocks yet')).toBeTruthy()
     expect(screen.getByText(/the first call returns pending and moves to approved/)).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Create a stateful mock' }).getAttribute('href')).toBe('/mocks/new')
+    expect(screen.getByRole('link', { name: 'Build a scenario' }).getAttribute('href')).toBe('/scenarios/new')
+    expect(screen.getByRole('link', { name: 'New scenario' }).getAttribute('href')).toBe('/scenarios/new')
     expect(screen.queryByRole('button', { name: 'Reset all' })).toBeNull()
+  })
+
+  it('the header opens the builder; each card adds a mock to its scenario, answering in its last state', async () => {
+    mockScenarios([[loan()]])
+    await renderApp(<ScenariosPage />)
+    const card = await screen.findByRole('article', { name: 'loan-approval' })
+    expect(screen.getByRole('link', { name: 'New scenario' }).getAttribute('href')).toBe('/scenarios/new')
+    expect(within(card).getByRole('link', { name: 'Add a mock to this scenario' }).getAttribute('href')).toBe(
+      '/mocks/new?scenario=loan-approval&state=approved',
+    )
   })
 })
 
@@ -192,9 +203,14 @@ const endpoint: Endpoint = {
   updatedBy: '',
 }
 
-function NewHarness() {
-  const [search, setSearch] = useState<NewMockSearch>({ integration: 'nic', endpoint: 'loan' })
-  return <NewMockPage search={search} onSearchChange={setSearch} />
+function NewHarness({ initial = { integration: 'nic', endpoint: 'loan' } }: { initial?: NewMockSearch }) {
+  const [search, setSearch] = useState<NewMockSearch>(initial)
+  return (
+    <>
+      <NewMockPage search={search} onSearchChange={setSearch} />
+      <output aria-label="search">{JSON.stringify(search)}</output>
+    </>
+  )
 }
 
 describe('mock editor — scenario', () => {
@@ -264,5 +280,51 @@ describe('mock editor — scenario', () => {
     expect(calls).toHaveLength(0)
     await ue.type(name, 'loan approval')
     expect(screen.getByText(/can only reset it with Reset all/)).toBeTruthy()
+  })
+})
+
+describe('mock editor — adding a step to a scenario', () => {
+  it('opened from a scenario card: a banner says so, the pick keeps the scenario, and the Scenario section starts filled in', async () => {
+    const calls: Call[] = []
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
+      http.get(CATALOG, () => HttpResponse.json([endpoint])),
+      http.post(`${CATALOG}/loan/preview`, async ({ request }) => {
+        calls.push({ method: 'POST', path: 'preview', body: await request.json() })
+        return HttpResponse.json({ name: 'built', request: {}, response: { status: 200 } })
+      }),
+    )
+    mockScenarios([[loan()]])
+    await renderApp(<NewHarness initial={{ scenario: 'loan-approval', state: 'approved' }} />)
+    const ue = userEvent.setup()
+    expect(screen.getByText('Adding a step to scenario loan-approval')).toBeTruthy()
+    await ue.click(await screen.findByRole('option', { name: /Loan status/ }))
+    expect(JSON.parse(screen.getByRole('status', { name: 'search' }).textContent!)).toEqual({
+      integration: 'nic',
+      endpoint: 'loan',
+      scenario: 'loan-approval',
+      state: 'approved',
+    })
+    await screen.findByRole('textbox', { name: 'Response body' })
+    expect(screen.getByText('Adding a step to scenario loan-approval')).toBeTruthy()
+    expect((screen.getByRole('switch', { name: 'Answer differently on later calls' }) as HTMLButtonElement).getAttribute('aria-checked')).toBe('true')
+    expect((screen.getByRole('textbox', { name: 'Scenario name' }) as HTMLInputElement).value).toBe('loan-approval')
+    expect((screen.getByRole('textbox', { name: 'Only answers when the scenario is in state' }) as HTMLInputElement).value).toBe('approved')
+    // The body still follows the catalog example, as for any new mock.
+    expect(screen.getByText('// prefilled from the catalog example for 200')).toBeTruthy()
+
+    await ue.type(screen.getByLabelText('Value of query parameter id'), '7')
+    await ue.click(screen.getByRole('button', { name: 'Preview' }))
+    await waitFor(() => expect((calls.at(-1)?.body as { scenario?: unknown })?.scenario).toEqual({ name: 'loan-approval', requiredState: 'approved' }))
+  })
+
+  it('the blank JSON stub starts with the scenario fields too', async () => {
+    server.use(http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])), http.get(CATALOG, () => HttpResponse.json([endpoint])))
+    mockScenarios([[loan()]])
+    await renderApp(<NewHarness initial={{ mode: 'json', scenario: 'loan-approval', state: 'approved' }} />)
+    expect(screen.getByText('Adding a step to scenario loan-approval')).toBeTruthy()
+    const json = await screen.findByRole('textbox', { name: /stub JSON/i })
+    expect(json.textContent).toContain('"scenarioName": "loan-approval"')
+    expect(json.textContent).toContain('"requiredScenarioState": "approved"')
   })
 })

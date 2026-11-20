@@ -179,15 +179,38 @@ The callback is sent from WireMock's machine: `http://localhost:…` means WireM
 
 ## Scenarios: answer differently on later calls
 
-Some flows need the same request to get a different answer the second time: "pending" first, "approved" after. WireMock does this with scenarios, a named state shared by several mocks.
+Some flows need the same request to get a different answer the second time: "pending" first, "approved" after. That is a **scenario**: a set of mocks for the same request that answer differently as the scenario moves from state to state.
 
-In the mock editor, turn on **Answer differently on later calls** (section **Scenario (stateful)**):
+**Why is a scenario made of mocks?** WireMock has no scenario object of its own. A scenario exists only because several mocks share a scenario name. Each mock says "I answer only while the scenario is in state X" and, optionally, "then move it to state Y". Every scenario starts in `Started`. So a two-step "pending → approved" flow is two mocks: one answers in `Started` and moves to `approved`, the other answers in `approved`.
 
-- **Scenario name**: pick one other mocks use or type a new one. Mocks with the same name share one state.
-- **Only answers when the scenario is in state**: every scenario starts in `Started`; leave it blank for `Started`.
-- **Then move the scenario to state** (optional): where the scenario goes after this mock answers.
+### Build a scenario
 
-For the loan example: mock **Loan pending** answers in `Started` and moves to `approved`; mock **Loan approved** answers in `approved` and stays. The first call gets "pending", every later call "approved".
+![Scenario builder](screenshots/scenario-builder-dark.png)
+
+Go to **Scenarios → New scenario** (or **Build a scenario** when there are none yet). One page holds the whole scenario:
+
+1. **Scenario name**: letters, digits and `- _ .` (for example `order-status`), so the Scenarios page can move and reset it. If the name is already in use you get a warning and an **Open it** link; new steps would join that scenario and share its state.
+2. **Request**: every step answers the same request. Pick a **Catalog endpoint** (the same picker as **New mock**, then the key value or the default answer), or switch to **Method and URL** for a request that is not in the catalog (a path starting with `/`; add `?name=value` to match a query too).
+3. **Steps**, in the order calls get them. For each step:
+   - **State**: the state it answers in. Step 1 is always `Started`.
+   - **Status**, **Headers**, **Body** and an optional **Delay (ms)**. For a catalog endpoint the body starts from the catalog example for the status.
+   - **Then move to**: by default the next step's state; the last step stays where it is. You can also stay, or jump to any other step (for example back to step 1 to start over).
+
+   **Add step** adds one at the end; the arrow buttons move a step up or down and the bin removes it (all work from the keyboard). A step moved into first place answers in `Started` and hands its old state name to the step it displaced.
+
+The **Diagram** beside the form draws the steps as they will run, and updates as you type.
+
+**Create scenario** saves one mock per step (named `<scenario> — <state>`) with the same checks as the mock editor. It is all or nothing: if WireMock or the server refuses a step, the steps already saved are removed again and the page says which step failed and why. When every step is saved you land on the new scenario's card with a "Scenario … created with N steps" message.
+
+For the loan example: name `loan-approval`, request **NIC → Loan status** with the key, step 1 (`Started`) answers `{"status":"pending"}`, step 2 (`approved`) answers `{"status":"approved"}`. The first call gets "pending", every later call "approved". Try it with **Test** on either mock: send twice and watch the answer change.
+
+### Add a step to an existing scenario
+
+On a scenario's card, **Add a mock to this scenario** opens the mock editor with a banner "Adding a step to scenario …" and the **Scenario (stateful)** section already filled in: the scenario name, and **Only answers when the scenario is in state** set to the scenario's last state. Pick the same request the scenario answers, write the answer, and set **Then move the scenario to state** if the scenario should move on.
+
+You can also put any mock in a scenario by hand: in the mock editor, turn on **Answer differently on later calls** and fill in the scenario name, the state it answers in (blank means `Started`) and, optionally, the state to move to.
+
+### Watch and control scenarios
 
 ![Scenarios](screenshots/scenarios-dark.png)
 

@@ -10,6 +10,7 @@ export function EditorShell({
   actions,
   aside,
   back,
+  notice,
   children,
 }: {
   title: string
@@ -18,6 +19,8 @@ export function EditorShell({
   aside?: ReactNode
   /** The back link (defaults to the mock list); style it with `backLinkClass`. */
   back?: ReactNode
+  /** A banner between the header and the form (e.g. "Adding a step to scenario …"). */
+  notice?: ReactNode
   children: ReactNode
 }) {
   const t = useT()
@@ -38,6 +41,7 @@ export function EditorShell({
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </div>
       </header>
+      {notice}
       {aside ? (
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <div className="min-w-0">{children}</div>

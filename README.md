@@ -7,7 +7,7 @@ A web console for [WireMock](https://wiremock.org) built for testers. Describe t
 - **A catalog** of the systems your application calls: each **integration** (NIC at `/nic`) has **endpoints** (`POST /nic/citizens/fetch`, key `$.idNo`), and each **mock** answers one key value. The Catalog page explains this in one glance.
 - **Simple mode** builds a mock from a catalog endpoint: a key value, a status preset and a body prefilled from the catalog's example. **Advanced mode** edits the full stub JSON.
 - **Test a mock** from the editor (or **Try it** on an endpoint) and see which mock answered; **Copy as curl** for any mock or logged request.
-- **Forward to a real service** (proxy), **call back after responding** (webhooks) and **scenarios** ("pending" first, "approved" after) with a live state view.
+- **Forward to a real service** (proxy), **call back after responding** (webhooks) and **scenarios** ("pending" first, "approved" after), built step by step on one page, with a live state view.
 - **Request log** updates live and stamps unmatched requests **No match**, with the closest mocks and the fields that differed.
 - **History and restore** for every mock, conflict detection when two people edit the same one, an **audit log** of every change.
 - **Import** bundles or WireMock exports, and seed baseline mocks on start.
@@ -48,7 +48,7 @@ npm run typecheck
 npm run build && npm start
 ```
 
-`npm run test:e2e` starts its own stack: a WireMock container with admin auth (through Testcontainers) and the built app on a temporary SQLite file at http://127.0.0.1:3417 (`E2E_UI_PORT` changes the port), seeded from `tests/fixtures/e2e-seed/`. It covers the tester's flow from the catalog to the near-miss explanation, two people editing each other's mocks, the test panel and a curl command run in a shell, Try it, a scenario, a proxy mock, adding an endpoint on its page, and an axe-core accessibility pass in light and dark themes.
+`npm run test:e2e` starts its own stack: a WireMock container with admin auth (through Testcontainers) and the built app on a temporary SQLite file at http://127.0.0.1:3417 (`E2E_UI_PORT` changes the port), seeded from `tests/fixtures/e2e-seed/`. It covers the tester's flow from the catalog to the near-miss explanation, two people editing each other's mocks, the test panel and a curl command run in a shell, Try it, a scenario (and one made with the scenario builder and run step by step in the test panel), a proxy mock, adding an endpoint on its page, and an axe-core accessibility pass in light and dark themes.
 
 The restart scripts use host ports 8080 and 3000; set `WIREMOCK_PORT` and `UI_PORT` to use others.
 
