@@ -48,7 +48,10 @@ function webhookDelay(value: unknown, field: string): void {
     const upper = delayMs(value.upper, `${field}.upper`)
     if (lower > upper) throw new ValidationError(`${field}.lower must not be greater than upper`)
   } else if (value.type === 'lognormal') {
-    delayMs(value.median, `${field}.median`)
+    // WireMock reads the median as a double (milliseconds), so 12.5 is fine.
+    if (typeof value.median !== 'number' || !Number.isFinite(value.median) || value.median < 0 || value.median > MAX_WEBHOOK_DELAY_MS) {
+      throw new ValidationError(`${field}.median must be a number between 0 and ${MAX_WEBHOOK_DELAY_MS}`)
+    }
     if (typeof value.sigma !== 'number' || !Number.isFinite(value.sigma) || value.sigma < 0) {
       throw new ValidationError(`${field}.sigma must be a number of 0 or more`)
     }

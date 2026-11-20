@@ -59,7 +59,7 @@ const invalid: [string, MockInput, RegExp][] = [
   ['delay type', hook({ ...okHook, delay: { type: 'gaussian', median: 5 } }), /parameters\.delay must be \{ type: "fixed", milliseconds \}, \{ type: "uniform", lower, upper \} or \{ type: "lognormal", median, sigma \}/],
   ['fixed delay too long', hook({ ...okHook, delay: { type: 'fixed', milliseconds: 600001 } }), /parameters\.delay\.milliseconds must be an integer between 0 and 600000/],
   ['lognormal without sigma', hook({ ...okHook, delay: { type: 'lognormal', median: 5 } }), /parameters\.delay\.sigma must be a number/],
-  ['lognormal median too long', hook({ ...okHook, delay: { type: 'lognormal', median: 600001, sigma: 1 } }), /parameters\.delay\.median must be an integer between 0 and 600000/],
+  ['lognormal median too long', hook({ ...okHook, delay: { type: 'lognormal', median: 600001, sigma: 1 } }), /parameters\.delay\.median must be a number between 0 and 600000/],
   ['fixed delay negative', hook({ ...okHook, delay: { type: 'fixed', milliseconds: -1 } }), /delay\.milliseconds/],
   ['uniform lower above upper', hook({ ...okHook, delay: { type: 'uniform', lower: 50, upper: 10 } }), /parameters\.delay\.lower must not be greater than upper/],
   ['uniform upper too long', hook({ ...okHook, delay: { type: 'uniform', lower: 0, upper: 700000 } }), /parameters\.delay\.upper must be an integer between 0 and 600000/],
@@ -99,7 +99,7 @@ test('valid proxy, webhook and scenario fields are stored as given (header remov
     additionalProxyRequestHeaders: { 'X-A': '1' },
     removeProxyRequestHeaders: ['x-secret', 'cookie'],
   })
-  for (const delay of [undefined, { type: 'fixed', milliseconds: 0 }, { type: 'fixed', milliseconds: 600000 }, { type: 'uniform', lower: 10, upper: 10 }, { type: 'lognormal', median: 90, sigma: 0.1 }, { type: 'lognormal', median: 90, sigma: 0.1, maxValue: 500 }]) {
+  for (const delay of [undefined, { type: 'fixed', milliseconds: 0 }, { type: 'fixed', milliseconds: 600000 }, { type: 'uniform', lower: 10, upper: 10 }, { type: 'lognormal', median: 90, sigma: 0.1 }, { type: 'lognormal', median: 12.5, sigma: 0.1 }, { type: 'lognormal', median: 90, sigma: 0.1, maxValue: 500 }]) {
     const parameters = { ...okHook, url: 'http://{{request.headers.X-Callback-Host}}/cb', delay }
     await svc.create(hook(parameters, { scenarioName: 'flow', requiredScenarioState: 'Started', newScenarioState: 'done' }), user)
     expect(imported.at(-1)![0]).toMatchObject({
