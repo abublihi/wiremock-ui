@@ -236,8 +236,29 @@ export function nextStateName(possibleStates: string[]): string {
   return `step-${n}`
 }
 
-/** A scenario's last step: the mocks that answer in `from` and leave the scenario there (`exceptId`, the new step, aside). */
-export function lastStepMocks(stubs: StubMapping[], scenario: string, from: string, exceptId?: string): StubMapping[] {
+/** A value as JSON with object keys sorted, so two requests compare equal whatever order their fields were written in. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
+/**
+ * Whether two mocks match the same calls: the same method, URL field (url, urlPath, urlPattern, urlPathTemplate…) and
+ * query, header and body matchers. Field order does not matter; anything else does.
+ */
+export const sameRequest = (a: Pick<StubMapping, 'request'>, b: Pick<StubMapping, 'request'>) => canonical(a.request ?? {}) === canonical(b.request ?? {})
+
+/**
+ * Mocks of a scenario that answer in `from` and leave the scenario there (`exceptId` aside), whatever their request:
+ * the candidates for a last step before the new step's request is known.
+ */
+export function lastStateMocks(stubs: StubMapping[], scenario: string, from: string, exceptId?: string): StubMapping[] {
   return stubs.filter(
     (s) =>
       s.id !== exceptId &&
@@ -245,6 +266,15 @@ export function lastStepMocks(stubs: StubMapping[], scenario: string, from: stri
       s.requiredScenarioState === from &&
       (s.newScenarioState === undefined || s.newScenarioState === '' || s.newScenarioState === from),
   )
+}
+
+/**
+ * The last step a new step follows: the mocks that answer in `from`, stay there, and match the same request as the new
+ * step. Mocks for other requests in that state are left alone — moving them on would send their callers to a state
+ * where nothing answers them.
+ */
+export function lastStepMocks(stubs: StubMapping[], scenario: string, from: string, added: Pick<StubMapping, 'id' | 'request'>): StubMapping[] {
+  return lastStateMocks(stubs, scenario, from, added.id).filter((s) => sameRequest(s, added))
 }
 
 /** The stub to save over a last-step mock so it moves the scenario on to `to` (the editor's Advanced save shape). */

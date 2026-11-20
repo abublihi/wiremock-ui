@@ -7,10 +7,12 @@ import {
   type BuilderDraft,
   type BuilderStep,
   hasErrors,
+  lastStateMocks,
   lastStepMocks,
   moveStep,
   movedOn,
   nextStateName,
+  sameRequest,
   newStep,
   previewScenario,
   removeStep,
@@ -248,7 +250,27 @@ describe('adding a step after the last one', () => {
       stub('e', { requiredScenarioState: 'approved', scenarioName: 'other' }),
       stub('new', { requiredScenarioState: 'approved' }),
     ]
-    expect(lastStepMocks(stubs, 'loan', 'approved', 'new').map((s) => s.id)).toEqual(['b', 'c'])
+    expect(lastStepMocks(stubs, 'loan', 'approved', stubs.at(-1)!).map((s) => s.id)).toEqual(['b', 'c'])
+  })
+
+  it('leaves alone mocks of the same state that match another request', () => {
+    const added = stub('new', { requiredScenarioState: 'step-3', request: { urlPath: '/x', method: 'GET' } })
+    const stubs = [
+      stub('same', { requiredScenarioState: 'approved' }),
+      stub('other-path', { requiredScenarioState: 'approved', request: { method: 'GET', urlPath: '/y' } }),
+      stub('other-method', { requiredScenarioState: 'approved', request: { method: 'POST', urlPath: '/x' } }),
+      stub('other-kind', { requiredScenarioState: 'approved', request: { method: 'GET', url: '/x' } }),
+      stub('other-query', {
+        requiredScenarioState: 'approved',
+        request: { method: 'GET', urlPath: '/x', queryParameters: { id: { equalTo: '7' } } },
+      }),
+      added,
+    ]
+    // Field order does not matter, every matcher does.
+    expect(lastStepMocks(stubs, 'loan', 'approved', added).map((s) => s.id)).toEqual(['same'])
+    expect(lastStateMocks(stubs, 'loan', 'approved', added.id)).toHaveLength(5)
+    expect(sameRequest({ request: { a: 1, b: { c: [1, 2] } } }, { request: { b: { c: [1, 2] }, a: 1 } })).toBe(true)
+    expect(sameRequest({ request: { a: 1, b: { c: [1, 2] } } }, { request: { b: { c: [2, 1] }, a: 1 } })).toBe(false)
   })
 
   it('moving one on sets newScenarioState and keeps everything else, catalog link included', () => {

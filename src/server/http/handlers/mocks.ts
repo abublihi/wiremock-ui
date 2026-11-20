@@ -53,6 +53,8 @@ export const listMocks = withAuth('mocks.read', async ({ rt, request, principal 
     owner: owner === 'me' ? principal.user.username : owner,
     status: parseStatus(q.get('status')),
     q: q.get('q')?.trim() || undefined,
+    // A scenario's name, or * for every mock that belongs to one.
+    scenario: q.get('scenario') || undefined,
   }
   return json(await rt.mocks.list(filter))
 })

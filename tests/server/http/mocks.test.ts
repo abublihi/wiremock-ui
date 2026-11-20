@@ -243,6 +243,19 @@ test.skipIf(STORELESS)('GET /api/mocks: owner=me, status and q filters; bad stat
   }
 })
 
+test('GET /api/mocks?scenario=: one scenario by name, * for every scenario mock', async () => {
+  const a1 = await (await createMock(rt, req('/api/mocks', 'POST', input('/h/sc-a', { scenarioName: 'sc-filter-a', requiredScenarioState: 'Started' })))).json()
+  const a2 = await (await createMock(rt, req('/api/mocks', 'POST', input('/h/sc-a', { scenarioName: 'sc-filter-a', requiredScenarioState: 'done' })))).json()
+  const b = await (await createMock(rt, req('/api/mocks', 'POST', input('/h/sc-b', { scenarioName: 'sc-filter-b' })))).json()
+  const plain = await (await createMock(rt, req('/api/mocks', 'POST', input('/h/sc-none')))).json()
+  const ids = async (qs: string) => ((await (await listMocks(rt, req(`/api/mocks?${qs}`))).json()) as { id: string }[]).map((x) => x.id)
+  expect((await ids('scenario=sc-filter-a')).sort()).toEqual([a1.id, a2.id].sort())
+  const any = await ids('scenario=*')
+  expect(any).toEqual(expect.arrayContaining([a1.id, a2.id, b.id]))
+  expect(any).not.toContain(plain.id)
+  expect(await ids('scenario=nope')).toEqual([])
+})
+
 // History and restore need a store.
 test.skipIf(STORELESS)('duplicate, history, restore and reset-mine over HTTP', async () => {
   const s = await userSession('extras')

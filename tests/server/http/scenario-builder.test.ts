@@ -127,7 +127,7 @@ test('a step added after the last one: the old last step answers first, then mov
 
   // Then the old last step is made to move on (the editor's update path, with its version).
   const all = (await (await listMocks(env.rt, req('/api/mocks', 'GET', undefined, as()))).json()) as StubMapping[]
-  const last = lastStepMocks(all, 'refund', after, added.id)
+  const last = lastStepMocks(all, 'refund', after, added)
   expect(last.map((m) => m.name)).toEqual(['refund — approved'])
   for (const old of last) {
     const body = { stub: movedOn(old, next), version: old.metadata!.wiremockUi!.version }

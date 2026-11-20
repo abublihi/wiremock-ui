@@ -147,12 +147,18 @@ export class MockService {
     return stub
   }
 
-  async list(filter?: { integration?: string; owner?: string; status?: number; q?: string }): Promise<StubMapping[]> {
+  /** `scenario`: a scenario's name, or `*` for every mock that belongs to a scenario. */
+  async list(filter?: { integration?: string; owner?: string; status?: number; q?: string; scenario?: string }): Promise<StubMapping[]> {
     const all = await this.store.list({ integration: filter?.integration, owner: filter?.owner })
     const status = filter?.status
     const q = filter?.q?.trim().toLowerCase()
+    const scenario = filter?.scenario
     return all.filter((stub) => {
       if (status !== undefined && (stub.response.status ?? 200) !== status) return false
+      if (scenario !== undefined) {
+        const name = typeof stub.scenarioName === 'string' ? stub.scenarioName : ''
+        if (scenario === '*' ? name === '' : name !== scenario) return false
+      }
       if (q && !matchesQuery(stub, q)) return false
       return true
     })

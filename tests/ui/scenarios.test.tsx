@@ -309,12 +309,19 @@ describe('mock editor — adding a step to a scenario', () => {
         const body = (await request.json()) as { scenario: { name: string; requiredState: string } }
         calls.push({ method: 'POST', path: 'create', body })
         return HttpResponse.json(
-          { id: 'm3', name: 'new', request: {}, response: {}, scenarioName: body.scenario.name, requiredScenarioState: body.scenario.requiredState },
+          // The saved step matches the same request as the old last step (the move is limited to that request).
+          { id: 'm3', name: 'new', request: oldLast.request, response: {}, scenarioName: body.scenario.name, requiredScenarioState: body.scenario.requiredState },
           { status: 201 },
         )
       }),
       http.get(`${BASE}/api/mocks`, () =>
-        HttpResponse.json([first, oldLast, { ...oldLast, id: 'm3', name: 'new', requiredScenarioState: 'step-3', metadata: {} }]),
+        HttpResponse.json([
+          first,
+          oldLast,
+          // Same state, another request: never moved on.
+          { ...oldLast, id: 'm4', name: 'Other request', request: { method: 'POST', urlPath: '/nic/loan/status' } },
+          { ...oldLast, id: 'm3', name: 'new', requiredScenarioState: 'step-3', metadata: {} },
+        ]),
       ),
       http.put(`${BASE}/api/mocks/:id`, async ({ request, params }) => {
         calls.push({ method: 'PUT', path: String(params.id), body: await request.json() })
@@ -358,9 +365,9 @@ describe('mock editor — adding a step to a scenario', () => {
     await ue.type(required, 'closed')
     expect(screen.getByRole('checkbox', { name: 'Make the current last step move to closed' })).toBeTruthy()
     await ue.type(required, ' now')
-    expect(screen.getByText(/Use letters, digits and - _ . for the new state/)).toBeTruthy()
+    expect(screen.getByText(/The mocks still work, but Set as current on the Scenarios page can't move the scenario to it/)).toBeTruthy()
     await ue.type(required, '{Backspace>4/}')
-    expect(screen.queryByText(/Use letters, digits and - _ . for the new state/)).toBeNull()
+    expect(screen.queryByText(/The mocks still work, but Set as current on the Scenarios page can't move the scenario to it/)).toBeNull()
 
     await ue.click(screen.getByRole('button', { name: 'Preview' }))
     await waitFor(() => expect((calls.at(-1)?.body as { scenario?: unknown })?.scenario).toEqual({ name: 'loan-approval', requiredState: 'closed' }))
@@ -411,6 +418,14 @@ describe('mock editor — adding a step to a scenario', () => {
     await ue.click(screen.getByRole('button', { name: 'Save mock' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/mocks/m3'))
     expect(calls.filter((c) => c.method === 'PUT')).toEqual([])
+  })
+
+  it('with no mock of this endpoint in the last state, the banner says so and offers no move', async () => {
+    mockEditorApi()
+    server.use(http.get(`${BASE}/api/mocks`, () => HttpResponse.json([first, { ...oldLast, metadata: { wiremockUi: { integration: 'nic', endpoint: 'other', version: 4 } } }])))
+    await openAndFill()
+    expect(await screen.findByText(/No mock of this endpoint answers in approved and stays there/)).toBeTruthy()
+    expect(screen.queryByRole('checkbox', { name: /Make the current last step move/ })).toBeNull()
   })
 
   it('the blank JSON stub starts with the scenario fields too', async () => {

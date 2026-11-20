@@ -5,14 +5,14 @@ import { toast } from 'sonner'
 import { AlertCircleIcon, ArrowLeftRightIcon, WorkflowIcon } from 'lucide-react'
 import type { StubMapping } from '@/server/wiremock/types'
 import { apiFetch } from '@/ui/api/client'
-import { queryKeys, useEndpoints, useIntegrations, useRequest, useUpdateMock } from '@/ui/api/queries'
+import { queryKeys, useEndpoints, useIntegrations, useMocks, useRequest, useUpdateMock } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Checkbox } from '@/ui/components/ui/checkbox'
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { useT } from '@/ui/i18n'
-import { type ScenarioSeed, isScenarioNameSettable } from '@/ui/lib/editor-sync'
-import { lastStepMocks, movedOn } from '@/ui/lib/scenario-builder'
+import { type ScenarioSeed, isScenarioNameSettable, linkOf } from '@/ui/lib/editor-sync'
+import { lastStateMocks, lastStepMocks, movedOn } from '@/ui/lib/scenario-builder'
 import { stubFromRequest } from '@/ui/lib/prefill'
 import { EditorShell } from './EditorShell'
 import { EndpointInfo, EndpointPicker } from './EndpointPicker'
@@ -47,7 +47,21 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
   // The state the new step answers in, as the Simple form has it now (editable there).
   const [target, setTarget] = useState(seed?.requiredState ?? '')
   const [linkLast, setLinkLast] = useState(true)
-  const notice = seed && <ScenarioNotice seed={seed} after={after} target={target} linkLast={linkLast} onLinkLast={setLinkLast} />
+  // Before saving, the new step's request is not known yet: offer the move only when some mock of the same endpoint
+  // (any mock, without one) answers in the last state. The save then moves only those matching the same request.
+  const scenarioMocks = useMocks({ scenario: seed?.name }, { enabled: Boolean(seed && after) })
+  const lastCandidates =
+    seed && after && scenarioMocks.data
+      ? lastStateMocks(scenarioMocks.data, seed.name, after).filter((s) => {
+          if (!search.integration || !search.endpoint || search.mode === 'json' || search.from) return true
+          const link = linkOf(s)
+          return link?.integration === search.integration && link.endpoint === search.endpoint
+        }).length
+      : undefined
+  const canMoveLast = lastCandidates !== 0
+  const notice = seed && (
+    <ScenarioNotice seed={seed} after={after} target={target} linkLast={linkLast} candidates={lastCandidates} onLinkLast={setLinkLast} />
+  )
   const onFormChange = (form: { scenario: { enabled: boolean; requiredState: string } }) =>
     setTarget(form.scenario.enabled ? form.scenario.requiredState.trim() || 'Started' : '')
 
@@ -57,7 +71,7 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
     if (!seed || !after || saved.scenarioName !== seed.name || !to || to === after) return
     let stubs: StubMapping[]
     try {
-      stubs = await apiFetch<StubMapping[]>('/api/mocks')
+      stubs = await apiFetch<StubMapping[]>('/api/mocks', { query: { scenario: seed.name } })
     } catch (error) {
       toast.error(t('editor.lastStepLoadFailed', { scenario: seed.name, after, state: to }), {
         description: error instanceof Error ? error.message : undefined,
@@ -65,7 +79,9 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
       })
       return
     }
-    for (const old of lastStepMocks(stubs, seed.name, after, saved.id)) {
+    const last = lastStepMocks(stubs, seed.name, after, saved)
+    if (last.length === 0) toast.info(t('editor.lastStepNone', { after, state: to }))
+    for (const old of last) {
       const name = old.name ?? old.id
       try {
         await updateMock.mutateAsync({ id: old.id, stub: movedOn(old, to), version: old.metadata?.wiremockUi?.version ?? 0 })
@@ -85,7 +101,7 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
   const integration = integrations.data?.find((i) => i.key === search.integration)
   const endpoint = endpoints.data?.find((e) => e.key === search.endpoint)
   const open = async (stub: StubMapping) => {
-    if (linkLast) await moveLastStepOn(stub)
+    if (linkLast && canMoveLast) await moveLastStepOn(stub)
     await navigate({ to: '/mocks/$id', params: { id: stub.id } })
   }
 
@@ -206,6 +222,7 @@ function ScenarioNotice({
   after,
   target,
   linkLast,
+  candidates,
   onLinkLast,
 }: {
   seed: ScenarioSeed
@@ -214,6 +231,8 @@ function ScenarioNotice({
   /** The state the new mock answers in now. */
   target: string
   linkLast: boolean
+  /** Mocks that could be the last step (undefined while loading); none: nothing to move on, so no checkbox. */
+  candidates?: number
   onLinkLast: (on: boolean) => void
 }) {
   const t = useT()
@@ -225,7 +244,12 @@ function ScenarioNotice({
       <AlertTitle>{t('editor.scenarioBanner', { name: seed.name })}</AlertTitle>
       <AlertDescription className="flex flex-col gap-2 text-xs">
         <p>{after ? t('editor.scenarioBannerAfter', { state: target || seed.requiredState, after }) : t('editor.scenarioBannerHint', { state: seed.requiredState })}</p>
-        {after && (
+        {after && candidates === 0 && (
+          <p role="status" className="text-hazard-fg">
+            {t('editor.scenarioNoLastStep', { after, state: target || seed.requiredState })}
+          </p>
+        )}
+        {after && candidates !== 0 && (
           <div className="flex items-start gap-2 text-foreground">
             <Checkbox
               id={id}
@@ -242,13 +266,13 @@ function ScenarioNotice({
               <span id={`${id}-hint`} className="text-muted-foreground">
                 {t('editor.scenarioLinkLastHint', { after, state: target || seed.requiredState })}
               </span>
-              {target !== '' && !isScenarioNameSettable(target) && (
-                <span role="alert" className="text-hazard-fg">
-                  {t('editor.scenarioStateUnsettable')}
-                </span>
-              )}
             </div>
           </div>
+        )}
+        {after && target !== '' && !isScenarioNameSettable(target) && (
+          <p role="alert" className="text-hazard-fg">
+            {t('editor.scenarioStateUnsettable')}
+          </p>
         )}
       </AlertDescription>
     </Alert>

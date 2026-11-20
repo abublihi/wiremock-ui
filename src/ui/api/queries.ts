@@ -23,7 +23,8 @@ export type RequestFilter = {
   /** Only requests from the last N minutes. */
   windowMinutes?: number
 }
-export type MockFilter = { owner?: string; integration?: string; status?: string; q?: string }
+/** `scenario`: one scenario's mocks, or `*` for every mock that belongs to a scenario. */
+export type MockFilter = { owner?: string; integration?: string; status?: string; q?: string; scenario?: string }
 
 /** Single source for every query key. Later tasks add their resources here. */
 export const queryKeys = {

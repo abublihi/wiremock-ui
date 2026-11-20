@@ -359,9 +359,13 @@ export const en = {
   'editor.scenarioBannerAfter':
     'Pick the request the scenario answers. The Scenario section is filled in: this mock answers in a new state, {state}. A mock only answers once the scenario reaches its state, so the current last step (in {after}) has to move the scenario there.',
   'editor.scenarioLinkLast': 'Make the current last step move to {state}',
-  'editor.scenarioLinkLastHint': 'After saving, the mocks that answer in {after} and stay there are changed to move the scenario to {state}.',
+  'editor.scenarioLinkLastHint':
+    'After saving, the mocks that answer in {after}, stay there and match the same request as this mock are changed to move the scenario to {state}. Mocks for other requests are left alone.',
+  'editor.scenarioNoLastStep':
+    'No mock of this endpoint answers in {after} and stays there, so there is no last step to move on. Set Then move the scenario to state to {state} on the step that should lead here.',
+  'editor.lastStepNone': 'No mock in {after} matches the same request as this one, so no step was moved on to {state}.',
   'editor.scenarioStateUnsettable':
-    "Use letters, digits and - _ . for the new state: the Scenarios page can't move the scenario to a state with spaces or symbols like / or %.",
+    "This state has spaces or symbols like / or %. The mocks still work, but Set as current on the Scenarios page can't move the scenario to it. Use letters, digits and - _ . to keep that.",
   'editor.lastStepMoved': '{name} now moves the scenario to {state}',
   'editor.lastStepFailed': "Couldn't make {name} move the scenario to {state}. Open it and set Then move the scenario to state to {state}.",
   'editor.lastStepLoadFailed':
