@@ -17,11 +17,21 @@ import { Switch } from '@/ui/components/ui/switch'
 import { Textarea } from '@/ui/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useT } from '@/ui/i18n'
-import { type SimpleForm, emptyForm, exampleFor, generatedName, toSimpleInput } from '@/ui/lib/editor-sync'
+import {
+  type ProxyForm,
+  type SimpleForm,
+  type WebhookForm,
+  emptyForm,
+  exampleFor,
+  generatedName,
+  isHttpUrl,
+  toSimpleInput,
+} from '@/ui/lib/editor-sync'
 import {
   FAULT_OPTIONS,
   PRESET_LABEL,
   SLOW_MAX_SECONDS,
+  MAX_WEBHOOK_DELAY_MS,
   SLOW_MIN_SECONDS,
   type Preset,
   presetToStatus,
@@ -31,8 +41,25 @@ import { cn } from '@/ui/lib/utils'
 import { CodeEditor } from './CodeEditor'
 import { Eyebrow } from './EditorShell'
 import { keyLabel } from './EndpointPicker'
+import { hasUnnamedRow } from './HeaderRows'
+import { ProxySection } from './ProxySection'
+import { WebhookSection } from './WebhookSection'
 
-type FieldName = 'keyValue' | 'status' | 'body' | 'delay' | 'fault' | 'name'
+type FieldName =
+  | 'keyValue'
+  | 'status'
+  | 'body'
+  | 'delay'
+  | 'fault'
+  | 'name'
+  | 'proxyBaseUrl'
+  | 'proxyStripPrefix'
+  | 'proxyHeaders'
+  | 'webhookMethod'
+  | 'webhookUrl'
+  | 'webhookHeaders'
+  | 'webhookBody'
+  | 'webhookDelay'
 type Errors = Partial<Record<FieldName, string>>
 
 const SERVER_FIELD = new Map<string, FieldName>([
@@ -43,13 +70,28 @@ const SERVER_FIELD = new Map<string, FieldName>([
   ['delayMs', 'delay'],
   ['fault', 'fault'],
   ['name', 'name'],
+  ['proxy.baseUrl', 'proxyBaseUrl'],
+  ['proxy.stripPrefix', 'proxyStripPrefix'],
+  ['proxy.addHeaders', 'proxyHeaders'],
+  ['webhook.method', 'webhookMethod'],
+  ['webhook.url', 'webhookUrl'],
+  ['webhook.headers', 'webhookHeaders'],
+  ['webhook.body', 'webhookBody'],
+  ['webhook.delay', 'webhookDelay'],
 ])
 
-/** The form field a server validation message names ("keyValue is required" → keyValue), if any. */
+/**
+ * The form field a server validation message names, if any: "keyValue is required" → keyValue,
+ * "webhook.delay.lower must …" → webhookDelay (the longest known dotted prefix).
+ */
 function fieldOf(message: string): FieldName | undefined {
   if (message === 'body must be an object') return undefined // about the request, not the response body
-  const word = /^(\w+)\b/.exec(message)?.[1]
-  return word ? SERVER_FIELD.get(word) : undefined
+  const parts = (/^([\w.]+)/.exec(message)?.[1] ?? '').split('.')
+  for (let n = parts.length; n > 0; n--) {
+    const field = SERVER_FIELD.get(parts.slice(0, n).join('.'))
+    if (field) return field
+  }
+  return undefined
 }
 
 const NO_FAULT = 'none'
@@ -92,6 +134,8 @@ export function SimpleEditor({
   const [serverErrors, setServerErrors] = useState<Errors>({})
   const [formError, setFormError] = useState<{ title: string; message: string } | null>(null)
   const [preview, setPreview] = useState<BuiltStub | null>(null)
+  // Required URLs are only flagged once the user tries to preview or save.
+  const [attempted, setAttempted] = useState(false)
 
   const previewMock = usePreviewMock()
   const createMock = useCreateCatalogMock()
@@ -107,12 +151,13 @@ export function SimpleEditor({
   // Also shown whenever the form is on a custom status, so a stored one always has a selected item.
   const showCustom =
     form.preset === 'custom' || endpoint.allowedStatuses.length === 0 || endpoint.allowedStatuses.some((s) => !covered.has(s))
-  const broken = form.fault !== ''
-  const timeout = !broken && form.preset === 'timeout'
+  const proxied = form.answer === 'proxy'
+  const broken = !proxied && form.fault !== ''
+  const timeout = !proxied && !broken && form.preset === 'timeout'
 
   // Client-side checks for the two number inputs; everything else is the server builder's call.
   const clientErrors: Errors = {}
-  if (!broken && form.preset === 'custom') {
+  if (!proxied && !broken && form.preset === 'custom') {
     const n = Number(customText)
     if (!Number.isInteger(n) || n < 100 || n > 599) clientErrors.status = t('editor.statusRange')
     else if (endpoint.allowedStatuses.length > 0 && !endpoint.allowedStatuses.includes(n))
@@ -122,11 +167,39 @@ export function SimpleEditor({
     const s = form.delaySeconds
     if (!Number.isInteger(s) || s < SLOW_MIN_SECONDS || s > SLOW_MAX_SECONDS) clientErrors.delay = t('editor.slowRange')
   }
+  if (proxied) {
+    const { baseUrl, stripPrefix, addHeaders } = form.proxy
+    if ((attempted || baseUrl.trim() !== '') && !isHttpUrl(baseUrl)) clientErrors.proxyBaseUrl = t('editor.proxy.baseUrlInvalid')
+    if (stripPrefix.trim() !== '' && !stripPrefix.trim().startsWith('/')) clientErrors.proxyStripPrefix = t('editor.proxy.stripPrefixInvalid')
+    if (hasUnnamedRow(addHeaders)) clientErrors.proxyHeaders = t('editor.headers.unnamed')
+  }
+  if (form.webhook.enabled) {
+    const { url, headers, delay, delayMs, lower, upper } = form.webhook
+    if ((attempted || url.trim() !== '') && !isHttpUrl(url, { templated: true })) clientErrors.webhookUrl = t('editor.webhook.urlInvalid')
+    if (hasUnnamedRow(headers)) clientErrors.webhookHeaders = t('editor.headers.unnamed')
+    const inRange = (n: number) => Number.isInteger(n) && n >= 0 && n <= MAX_WEBHOOK_DELAY_MS
+    if (delay === 'fixed' && !inRange(delayMs)) clientErrors.webhookDelay = t('editor.webhook.delayRange')
+    if (delay === 'uniform') {
+      if (!inRange(lower) || !inRange(upper)) clientErrors.webhookDelay = t('editor.webhook.delayRange')
+      else if (lower > upper) clientErrors.webhookDelay = t('editor.webhook.delayOrder')
+    }
+  }
   const errors: Errors = { ...serverErrors, ...clientErrors }
 
   const update = (patch: Partial<SimpleForm>, clears: FieldName[] = []) => {
     setForm((f) => ({ ...f, ...patch }))
     if (clears.some((c) => serverErrors[c])) setServerErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !clears.includes(k as FieldName))))
+  }
+  const clear = (clears: FieldName[]) => {
+    if (clears.some((c) => serverErrors[c])) setServerErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !clears.includes(k as FieldName))))
+  }
+  const updateProxy = (patch: Partial<ProxyForm>) => {
+    setForm((f) => ({ ...f, proxy: { ...f.proxy, ...patch } }))
+    clear(['proxyBaseUrl', 'proxyStripPrefix', 'proxyHeaders'])
+  }
+  const updateWebhook = (patch: Partial<WebhookForm>) => {
+    setForm((f) => ({ ...f, webhook: { ...f.webhook, ...patch } }))
+    clear(['webhookMethod', 'webhookUrl', 'webhookHeaders', 'webhookBody', 'webhookDelay'])
   }
   /** A preset always swaps in its example (or none); a typed custom status only when the catalog has one. */
   const setStatus = (preset: Preset, status: number, keepWithoutExample = false) => {
@@ -167,7 +240,18 @@ export function SimpleEditor({
     setFormError(null)
   }
 
+  /** Flags the required URLs; false when the form has a client-side error to fix first. */
+  const ready = () => {
+    setAttempted(true)
+    return !(
+      blocked ||
+      (proxied && !isHttpUrl(form.proxy.baseUrl)) ||
+      (form.webhook.enabled && !isHttpUrl(form.webhook.url, { templated: true }))
+    )
+  }
+
   const onPreview = async () => {
+    if (!ready()) return
     reset()
     try {
       setPreview(await previewMock.mutateAsync(args()))
@@ -178,7 +262,7 @@ export function SimpleEditor({
 
   const onSave = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (blocked || saving) return
+    if (saving || !ready()) return
     reset()
     setSaving(true)
     try {
@@ -253,118 +337,153 @@ export function SimpleEditor({
       </Section>
 
       <Section title={t('editor.section.respond')}>
-        <FieldSet disabled={broken} className="gap-2">
-          <FieldLegend variant="label" id={id('status-label')}>
-            {t('editor.status')}
+        <FieldSet className="gap-2">
+          <FieldLegend variant="label" id={id('answer-label')}>
+            {t('editor.answer')}
           </FieldLegend>
           <ToggleGroup
             type="single"
             variant="outline"
             size="sm"
             spacing={1}
-            aria-labelledby={id('status-label')}
-            aria-describedby={described('status', timeout && id('timeout-hint'))}
-            disabled={broken}
-            value={form.preset}
-            onValueChange={onPreset}
+            aria-labelledby={id('answer-label')}
+            value={form.answer}
+            onValueChange={(v) => v && update({ answer: v as SimpleForm['answer'] }, ['status', 'body', 'fault', 'delay'])}
             className="flex-wrap"
           >
-            {presets.map((preset) => (
-              <ToggleGroupItem
-                key={preset}
-                value={preset}
-                aria-label={`${t(PRESET_LABEL[preset])} ${presetToStatus(preset).status}`}
-                className={cn('gap-1.5', ON)}
-              >
-                {t(PRESET_LABEL[preset])}
-                <span aria-hidden className="font-mono text-[10px] opacity-60">
-                  {presetToStatus(preset).status}
-                </span>
-              </ToggleGroupItem>
-            ))}
-            {showCustom && (
-              <ToggleGroupItem value="custom" aria-label={t(PRESET_LABEL.custom)} className={ON}>
-                {t(PRESET_LABEL.custom)}
-              </ToggleGroupItem>
-            )}
+            <ToggleGroupItem value="mock" className={ON}>
+              {t('editor.answer.mock')}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="proxy" className={ON}>
+              {t('editor.answer.proxy')}
+            </ToggleGroupItem>
           </ToggleGroup>
-          {timeout && (
-            <FieldDescription id={id('timeout-hint')} className="text-xs">
-              {t('editor.timeoutHint')}
-            </FieldDescription>
-          )}
-          {form.preset === 'custom' && !broken && (
-            <Field data-invalid={Boolean(errors.status)} className="max-w-48">
-              <FieldLabel htmlFor={id('custom')} className="sr-only">
-                {t('editor.customStatus')}
-              </FieldLabel>
-              <Input
-                id={id('custom')}
-                type="number"
-                inputMode="numeric"
-                min={100}
-                max={599}
-                className="font-mono"
-                value={customText}
-                aria-invalid={Boolean(errors.status)}
-                aria-describedby={described('status')}
-                onChange={(e) => onCustom(e.target.value)}
-              />
-            </Field>
-          )}
-          {fieldError('status')}
         </FieldSet>
 
-        <Field data-invalid={Boolean(errors.body)}>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            {bodyLanguage ? (
-              <span id={id('body-label')} className="text-sm font-medium">
-                {t('editor.body')}
-              </span>
-            ) : (
-              <FieldLabel htmlFor={id('body')}>{t('editor.body')}</FieldLabel>
-            )}
-            {!broken && !bodyTouched && form.body !== '' && (
-              <span className="text-[11px] text-muted-foreground">{t('editor.bodyFromExample', { status: exampleStatus })}</span>
-            )}
-          </div>
-          {bodyLanguage ? (
-            <CodeEditor
-              value={broken ? '' : form.body}
-              language={bodyLanguage}
-              label={t('editor.body')}
-              readOnly={broken}
-              invalid={Boolean(errors.body)}
-              describedBy={described('body', broken && id('body-hint'))}
-              maxHeight="28rem"
-              onChange={(body) => {
-                setBodyTouched(true)
-                update({ body }, ['body'])
-              }}
-            />
-          ) : (
-            <Textarea
-              id={id('body')}
-              dir="ltr"
-              className="min-h-48 font-mono text-xs md:text-xs"
-              spellCheck={false}
-              disabled={broken}
-              value={broken ? '' : form.body}
-              aria-invalid={Boolean(errors.body)}
-              aria-describedby={described('body', broken && id('body-hint'))}
-              onChange={(e) => {
-                setBodyTouched(true)
-                update({ body: e.target.value }, ['body'])
-              }}
-            />
-          )}
-          {broken && (
-            <FieldDescription id={id('body-hint')} className="text-xs">
-              {t('editor.bodyDisabled')}
-            </FieldDescription>
-          )}
-          {fieldError('body')}
-        </Field>
+        {proxied ? (
+          <ProxySection
+            integration={integration}
+            endpoint={endpoint}
+            proxy={form.proxy}
+            errors={{ baseUrl: errors.proxyBaseUrl, stripPrefix: errors.proxyStripPrefix, headers: errors.proxyHeaders }}
+            onChange={updateProxy}
+          />
+        ) : (
+          <>
+            <FieldSet disabled={broken} className="gap-2">
+              <FieldLegend variant="label" id={id('status-label')}>
+                {t('editor.status')}
+              </FieldLegend>
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                size="sm"
+                spacing={1}
+                aria-labelledby={id('status-label')}
+                aria-describedby={described('status', timeout && id('timeout-hint'))}
+                disabled={broken}
+                value={form.preset}
+                onValueChange={onPreset}
+                className="flex-wrap"
+              >
+                {presets.map((preset) => (
+                  <ToggleGroupItem
+                    key={preset}
+                    value={preset}
+                    aria-label={`${t(PRESET_LABEL[preset])} ${presetToStatus(preset).status}`}
+                    className={cn('gap-1.5', ON)}
+                  >
+                    {t(PRESET_LABEL[preset])}
+                    <span aria-hidden className="font-mono text-[10px] opacity-60">
+                      {presetToStatus(preset).status}
+                    </span>
+                  </ToggleGroupItem>
+                ))}
+                {showCustom && (
+                  <ToggleGroupItem value="custom" aria-label={t(PRESET_LABEL.custom)} className={ON}>
+                    {t(PRESET_LABEL.custom)}
+                  </ToggleGroupItem>
+                )}
+              </ToggleGroup>
+              {timeout && (
+                <FieldDescription id={id('timeout-hint')} className="text-xs">
+                  {t('editor.timeoutHint')}
+                </FieldDescription>
+              )}
+              {form.preset === 'custom' && !broken && (
+                <Field data-invalid={Boolean(errors.status)} className="max-w-48">
+                  <FieldLabel htmlFor={id('custom')} className="sr-only">
+                    {t('editor.customStatus')}
+                  </FieldLabel>
+                  <Input
+                    id={id('custom')}
+                    type="number"
+                    inputMode="numeric"
+                    min={100}
+                    max={599}
+                    className="font-mono"
+                    value={customText}
+                    aria-invalid={Boolean(errors.status)}
+                    aria-describedby={described('status')}
+                    onChange={(e) => onCustom(e.target.value)}
+                  />
+                </Field>
+              )}
+              {fieldError('status')}
+            </FieldSet>
+
+            <Field data-invalid={Boolean(errors.body)}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                {bodyLanguage ? (
+                  <span id={id('body-label')} className="text-sm font-medium">
+                    {t('editor.body')}
+                  </span>
+                ) : (
+                  <FieldLabel htmlFor={id('body')}>{t('editor.body')}</FieldLabel>
+                )}
+                {!broken && !bodyTouched && form.body !== '' && (
+                  <span className="text-[11px] text-muted-foreground">{t('editor.bodyFromExample', { status: exampleStatus })}</span>
+                )}
+              </div>
+              {bodyLanguage ? (
+                <CodeEditor
+                  value={broken ? '' : form.body}
+                  language={bodyLanguage}
+                  label={t('editor.body')}
+                  readOnly={broken}
+                  invalid={Boolean(errors.body)}
+                  describedBy={described('body', broken && id('body-hint'))}
+                  maxHeight="28rem"
+                  onChange={(body) => {
+                    setBodyTouched(true)
+                    update({ body }, ['body'])
+                  }}
+                />
+              ) : (
+                <Textarea
+                  id={id('body')}
+                  dir="ltr"
+                  className="min-h-48 font-mono text-xs md:text-xs"
+                  spellCheck={false}
+                  disabled={broken}
+                  value={broken ? '' : form.body}
+                  aria-invalid={Boolean(errors.body)}
+                  aria-describedby={described('body', broken && id('body-hint'))}
+                  onChange={(e) => {
+                    setBodyTouched(true)
+                    update({ body: e.target.value }, ['body'])
+                  }}
+                />
+              )}
+              {broken && (
+                <FieldDescription id={id('body-hint')} className="text-xs">
+                  {t('editor.bodyDisabled')}
+                </FieldDescription>
+              )}
+              {fieldError('body')}
+            </Field>
+          </>
+        )}
       </Section>
 
       <Section title={t('editor.section.behaviour')}>
@@ -410,8 +529,16 @@ export function SimpleEditor({
 
           <Field data-invalid={Boolean(errors.fault)}>
             <FieldLabel htmlFor={id('fault')}>{t('editor.fault')}</FieldLabel>
-            <Select value={form.fault || NO_FAULT} onValueChange={(v) => update({ fault: v === NO_FAULT ? '' : (v as SimpleForm['fault']) }, ['fault', 'status', 'body'])}>
-              <SelectTrigger id={id('fault')} className="w-full" aria-invalid={Boolean(errors.fault)} aria-describedby={described('fault')}>
+            <Select
+              value={proxied ? NO_FAULT : form.fault || NO_FAULT}
+              disabled={proxied}
+              onValueChange={(v) => update({ fault: v === NO_FAULT ? '' : (v as SimpleForm['fault']) }, ['fault', 'status', 'body'])}>
+              <SelectTrigger
+                id={id('fault')}
+                className="w-full"
+                aria-invalid={Boolean(errors.fault)}
+                aria-describedby={described('fault', proxied && id('fault-hint'))}
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -423,9 +550,28 @@ export function SimpleEditor({
                 ))}
               </SelectContent>
             </Select>
+            {proxied && (
+              <FieldDescription id={id('fault-hint')} className="text-xs">
+                {t('editor.proxy.noFault')}
+              </FieldDescription>
+            )}
             {fieldError('fault')}
           </Field>
         </div>
+      </Section>
+
+      <Section title={t('editor.section.callback')}>
+        <WebhookSection
+          webhook={form.webhook}
+          errors={{
+            method: errors.webhookMethod,
+            url: errors.webhookUrl,
+            headers: errors.webhookHeaders,
+            body: errors.webhookBody,
+            delay: errors.webhookDelay,
+          }}
+          onChange={updateWebhook}
+        />
       </Section>
 
       <Section title={t('editor.section.label')}>

@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { WebhookIcon } from 'lucide-react'
 import type { StubMapping } from '@/server/wiremock/types'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { StatusBadge } from '@/ui/components/common/StatusBadge'
@@ -19,6 +20,47 @@ function requestUrl(stub: StubMapping): string {
     if (typeof value === 'string') return value
   }
   return '—'
+}
+
+const hasWebhook = (stub: StubMapping) =>
+  Array.isArray(stub.serveEventListeners) &&
+  stub.serveEventListeners.some((l: unknown) => typeof l === 'object' && l !== null && (l as { name?: unknown }).name === 'webhook')
+
+/** In place of a status: WireMock forwards the request, so the real service picks the status. */
+function ProxyBadge({ url }: { url: string }) {
+  const t = useT()
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          className="inline-flex h-5 shrink-0 cursor-default items-center rounded-sm border border-dashed border-signal/45 px-1.5 font-mono text-[10px] font-semibold tracking-wider text-signal-fg uppercase"
+        >
+          {t('mocks.proxy')}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <span dir="ltr" className="font-mono">
+          {t('mocks.proxyHint', { url })}
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function WebhookMark() {
+  const t = useT()
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="ms-1.5 inline-flex cursor-default align-[-2px] text-muted-foreground hover:text-signal-fg">
+          <WebhookIcon aria-hidden className="size-3.5" />
+          <span className="sr-only">{t('mocks.webhook')}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent aria-hidden>{t('mocks.webhook')}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 function UpdatedAt({ iso }: { iso?: string }) {
@@ -44,6 +86,7 @@ export function MockTable({ mocks }: { mocks: StubMapping[] }) {
           const meta = stub.metadata?.wiremockUi
           const method = typeof stub.request.method === 'string' ? stub.request.method : 'ANY'
           const status = typeof stub.response.status === 'number' ? stub.response.status : 200
+          const proxyUrl = typeof stub.response.proxyBaseUrl === 'string' ? stub.response.proxyBaseUrl : undefined
           const owner = meta?.owner ?? 'baseline'
           return (
             <TableRow key={stub.id} className="hover:bg-surface-2">
@@ -51,6 +94,7 @@ export function MockTable({ mocks }: { mocks: StubMapping[] }) {
                 <Link to="/mocks/$id" params={{ id: stub.id }} className="font-medium hover:text-signal-fg hover:underline">
                   {stub.name || t('mocks.unnamed')}
                 </Link>
+                {hasWebhook(stub) && <WebhookMark />}
                 {(meta?.integration || meta?.endpoint) && (
                   <p className="truncate text-[11px] text-muted-foreground">
                     {[meta.integration, meta.endpoint].filter(Boolean).join(' · ')}
@@ -66,7 +110,7 @@ export function MockTable({ mocks }: { mocks: StubMapping[] }) {
                 </div>
               </TableCell>
               <TableCell>
-                <StatusBadge status={status} />
+                {proxyUrl !== undefined ? <ProxyBadge url={proxyUrl} /> : <StatusBadge status={status} />}
               </TableCell>
               <TableCell className="hidden md:table-cell">
                 {owner === 'baseline' ? (

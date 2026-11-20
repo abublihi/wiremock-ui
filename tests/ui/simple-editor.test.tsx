@@ -311,3 +311,97 @@ describe('edit mock', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Someone changed this mock since you opened it.')
   })
 })
+
+describe('new mock — proxy and webhook', () => {
+  const open = async () => {
+    const calls = mockCatalog([textEndpoint()])
+    await renderApp(<NewHarness initial={{ integration: 'nic', endpoint: 'ping' }} />)
+    await screen.findByRole('textbox', { name: 'Response body' })
+    return { calls, ue: userEvent.setup() }
+  }
+
+  it('forwarding hides the status and body, suggests the prefix and sends only proxy fields', async () => {
+    const { calls, ue } = await open()
+    await ue.click(screen.getByRole('switch', { name: 'Default answer (when no key matches)' }))
+    await ue.click(screen.getByRole('radio', { name: 'Forward to a real service' }))
+    expect(screen.queryByRole('textbox', { name: 'Response body' })).toBeNull()
+    expect(screen.queryByRole('radio', { name: 'Success 200' })).toBeNull()
+    expect((screen.getByRole('combobox', { name: 'Break the connection' }) as HTMLButtonElement).disabled).toBe(true)
+
+    await ue.type(screen.getByRole('textbox', { name: 'Service base URL' }), 'https://real.example/api')
+    const strip = screen.getByRole('textbox', { name: 'Remove path prefix' }) as HTMLInputElement
+    expect(strip.value).toBe('') // a suggestion, not a default
+    await ue.click(screen.getByRole('button', { name: 'Use /nic' }))
+    expect(strip.value).toBe('/nic')
+    expect(screen.getByText('// /nic/ping → https://real.example/api/ping')).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Add header' }))
+    await ue.type(screen.getByRole('textbox', { name: 'Headers to add: Name' }), 'X-Env')
+    await ue.type(screen.getByRole('textbox', { name: 'Headers to add: X-Env' }), 'qa')
+    await ue.type(screen.getByRole('textbox', { name: 'Headers to remove' }), 'Authorization, Cookie')
+
+    await ue.click(screen.getByRole('button', { name: 'Preview' }))
+    await waitFor(() =>
+      expect(calls.at(-1)?.body).toEqual({
+        isDefault: true,
+        proxy: { baseUrl: 'https://real.example/api', stripPrefix: '/nic', addHeaders: { 'X-Env': 'qa' }, removeHeaders: ['Authorization', 'Cookie'] },
+      }),
+    )
+  })
+
+  it('a missing or bad base URL is flagged on preview and nothing is sent', async () => {
+    const { calls, ue } = await open()
+    await ue.click(screen.getByRole('radio', { name: 'Forward to a real service' }))
+    expect(screen.queryByText('Enter a URL that starts with http:// or https://.')).toBeNull()
+    await ue.click(screen.getByRole('button', { name: 'Preview' }))
+    const url = screen.getByRole('textbox', { name: 'Service base URL' })
+    expect(url.getAttribute('aria-invalid')).toBe('true')
+    expect(screen.getByText('Enter a URL that starts with http:// or https://.')).toBeTruthy()
+    await ue.type(url, 'ftp://x')
+    expect(url.getAttribute('aria-invalid')).toBe('true')
+    await ue.type(screen.getByRole('textbox', { name: 'Remove path prefix' }), 'nic')
+    expect(screen.getByText('Start the prefix with /.')).toBeTruthy()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('the call-back switch opens the webhook fields; its delay and body go along with the mock response', async () => {
+    const { calls, ue } = await open()
+    await ue.type(screen.getByLabelText('Value of query parameter id'), 'abc')
+    expect(screen.queryByRole('textbox', { name: 'Callback URL' })).toBeNull()
+    await ue.click(screen.getByRole('switch', { name: 'Call back after responding' }))
+    await ue.type(screen.getByRole('textbox', { name: 'Callback URL' }), 'http://hooks.example/cb')
+    await ue.click(screen.getByRole('combobox', { name: 'Method' }))
+    await ue.click(await screen.findByRole('option', { name: 'PUT' }))
+    expect(screen.getByText(/jsonPath originalRequest\.body/)).toBeTruthy()
+    await ue.click(screen.getByRole('radio', { name: 'Random' }))
+    const lower = screen.getByRole('spinbutton', { name: 'At least (ms)' })
+    const upper = screen.getByRole('spinbutton', { name: 'At most (ms)' })
+    await ue.clear(upper)
+    await ue.type(upper, '100')
+    expect(screen.getByText('Make the first number no larger than the second.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Preview' }) as HTMLButtonElement).disabled).toBe(true)
+    await ue.clear(lower)
+    await ue.type(lower, '50')
+
+    await ue.click(screen.getByRole('button', { name: 'Preview' }))
+    await waitFor(() =>
+      expect(calls.at(-1)?.body).toEqual({
+        keyValue: 'abc',
+        status: 200,
+        body: 'pong',
+        webhook: { method: 'PUT', url: 'http://hooks.example/cb', delay: { type: 'uniform', lower: 50, upper: 100 } },
+      }),
+    )
+  })
+
+  it('a server 400 about the webhook URL lands on that field', async () => {
+    const { ue } = await open()
+    server.use(http.post(`${CATALOG}/ping/preview`, () => HttpResponse.json({ error: 'webhook.url must be an http:// or https:// URL' }, { status: 400 })))
+    await ue.click(screen.getByRole('switch', { name: 'Default answer (when no key matches)' }))
+    await ue.click(screen.getByRole('switch', { name: 'Call back after responding' }))
+    await ue.type(screen.getByRole('textbox', { name: 'Callback URL' }), 'http://{{bad}}')
+    await ue.click(screen.getByRole('button', { name: 'Preview' }))
+    const url = screen.getByRole('textbox', { name: 'Callback URL' })
+    await waitFor(() => expect(url.getAttribute('aria-invalid')).toBe('true'))
+    expect(screen.getByText('webhook.url must be an http:// or https:// URL')).toBeTruthy()
+  })
+})

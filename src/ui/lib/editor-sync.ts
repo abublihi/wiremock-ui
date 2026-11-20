@@ -6,12 +6,42 @@ import {
   SLOW_MIN_SECONDS,
   TIMEOUT_DELAY_MS,
   isFault,
+  isWebhookMethod,
   presetForStatus,
   presetToStatus,
   visiblePresets,
   type Fault,
   type Preset,
+  type WebhookMethod,
 } from './presets'
+
+/** A header name and value as the form edits them (rows keep their order). */
+export type HeaderRow = { name: string; value: string }
+
+/** Forward to a real service: WireMock's proxyBaseUrl and friends. */
+export type ProxyForm = {
+  baseUrl: string
+  /** Path prefix removed before forwarding ("" keeps the path as it is). */
+  stripPrefix: string
+  addHeaders: HeaderRow[]
+  /** Header names to drop, separated by commas or spaces. */
+  removeHeaders: string
+}
+
+export type WebhookDelay = 'none' | 'fixed' | 'uniform'
+
+/** Call back after responding: one WireMock webhook serveEventListener. */
+export type WebhookForm = {
+  enabled: boolean
+  method: WebhookMethod
+  url: string
+  headers: HeaderRow[]
+  body: string
+  delay: WebhookDelay
+  delayMs: number
+  lower: number
+  upper: number
+}
 
 export type SimpleForm = {
   integration: string
@@ -25,6 +55,10 @@ export type SimpleForm = {
   delaySeconds: number
   fault: '' | Fault
   name: string
+  /** Answer with the form's response, or forward to a real service. */
+  answer: 'mock' | 'proxy'
+  proxy: ProxyForm
+  webhook: WebhookForm
 }
 
 export const DEFAULT_SLOW_SECONDS = 3
@@ -57,8 +91,32 @@ export function emptyForm(endpoint: Endpoint): SimpleForm {
     delaySeconds: DEFAULT_SLOW_SECONDS,
     fault: '',
     name: '',
+    answer: 'mock',
+    proxy: { baseUrl: '', stripPrefix: '', addHeaders: [], removeHeaders: '' },
+    webhook: { enabled: false, method: 'POST', url: '', headers: [], body: '', delay: 'none', delayMs: 1000, lower: 500, upper: 2000 },
   }
 }
+
+/** Rows with a name, as a header map (names trimmed); undefined when there are none. */
+export function headerMap(rows: HeaderRow[]): Record<string, string> | undefined {
+  const named = rows.filter((r) => r.name.trim() !== '')
+  return named.length > 0 ? Object.fromEntries(named.map((r) => [r.name.trim(), r.value])) : undefined
+}
+
+/** An absolute http(s) URL; a templated one ("http://{{…}}/cb") is only checked up to its scheme, as the server does. */
+export function isHttpUrl(text: string, opts: { templated?: boolean } = {}): boolean {
+  const value = text.trim()
+  if (!/^https?:\/\/\S/i.test(value)) return false
+  if (opts.templated && value.includes('{{')) return true
+  try {
+    return new URL(value).host !== ''
+  } catch {
+    return false
+  }
+}
+
+/** The header names in the "remove" text. */
+export const headerNames = (text: string) => text.split(/[\s,]+/).filter(Boolean)
 
 /** The name the server gives a mock when the form's name is empty. */
 export function generatedName(endpoint: Endpoint, form: Pick<SimpleForm, 'isDefault' | 'keyValue'>): string {
@@ -68,15 +126,38 @@ export function generatedName(endpoint: Endpoint, form: Pick<SimpleForm, 'isDefa
 /** The body the preview and create endpoints accept. */
 export function toSimpleInput(form: SimpleForm): SimpleMockInput {
   const input: SimpleMockInput = form.isDefault ? { isDefault: true } : { keyValue: form.keyValue }
-  if (form.fault) input.fault = form.fault
+  if (form.answer === 'proxy') {
+    // The real service answers: no status, body, fault or timeout preset of ours.
+    const { baseUrl, stripPrefix, addHeaders, removeHeaders } = form.proxy
+    input.proxy = { baseUrl: baseUrl.trim() }
+    if (stripPrefix.trim() !== '') input.proxy.stripPrefix = stripPrefix.trim()
+    const add = headerMap(addHeaders)
+    if (add) input.proxy.addHeaders = add
+    const remove = headerNames(removeHeaders)
+    if (remove.length > 0) input.proxy.removeHeaders = remove
+    if (form.slow) input.delayMs = Math.round(form.delaySeconds * 1000)
+  } else if (form.fault) input.fault = form.fault
   else {
     input.status = form.status
     if (form.body !== '') input.body = form.body
   }
-  if (!form.fault && form.preset === 'timeout') input.delayMs = TIMEOUT_DELAY_MS
-  else if (form.slow) input.delayMs = Math.round(form.delaySeconds * 1000)
+  if (form.answer !== 'proxy') {
+    if (!form.fault && form.preset === 'timeout') input.delayMs = TIMEOUT_DELAY_MS
+    else if (form.slow) input.delayMs = Math.round(form.delaySeconds * 1000)
+  }
+  if (form.webhook.enabled) input.webhook = webhookInput(form.webhook)
   if (form.name.trim() !== '') input.name = form.name
   return input
+}
+
+function webhookInput(hook: WebhookForm): NonNullable<SimpleMockInput['webhook']> {
+  const out: NonNullable<SimpleMockInput['webhook']> = { method: hook.method, url: hook.url.trim() }
+  const headers = headerMap(hook.headers)
+  if (headers) out.headers = headers
+  if (hook.body !== '') out.body = hook.body
+  if (hook.delay === 'fixed') out.delay = { type: 'fixed', milliseconds: hook.delayMs }
+  else if (hook.delay === 'uniform') out.delay = { type: 'uniform', lower: hook.lower, upper: hook.upper }
+  return out
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -126,7 +207,7 @@ function readKey(request: Record<string, unknown>, lookup: NonNullable<Endpoint[
  * form cannot show (extra matchers, headers, transformers, another priority…): Simple mode never drops fields.
  */
 export function fromStub(stub: StubMapping, integration: Integration, endpoint: Endpoint): SimpleForm | null {
-  if (!onlyKeys(stub, ['id', 'uuid', 'name', 'priority', 'persistent', 'request', 'response', 'metadata'])) return null
+  if (!onlyKeys(stub, ['id', 'uuid', 'name', 'priority', 'persistent', 'request', 'response', 'metadata', 'serveEventListeners'])) return null
   const meta = stub.metadata
   if (!isRecord(meta) || !onlyKeys(meta, ['wiremockUi'])) return null
   if (meta.wiremockUi?.integration !== endpoint.integration || meta.wiremockUi?.endpoint !== endpoint.key) return null
@@ -147,11 +228,21 @@ export function fromStub(stub: StubMapping, integration: Integration, endpoint: 
   const form = emptyForm(endpoint)
   form.isDefault = isDefault
   form.keyValue = keyValue
+  if (stub.serveEventListeners !== undefined) {
+    const webhook = readWebhook(stub.serveEventListeners, form.webhook)
+    if (!webhook) return null
+    form.webhook = webhook
+  }
 
-  // Response: a fault, or a status with the endpoint's content type and an optional body; either may be delayed.
+  // Response: a proxy, a fault, or a status with the endpoint's content type and an optional body; either may be delayed.
   const delay = response.fixedDelayMilliseconds
   if (delay !== undefined && typeof delay !== 'number') return null
-  if (response.fault !== undefined) {
+  if (response.proxyBaseUrl !== undefined) {
+    const proxy = readProxy(response)
+    if (!proxy) return null
+    form.answer = 'proxy'
+    form.proxy = proxy
+  } else if (response.fault !== undefined) {
     if (!isFault(response.fault) || !onlyKeys(response, ['fault', 'fixedDelayMilliseconds'])) return null
     form.fault = response.fault
     form.body = ''
@@ -177,6 +268,63 @@ export function fromStub(stub: StubMapping, integration: Integration, endpoint: 
     form.delaySeconds = seconds
   }
   return finish(stub, endpoint, form)
+}
+
+const isStringMap = (v: unknown): v is Record<string, string> =>
+  isRecord(v) && Object.keys(v).length > 0 && Object.values(v).every((x) => typeof x === 'string')
+const rowsOf = (map: Record<string, string>): HeaderRow[] => Object.entries(map).map(([name, value]) => ({ name, value }))
+const isDelayMs = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0
+
+/** The proxy fields the builder writes, or null for anything else. */
+function readProxy(response: Record<string, unknown>): ProxyForm | null {
+  const keys = ['proxyBaseUrl', 'additionalProxyRequestHeaders', 'removeProxyRequestHeaders', 'proxyUrlPrefixToRemove', 'fixedDelayMilliseconds']
+  if (!onlyKeys(response, keys)) return null
+  const { proxyBaseUrl, additionalProxyRequestHeaders: add, removeProxyRequestHeaders: remove, proxyUrlPrefixToRemove: prefix } = response
+  if (typeof proxyBaseUrl !== 'string') return null
+  if (add !== undefined && !isStringMap(add)) return null
+  // The builder lower-cases names and the form separates them with commas or spaces.
+  if (remove !== undefined) {
+    if (!Array.isArray(remove) || remove.length === 0) return null
+    if (!remove.every((h) => typeof h === 'string' && h !== '' && h === h.toLowerCase() && !/[\s,]/.test(h))) return null
+  }
+  if (prefix !== undefined && (typeof prefix !== 'string' || !prefix.startsWith('/') || prefix !== prefix.trim())) return null
+  if (proxyBaseUrl !== proxyBaseUrl.trim()) return null
+  return {
+    baseUrl: proxyBaseUrl,
+    stripPrefix: (prefix as string | undefined) ?? '',
+    addHeaders: add ? rowsOf(add) : [],
+    removeHeaders: remove ? (remove as string[]).join(', ') : '',
+  }
+}
+
+/** One webhook listener as the builder writes it (method, URL, optional headers/body, fixed or uniform delay). */
+function readWebhook(listeners: unknown, defaults: WebhookForm): WebhookForm | null {
+  if (!Array.isArray(listeners) || listeners.length !== 1) return null
+  const listener = listeners[0]
+  if (!isRecord(listener) || !onlyKeys(listener, ['name', 'parameters']) || listener.name !== 'webhook') return null
+  const p = listener.parameters
+  if (!isRecord(p) || !onlyKeys(p, ['method', 'url', 'headers', 'body', 'delay'])) return null
+  if (!isWebhookMethod(p.method) || typeof p.url !== 'string' || p.url !== p.url.trim()) return null
+  if (p.headers !== undefined && !isStringMap(p.headers)) return null
+  if (p.body !== undefined && (typeof p.body !== 'string' || p.body === '')) return null
+  const hook: WebhookForm = {
+    ...defaults,
+    enabled: true,
+    method: p.method,
+    url: p.url,
+    headers: p.headers ? rowsOf(p.headers as Record<string, string>) : [],
+    body: (p.body as string | undefined) ?? '',
+  }
+  const d = p.delay
+  if (d === undefined) return hook
+  if (!isRecord(d)) return null
+  if (d.type === 'fixed' && onlyKeys(d, ['type', 'milliseconds']) && isDelayMs(d.milliseconds)) {
+    return { ...hook, delay: 'fixed', delayMs: d.milliseconds }
+  }
+  if (d.type === 'uniform' && onlyKeys(d, ['type', 'lower', 'upper']) && isDelayMs(d.lower) && isDelayMs(d.upper)) {
+    return { ...hook, delay: 'uniform', lower: d.lower, upper: d.upper }
+  }
+  return null
 }
 
 function finish(stub: StubMapping, endpoint: Endpoint, form: SimpleForm): SimpleForm {

@@ -13,7 +13,7 @@ export const WEBHOOK_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as cons
 const METHOD_TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 export const MAX_WEBHOOK_DELAY_MS = 600_000
 
-function httpUrl(value: unknown, field: string, opts: { templated?: boolean } = {}): void {
+export function assertHttpUrl(value: unknown, field: string, opts: { templated?: boolean } = {}): void {
   const message = `${field} must be an http:// or https:// URL`
   if (typeof value !== 'string' || !/^https?:\/\/\S/i.test(value)) throw new ValidationError(message)
   // A webhook URL may be a template ("http://{{request.headers.X-Host}}/cb"): only its scheme can be checked.
@@ -62,19 +62,20 @@ function webhookDelay(value: unknown, field: string): void {
   }
 }
 
-function webhook(parameters: unknown, field: string): void {
+/** Checks a webhook listener's parameters; messages start with `field` ("webhook.url must be …"). */
+export function assertWebhook(parameters: unknown, field: string): void {
   if (!isObject(parameters)) throw new ValidationError(`${field} must be an object`)
   if (typeof parameters.method !== 'string' || !METHOD_TOKEN.test(parameters.method)) {
     throw new ValidationError(`${field}.method must be an HTTP method such as ${WEBHOOK_METHODS.join(', ')}`)
   }
-  httpUrl(parameters.url, `${field}.url`, { templated: true })
+  assertHttpUrl(parameters.url, `${field}.url`, { templated: true })
   stringMap(parameters.headers, `${field}.headers`)
   if (parameters.body !== undefined && typeof parameters.body !== 'string') throw new ValidationError(`${field}.body must be a string`)
   webhookDelay(parameters.delay, `${field}.delay`)
 }
 
 function proxy(response: Record<string, unknown>): void {
-  if (response.proxyBaseUrl !== undefined) httpUrl(response.proxyBaseUrl, 'response.proxyBaseUrl')
+  if (response.proxyBaseUrl !== undefined) assertHttpUrl(response.proxyBaseUrl, 'response.proxyBaseUrl')
   stringMap(response.additionalProxyRequestHeaders, 'response.additionalProxyRequestHeaders')
   const remove = response.removeProxyRequestHeaders
   if (remove !== undefined && (!Array.isArray(remove) || !remove.every((h) => typeof h === 'string'))) {
@@ -108,7 +109,7 @@ export function assertPowerFields(stub: { response: Record<string, unknown> } & 
       if (!isObject(listener) || typeof listener.name !== 'string' || listener.name === '') {
         throw new ValidationError(`${field}.name must be a non-empty string`)
       }
-      if (listener.name === 'webhook') webhook(listener.parameters, `${field}.parameters`)
+      if (listener.name === 'webhook') assertWebhook(listener.parameters, `${field}.parameters`)
     })
   }
   scenario(stub)

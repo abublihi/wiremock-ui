@@ -49,3 +49,52 @@ test('path-template lookup', async () => {
   expect(await call('/nic/users/42')).toEqual({ status: 200, body: '{"id":42}' })
   expect((await call('/nic/users/7')).status).toBe(404)
 })
+
+// Proxy and webhook targets are WireMock's own stub port as seen from inside the container (localhost:8080).
+test('proxy mock: the real service answers, prefix stripped, headers added and removed', async () => {
+  const upstream = endpoint({ key: 'up', method: 'GET', path: '/upstream/.*', pathType: 'regex' })
+  await env.rt.mocks.create(buildStub({ ...integration, prefix: '/' }, upstream, { isDefault: true, status: 201, body: '{"from":"upstream"}' }), actor)
+  const e = endpoint({ key: 'px', method: 'GET', path: '/accounts/.*', pathType: 'regex' })
+  await env.rt.mocks.create(
+    buildStub(integration, e, {
+      isDefault: true,
+      proxy: { baseUrl: 'http://localhost:8080/upstream', stripPrefix: '/nic', addHeaders: { 'X-Env': 'qa' }, removeHeaders: ['X-Secret'] },
+    }),
+    actor,
+  )
+  const res = await fetch(`${env.wm.url}/nic/accounts/7`, { headers: { 'X-Secret': 's' } })
+  expect({ status: res.status, body: await res.text() }).toEqual({ status: 201, body: '{"from":"upstream"}' })
+  const forwarded = (await env.rt.wiremock.listRequests({ limit: 20 })).find((r) => r.request.url === '/upstream/accounts/7')!
+  expect(forwarded.request.headers?.['X-Env']).toBe('qa')
+  expect(forwarded.request.headers?.['X-Secret']).toBeUndefined()
+})
+
+test('webhook mock: WireMock calls back after responding, with the templated body', async () => {
+  const cb = endpoint({ key: 'cb', method: 'POST', path: '/callback', lookup: undefined })
+  await env.rt.mocks.create(buildStub(integration, cb, { isDefault: true, status: 204 }), actor)
+  const e = endpoint({ key: 'wh', path: '/pay', lookup: undefined })
+  await env.rt.mocks.create(
+    buildStub(integration, e, {
+      isDefault: true,
+      status: 202,
+      webhook: {
+        method: 'post',
+        url: 'http://localhost:8080/nic/callback',
+        headers: { 'Content-Type': 'application/json' },
+        body: `{"paid":"{{jsonPath originalRequest.body '$.id'}}","same":"{{jsonPath request.body '$.id'}}"}`,
+        delay: { type: 'uniform', lower: 10, upper: 50 },
+      },
+    }),
+    actor,
+  )
+  expect((await call('/nic/pay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"id":"abc"}' })).status).toBe(202)
+  const until = Date.now() + 5000
+  let callback
+  while (!(callback = (await env.rt.wiremock.listRequests({ limit: 20 })).find((r) => r.request.url === '/nic/callback')) && Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  expect(callback?.request.method).toBe('POST')
+  // In a webhook template the incoming request is `originalRequest`; `request` is the callback itself (empty
+  // body), so the editor's hint uses originalRequest.
+  expect(callback?.request.body).toBe('{"paid":"abc","same":""}')
+})

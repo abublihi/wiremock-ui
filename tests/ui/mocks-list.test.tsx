@@ -69,6 +69,21 @@ describe('mock list', () => {
     expect(screen.getByText('// 2 mocks · 1 baseline')).toBeTruthy()
   })
 
+  it('marks proxy mocks with a PROXY badge instead of a status, and webhook mocks with an icon', async () => {
+    const proxied = { ...stub('p'), response: { proxyBaseUrl: 'https://real.example/api' } }
+    const hooked = { ...stub('w'), serveEventListeners: [{ name: 'webhook', parameters: { method: 'POST', url: 'http://h.example/cb' } }] }
+    mockApi([proxied, hooked, stub('plain', { status: 201 })] as ReturnType<typeof stub>[])
+    await renderApp(<Harness />)
+    await screen.findByText('Mock p')
+    const row = (name: string) => screen.getByRole('link', { name: new RegExp(`^${name}$`) }).closest('tr')!
+    expect(within(row('Mock p')).getByText('Proxy')).toBeTruthy()
+    expect(within(row('Mock p')).queryByText('200')).toBeNull()
+    expect(within(row('Mock w')).getByText('Calls back after responding')).toBeTruthy()
+    expect(within(row('Mock w')).getByText('200')).toBeTruthy()
+    expect(within(row('Mock plain')).queryByText('Proxy')).toBeNull()
+    expect(within(row('Mock plain')).queryByText('Calls back after responding')).toBeNull()
+  })
+
   it('switching to All mocks updates the search and refetches', async () => {
     const seen = mockApi([stub('a')])
     await renderApp(<Harness />)

@@ -274,3 +274,80 @@ describe('Advanced JSON helpers', () => {
     expect(parseStubJson('')).toMatchObject({ ok: false, reason: 'syntax' })
   })
 })
+
+describe('proxy and webhook', () => {
+  const e = endpoint()
+  const proxied = (over: Partial<SimpleForm['proxy']> = {}, f: Partial<SimpleForm> = {}) =>
+    form(e, { keyValue: 'k', answer: 'proxy', proxy: { ...emptyForm(e).proxy, baseUrl: 'https://real.example/api', ...over }, ...f })
+  const hooked = (over: Partial<SimpleForm['webhook']> = {}, f: Partial<SimpleForm> = {}) =>
+    form(e, { keyValue: 'k', webhook: { ...emptyForm(e).webhook, enabled: true, url: 'http://hooks.example/cb', ...over }, ...f })
+
+  it('a new form answers with a mock response and no callback', () => {
+    expect(emptyForm(e)).toMatchObject({ answer: 'mock', webhook: { enabled: false, method: 'POST', delay: 'none' } })
+    expect(toSimpleInput(form(e, { keyValue: 'k' }))).not.toHaveProperty('proxy')
+    expect(toSimpleInput(form(e, { keyValue: 'k' }))).not.toHaveProperty('webhook')
+  })
+
+  it('a proxy sends only its fields (and the slow delay), never status, body or fault', () => {
+    const f = proxied(
+      { stripPrefix: ' /nic ', addHeaders: [{ name: ' X-Env ', value: 'qa' }, { name: '', value: '' }], removeHeaders: 'Authorization, x-secret  Cookie' },
+      { slow: true, delaySeconds: 2, fault: 'EMPTY_RESPONSE', preset: 'timeout', status: 504 },
+    )
+    expect(toSimpleInput(f)).toEqual({
+      keyValue: 'k',
+      proxy: { baseUrl: 'https://real.example/api', stripPrefix: '/nic', addHeaders: { 'X-Env': 'qa' }, removeHeaders: ['Authorization', 'x-secret', 'Cookie'] },
+      delayMs: 2000,
+    })
+  })
+
+  it('a webhook goes along with any answer; delay none, fixed or random', () => {
+    expect(toSimpleInput(hooked()).webhook).toEqual({ method: 'POST', url: 'http://hooks.example/cb' })
+    expect(toSimpleInput(hooked({ delay: 'fixed', delayMs: 750 })).webhook!.delay).toEqual({ type: 'fixed', milliseconds: 750 })
+    expect(toSimpleInput(hooked({ delay: 'uniform', lower: 100, upper: 900 })).webhook!.delay).toEqual({ type: 'uniform', lower: 100, upper: 900 })
+    const both = toSimpleInput(hooked({ headers: [{ name: 'X-Hook', value: '1' }], body: '{"a":1}' }, { answer: 'proxy', proxy: proxied().proxy }))
+    expect(both.proxy).toBeDefined()
+    expect(both.webhook).toEqual({ method: 'POST', url: 'http://hooks.example/cb', headers: { 'X-Hook': '1' }, body: '{"a":1}' })
+  })
+
+  it.each([
+    ['base URL only', proxied()],
+    ['every proxy field', proxied({ stripPrefix: '/nic', addHeaders: [{ name: 'X-Env', value: 'qa' }, { name: 'X-B', value: '' }], removeHeaders: 'authorization, cookie' })],
+    ['a slow proxy', proxied({}, { slow: true, delaySeconds: 5 })],
+    ['a webhook', hooked()],
+    ['a full webhook', hooked({ method: 'PUT', headers: [{ name: 'Content-Type', value: 'application/json' }], body: `{"id":"{{jsonPath request.body '$.id'}}"}` })],
+    ['a fixed webhook delay', hooked({ delay: 'fixed', delayMs: 250 })],
+    ['a random webhook delay', hooked({ delay: 'uniform', lower: 0, upper: 600000 })],
+    ['a webhook on a fault', hooked({}, { fault: 'EMPTY_RESPONSE', body: '' })],
+    ['a webhook on a proxy', hooked({ method: 'DELETE' }, { answer: 'proxy', proxy: proxied().proxy })],
+  ])('round-trips %s', (_, f) => {
+    expect(fromStub(stored(e, f), integration, e)).toEqual(f)
+  })
+
+  const proxyBase = () => stored(e, proxied())
+  const hookBase = () => stored(e, hooked())
+  const params = (s: StubMapping) => (s.serveEventListeners as { parameters: Record<string, unknown> }[])[0]!.parameters
+  it.each<[string, () => StubMapping, (s: StubMapping) => void]>([
+    ['a proxy with a status', proxyBase, (s) => void (s.response.status = 200)],
+    ['a proxy with a body', proxyBase, (s) => void (s.response.body = 'x')],
+    ['a proxy with another response field', proxyBase, (s) => void (s.response.transformers = ['x'])],
+    ['an empty add-headers map', proxyBase, (s) => void (s.response.additionalProxyRequestHeaders = {})],
+    ['an empty remove-headers list', proxyBase, (s) => void (s.response.removeProxyRequestHeaders = [])],
+    ['a mixed-case remove-header', proxyBase, (s) => void (s.response.removeProxyRequestHeaders = ['X-Secret'])],
+    ['a strip prefix without /', proxyBase, (s) => void (s.response.proxyUrlPrefixToRemove = 'nic')],
+    ['a non-string base URL', proxyBase, (s) => void (s.response.proxyBaseUrl = 1)],
+    ['two listeners', hookBase, (s) => void (s.serveEventListeners as unknown[]).push((s.serveEventListeners as unknown[])[0])],
+    ['another listener', hookBase, (s) => void (s.serveEventListeners = [{ name: 'other', parameters: {} }])],
+    ['a lognormal delay', hookBase, (s) => void (params(s).delay = { type: 'lognormal', median: 80, sigma: 0.4 })],
+    ['a fixed delay with extra keys', hookBase, (s) => void (params(s).delay = { type: 'fixed', milliseconds: 1, x: 1 })],
+    ['a method the form does not offer', hookBase, (s) => void (params(s).method = 'PURGE')],
+    ['an extra webhook parameter', hookBase, (s) => void (params(s).extensions = {})],
+    ['empty webhook headers', hookBase, (s) => void (params(s).headers = {})],
+    ['an empty webhook body', hookBase, (s) => void (params(s).body = '')],
+    ['an empty listener list', hookBase, (s) => void (s.serveEventListeners = [])],
+  ])('refuses %s', (_, base, mutate) => {
+    const s = base()
+    expect(fromStub(s, integration, e)).not.toBeNull()
+    mutate(s)
+    expect(fromStub(s, integration, e)).toBeNull()
+  })
+})
