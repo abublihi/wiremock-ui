@@ -7,6 +7,7 @@ import type { PublicUser } from '@/server/users/types'
 import { SESSION_KEY, registerQueryClient, type SessionData } from '@/ui/api/client'
 import { PrefsProvider } from '@/ui/i18n'
 import { Toaster } from '@/ui/components/ui/sonner'
+import { TooltipProvider } from '@/ui/components/ui/tooltip'
 
 export const testUser: PublicUser = {
   id: 'u1', username: 'sara', displayName: 'Sara Q', disabled: false,
@@ -27,7 +28,9 @@ export async function renderApp(ui: ReactNode, opts: { path?: string; session?: 
     component: () => (
       <QueryClientProvider client={queryClient}>
         <PrefsProvider prefs={{ theme: 'system' }} onThemeChange={() => {}}>
-          <RouterOutlet />
+          <TooltipProvider>
+            <RouterOutlet />
+          </TooltipProvider>
           <Toaster />
         </PrefsProvider>
       </QueryClientProvider>

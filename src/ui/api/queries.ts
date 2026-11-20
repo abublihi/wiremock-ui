@@ -1,12 +1,19 @@
-import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useT } from '@/ui/i18n'
+import type { Integration } from '@/server/catalog/types'
+import type { StubMapping } from '@/server/wiremock/types'
 import { SESSION_KEY, apiFetch, type SessionData } from './client'
+
+export type MockFilter = { owner?: string; integration?: string; status?: string; q?: string }
 
 /** Single source for every query key. Later tasks add their resources here. */
 export const queryKeys = {
   session: SESSION_KEY,
+  mocks: ['mocks'] as const,
+  mockList: (filter: MockFilter) => ['mocks', 'list', filter] as const,
+  integrations: ['integrations'] as const,
 } as const
 
 export const sessionQueryOptions = (fetchSession: () => Promise<SessionData> = defaultFetchSession) =>
@@ -56,5 +63,56 @@ export function useChangePassword() {
   return useMutation({
     mutationFn: (input: { current: string; next: string }) =>
       apiFetch<void>('/api/session/password', { method: 'POST', body: input }),
+  })
+}
+
+export function useMocks(filter: MockFilter, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.mockList(filter),
+    queryFn: () => apiFetch<StubMapping[]>('/api/mocks', { query: filter }),
+    enabled: options.enabled ?? true,
+  })
+}
+
+export function useIntegrations() {
+  return useQuery({
+    queryKey: queryKeys.integrations,
+    queryFn: () => apiFetch<Integration[]>('/api/integrations'),
+    staleTime: 60_000,
+  })
+}
+
+export function useDuplicateMock() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(id)}/duplicate`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
+  })
+}
+
+export function useDeleteMock() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) =>
+      apiFetch<void>(`/api/mocks/${encodeURIComponent(id)}`, { method: 'DELETE', query: { version } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
+  })
+}
+
+/**
+ * Restores a version of a mock. A plain function (not a hook): the Undo toast outlives the row that
+ * offered it, so it must not depend on a mounted component.
+ */
+export async function restoreMock(queryClient: QueryClient, id: string, version: number) {
+  const stub = await apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(id)}/restore`, { method: 'POST', body: { version } })
+  await queryClient.invalidateQueries({ queryKey: queryKeys.mocks })
+  return stub
+}
+
+export function useResetMine() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiFetch<{ deleted: number }>('/api/mocks/reset-mine', { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
   })
 }

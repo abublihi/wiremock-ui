@@ -1,0 +1,96 @@
+import { useEffect, useState } from 'react'
+import { SearchIcon } from 'lucide-react'
+import type { Integration } from '@/server/catalog/types'
+import { Input } from '@/ui/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
+import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
+import { useT } from '@/ui/i18n'
+
+export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string }
+
+const ANY = '__any__'
+const STATUSES = ['200', '201', '204', '400', '401', '403', '404', '409', '422', '500', '502', '503']
+const DEBOUNCE_MS = 250
+const ON = "data-[state=on]:border-signal/40 data-[state=on]:bg-signal/10 data-[state=on]:text-signal-fg"
+
+export function MockFilters({
+  search,
+  integrations,
+  onChange,
+}: {
+  search: MocksSearch
+  integrations: Integration[]
+  onChange: (next: MocksSearch) => void
+}) {
+  const t = useT()
+  const owner = search.owner ?? 'me'
+  const [text, setText] = useState(search.q ?? '')
+
+  // Follow the URL (Clear filters, back/forward) …
+  useEffect(() => setText(search.q ?? ''), [search.q])
+  // … and push typing to it after a pause.
+  useEffect(() => {
+    if (text === (search.q ?? '')) return
+    const timer = setTimeout(() => onChange({ q: text || undefined }), DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [text, search.q, onChange])
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        size="sm"
+        aria-label={t('mocks.filterOwner')}
+        value={owner === 'me' || owner === 'all' ? owner : ''}
+        onValueChange={(value) => value && onChange({ owner: value })}
+      >
+        <ToggleGroupItem value="me" className={ON}>{t('mocks.ownerMe')}</ToggleGroupItem>
+        <ToggleGroupItem value="all" className={ON}>{t('mocks.ownerAll')}</ToggleGroupItem>
+      </ToggleGroup>
+
+      <div className="relative min-w-48 basis-full sm:flex-1 sm:basis-auto sm:max-w-72">
+        <SearchIcon aria-hidden className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          aria-label={t('mocks.search')}
+          placeholder={t('mocks.searchPlaceholder')}
+          className="ps-8"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </div>
+
+      <Select
+        value={search.integration ?? ANY}
+        onValueChange={(value) => onChange({ integration: value === ANY ? undefined : value })}
+      >
+        <SelectTrigger aria-label={t('mocks.integration')} className="w-44">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ANY}>{t('mocks.anyIntegration')}</SelectItem>
+          {integrations.map((i) => (
+            <SelectItem key={i.key} value={i.key}>
+              {i.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={search.status ?? ANY} onValueChange={(value) => onChange({ status: value === ANY ? undefined : value })}>
+        <SelectTrigger aria-label={t('mocks.status')} className="w-36">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ANY}>{t('mocks.anyStatus')}</SelectItem>
+          {STATUSES.map((s) => (
+            <SelectItem key={s} value={s}>
+              {s}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}

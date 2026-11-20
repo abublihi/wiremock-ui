@@ -1,17 +1,110 @@
+import { useCallback } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
+import { AlertCircleIcon, InboxIcon } from 'lucide-react'
+import { useIntegrations, useMocks } from '@/ui/api/queries'
+import { NewMockButton, ResetMineButton } from '@/ui/components/mocks/MockActions'
+import { MockFilters, type MocksSearch } from '@/ui/components/mocks/MockFilters'
+import { MockTable, MockTableSkeleton } from '@/ui/components/mocks/MockTable'
+import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
+import { Button } from '@/ui/components/ui/button'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
 import { useT } from '@/ui/i18n'
 
-// Placeholder so sign-in has somewhere to land; the mock list replaces it.
-export const Route = createFileRoute('/_app/mocks/')({ component: MocksPlaceholder })
+export type { MocksSearch }
 
-function MocksPlaceholder() {
+const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined)
+
+export const Route = createFileRoute('/_app/mocks/')({
+  validateSearch: (raw: Record<string, unknown>): MocksSearch => ({
+    owner: str(raw.owner),
+    integration: str(raw.integration),
+    status: str(raw.status),
+    q: str(raw.q),
+  }),
+  component: MocksRoute,
+})
+
+function MocksRoute() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
+  const onSearchChange = useCallback(
+    (next: MocksSearch) => void navigate({ search: (prev) => ({ ...prev, ...next }), replace: true }),
+    [navigate],
+  )
+  return <MocksPage search={search} onSearchChange={onSearchChange} />
+}
+
+/** The mock list. `search` is the URL's filter state; `onSearchChange` merges a patch into it (undefined clears a key). */
+export function MocksPage({
+  search,
+  onSearchChange,
+}: {
+  search: MocksSearch
+  onSearchChange: (next: MocksSearch) => void
+}) {
   const t = useT()
+  const owner = search.owner ?? 'me'
+  // 'all' is the UI's word for no owner filter; the API treats an owner value literally.
+  const mocks = useMocks({ owner: owner === 'all' ? undefined : owner, integration: search.integration, status: search.status, q: search.q })
+  const integrations = useIntegrations()
+  const filtered = Boolean(search.integration || search.status || search.q || owner !== 'me')
+
+  const count = mocks.data?.length ?? 0
+  const baseline = (mocks.data ?? []).filter((m) => (m.metadata?.wiremockUi?.owner ?? 'baseline') === 'baseline').length
+  const clearFilters = () => onSearchChange({ owner: undefined, integration: undefined, status: undefined, q: undefined })
+
   return (
-    <div className="flex max-w-2xl flex-col gap-2">
-      <h1 className="glow-text font-display text-4xl font-bold tracking-tight uppercase">
-        {t('mocks.placeholderTitle')}
-      </h1>
-      <p className="text-xs text-muted-foreground">{t('mocks.placeholderBody')}</p>
+    <div className="fade-up flex flex-col gap-5">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="glow-text font-display text-4xl font-bold tracking-tight uppercase">{t('mocks.title')}</h1>
+          <p className="text-xs text-muted-foreground">
+            {mocks.data ? t(count === 1 ? 'mocks.captionOne' : 'mocks.caption', { count, baseline }) : '//'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ResetMineButton />
+          <NewMockButton />
+        </div>
+      </header>
+
+      <MockFilters search={search} integrations={integrations.data ?? []} onChange={onSearchChange} />
+
+      {mocks.isPending ? (
+        <MockTableSkeleton />
+      ) : mocks.isError ? (
+        <Alert variant="destructive">
+          <AlertCircleIcon />
+          <AlertTitle>{t('mocks.loadFailed')}</AlertTitle>
+          <AlertDescription>
+            <p>{mocks.error.message}</p>
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => void mocks.refetch()}>
+              {t('mocks.retry')}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : mocks.data.length === 0 ? (
+        <Empty className="rounded-md border border-dashed border-line">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <InboxIcon />
+            </EmptyMedia>
+            <EmptyTitle>{t(filtered ? 'mocks.noMatchTitle' : 'mocks.emptyTitle')}</EmptyTitle>
+            <EmptyDescription>{t(filtered ? 'mocks.noMatchBody' : 'mocks.emptyBody')}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            {filtered ? (
+              <Button variant="outline" onClick={clearFilters}>
+                {t('mocks.clearFilters')}
+              </Button>
+            ) : (
+              <NewMockButton />
+            )}
+          </EmptyContent>
+        </Empty>
+      ) : (
+        <MockTable mocks={mocks.data} />
+      )}
     </div>
   )
 }
