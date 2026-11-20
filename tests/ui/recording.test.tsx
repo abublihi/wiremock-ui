@@ -22,7 +22,7 @@ afterEach(() => {
 afterAll(() => server.close())
 
 const BASE = 'http://localhost:3000'
-const config = (recordingAllowed = true) => ({ storeDriver: 'sqlite' as const, wiremockPublicUrl: 'http://wiremock.test:8080', recordingAllowed })
+const config = (recordingAllowed = true) => ({ storeDriver: 'sqlite' as const, wiremockPublicUrl: 'http://wiremock.test:8080', recordingAllowed, seedPrune: false })
 const withConfig = (ui: ReactNode, allowed = true) => <ServerConfigProvider config={config(allowed)}>{ui}</ServerConfigProvider>
 
 const shop: Integration = { key: 'shop', name: 'Shop', prefix: '/shop', updatedAt: '', updatedBy: '' }
@@ -362,7 +362,7 @@ describe('review list limits', () => {
       http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })),
     )
     await renderApp(
-      <ServerConfigProvider config={{ storeDriver: 'none', wiremockPublicUrl: 'http://wiremock.test:8080', recordingAllowed: true }}>
+      <ServerConfigProvider config={{ storeDriver: 'none', wiremockPublicUrl: 'http://wiremock.test:8080', recordingAllowed: true, seedPrune: false }}>
         <RecordingPage search={{ review: 'rec-1' }} />
       </ServerConfigProvider>,
     )

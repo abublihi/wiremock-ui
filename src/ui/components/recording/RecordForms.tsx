@@ -35,8 +35,23 @@ export function emptyMessage(empty: EmptyResult | undefined, kind: 'recording' |
   ].filter(Boolean)
   const filters = parts.length > 0 ? parts.join(', ') : t('recording.filterNone')
   const one = empty.requests === 1
-  if (kind === 'recording') return t(one ? 'recording.emptyFilteredOne' : 'recording.emptyFiltered', { count: empty.requests, filters })
-  return t(one ? 'recording.snapshotFilteredOne' : 'recording.snapshotFiltered', { count: empty.requests, filters })
+  const message =
+    kind === 'recording'
+      ? t(one ? 'recording.emptyFilteredOne' : 'recording.emptyFiltered', { count: empty.requests, filters })
+      : t(one ? 'recording.snapshotFilteredOne' : 'recording.snapshotFiltered', { count: empty.requests, filters })
+  // What did go through, to compare with the filters (the server lists up to 10 paths).
+  const paths = 'paths' in empty && Array.isArray(empty.paths) ? empty.paths : []
+  return paths.length > 0 ? `${message} ${t('recording.emptyPaths', { paths: paths.join(', ') })}` : message
+}
+
+/** The filters a running recording was started with, in words (null when none or unknown). */
+export function filtersText(filters: { method?: string; urlPathPattern?: string } | undefined): string | null {
+  const t = translate
+  const parts = [
+    filters?.method && t('recording.filterMethod', { method: filters.method }),
+    filters?.urlPathPattern && t('recording.filterPath', { pattern: filters.urlPathPattern }),
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join(', ') : null
 }
 
 /** The filter fields as the API takes them (empty ones left out). */
@@ -197,7 +212,7 @@ export function useStopAndReview() {
       if (recording) {
         toast.success(t(recording.items.length === 1 ? 'recording.stoppedOne' : 'recording.stopped', { count: recording.items.length }))
         void navigate({ to: '/recording', search: { review: recording.id } })
-      } else toast.info(t('recording.stoppedEmptyTitle'), { description: emptyMessage(result.empty, 'recording'), duration: 15_000 })
+      } else toast.info(t('recording.stoppedEmptyTitle'), { description: emptyMessage(result.empty, 'recording'), duration: Number.POSITIVE_INFINITY, closeButton: true })
     } catch (error) {
       toast.error(t('recording.stopFailed'), { description: error instanceof Error ? error.message : undefined })
     }
@@ -217,12 +232,20 @@ export function RecordPanel({ state }: { state: RecordingState | undefined }) {
   const stop = useStopAndReview()
 
   if (state?.status === 'recording') {
+    // The status carries the filters when this app started the recording.
+    const runningFilters = filtersText((state as { filters?: { method?: string; urlPathPattern?: string } }).filters)
     return (
       <section aria-labelledby={`${ids}-running`} className="glow-border flex flex-col gap-3 rounded-md border border-hazard/50 bg-surface p-4 sm:p-5">
         <h2 id={`${ids}-running`} className="flex items-center gap-2 font-display text-xl font-semibold tracking-tight uppercase">
           <span aria-hidden className="recording-pulse size-2.5 rounded-full bg-mismatch" />
-          <span className="min-w-0 break-all">{t('recording.runningTitle', { url: state.target ?? '?' })}</span>
+          <span className="min-w-0 break-all">
+            {t('recording.runningTitle')}{' '}
+            <span dir="ltr" className="font-mono text-base font-medium normal-case">
+              {state.target ?? '?'}
+            </span>
+          </span>
         </h2>
+        {runningFilters && <p className="text-xs">{t('recording.runningFilters', { filters: runningFilters })}</p>}
         <p className="text-xs text-muted-foreground">
           {state.startedBy && state.startedAt
             ? t('recording.runningBy', { name: state.startedBy, when: relativeTime(state.startedAt) })
@@ -322,7 +345,7 @@ export function SnapshotPanel() {
       const result = await snapshot.mutateAsync(filterInput(filters))
       const { recording } = result
       if (!recording) {
-        toast.info(t('recording.snapshotEmptyTitle'), { description: emptyMessage(result.empty, 'snapshot'), duration: 15_000 })
+        toast.info(t('recording.snapshotEmptyTitle'), { description: emptyMessage(result.empty, 'snapshot'), duration: Number.POSITIVE_INFINITY, closeButton: true })
         return
       }
       toast.success(t(recording.items.length === 1 ? 'recording.snapshotDoneOne' : 'recording.snapshotDone', { count: recording.items.length }))

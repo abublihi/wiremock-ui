@@ -222,7 +222,7 @@ describe('Postman preview on the Import page', () => {
   it('in WireMock-only mode, says the catalog is kept in memory', async () => {
     mockApi()
     await pick(
-      <ServerConfigProvider config={{ storeDriver: 'none', wiremockPublicUrl: 'http://localhost:8080', recordingAllowed: true }}>
+      <ServerConfigProvider config={{ storeDriver: 'none', wiremockPublicUrl: 'http://localhost:8080', recordingAllowed: true, seedPrune: false }}>
         <ImportPage />
       </ServerConfigProvider>,
     )

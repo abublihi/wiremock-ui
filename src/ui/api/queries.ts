@@ -69,8 +69,7 @@ function defaultFetchSession() {
   return apiFetch<SessionData>('/api/session', { redirectOnUnauthorized: false })
 }
 
-// `seedPrune` (SEED_PRUNE) is optional so an older server without it reads as off.
-export type ServerConfig = Omit<PublicConfig, 'seedPrune'> & { seedPrune?: boolean }
+export type ServerConfig = PublicConfig
 
 /** How the server runs (store driver, …); it only changes with a restart, so it is never refetched. */
 export const serverConfigQueryOptions = (fetchConfig: () => Promise<ServerConfig> = () => apiFetch<ServerConfig>('/api/config')) =>

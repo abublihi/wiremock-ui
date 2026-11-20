@@ -92,3 +92,14 @@ describe('acceptPayload: first answer only', () => {
     expect(acceptPayload([row], [])).toEqual([{ id: 'r1' }])
   })
 })
+
+describe('empty recording message', () => {
+  it('lists the paths that went through, to compare with the filters', async () => {
+    const { emptyMessage, filtersText } = await import('@/ui/components/recording/RecordForms')
+    const text = emptyMessage({ reason: 'filtered', requests: 2, filters: { urlPathPattern: '^/api/.*$' }, paths: ['/shop/items/1', '/health'] }, 'recording')
+    expect(text).toContain('2 requests went through the recording but none matched your filters (path pattern ^/api/.*$).')
+    expect(text).toContain('Paths that went through: /shop/items/1, /health')
+    expect(filtersText({ method: 'GET' })).toBe('method GET')
+    expect(filtersText(undefined)).toBeNull()
+  })
+})
