@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import type { StubMapping } from '@/server/wiremock/types'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { StatusBadge } from '@/ui/components/common/StatusBadge'
@@ -63,9 +64,9 @@ export function MockTable({ mocks }: { mocks: StubMapping[] }) {
           return (
             <TableRow key={stub.id} className="hover:bg-surface-2">
               <TableCell className="max-w-28 whitespace-normal md:max-w-64">
-                <a href={`/mocks/${encodeURIComponent(stub.id)}`} className="font-medium hover:text-signal-fg hover:underline">
+                <Link to="/mocks/$id" params={{ id: stub.id }} className="font-medium hover:text-signal-fg hover:underline">
                   {stub.name || t('mocks.unnamed')}
-                </a>
+                </Link>
                 {(meta?.integration || meta?.endpoint) && (
                   <p className="truncate text-[11px] text-muted-foreground">
                     {[meta.integration, meta.endpoint].filter(Boolean).join(' · ')}

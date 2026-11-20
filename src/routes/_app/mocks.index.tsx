@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { AlertCircleIcon, InboxIcon } from 'lucide-react'
 import { useIntegrations, useMocks } from '@/ui/api/queries'
 import { NewMockButton, ResetMineButton } from '@/ui/components/mocks/MockActions'
@@ -12,7 +12,11 @@ import { useT } from '@/ui/i18n'
 
 export type { MocksSearch }
 
-const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined)
+// The router JSON-parses search values, so `?status=404` arrives as a number: accept strings and numbers.
+const str = (v: unknown) => {
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v)
+  return typeof v === 'string' && v !== '' ? v : undefined
+}
 
 export const Route = createFileRoute('/_app/mocks/')({
   validateSearch: (raw: Record<string, unknown>): MocksSearch => ({
@@ -24,11 +28,12 @@ export const Route = createFileRoute('/_app/mocks/')({
   component: MocksRoute,
 })
 
-function MocksRoute() {
-  const search = Route.useSearch()
-  const navigate = Route.useNavigate()
+export function MocksRoute() {
+  const search = useSearch({ strict: false }) as MocksSearch
+  const navigate = useNavigate()
   const onSearchChange = useCallback(
-    (next: MocksSearch) => void navigate({ search: (prev) => ({ ...prev, ...next }), replace: true }),
+    (next: MocksSearch) =>
+      void navigate({ to: '.', search: ((prev: MocksSearch) => ({ ...prev, ...next })) as never, replace: true }),
     [navigate],
   )
   return <MocksPage search={search} onSearchChange={onSearchChange} />
@@ -70,14 +75,24 @@ export function MocksPage({
 
       <MockFilters search={search} integrations={integrations.data ?? []} onChange={onSearchChange} />
 
+      {mocks.isError && mocks.data && (
+        <p role="alert" className="flex items-center gap-2 text-xs text-mismatch">
+          <AlertCircleIcon className="size-3.5" />
+          {t('mocks.refreshFailed', { message: mocks.error.message })}
+          <Button variant="ghost" size="xs" onClick={() => void mocks.refetch()}>
+            {t('mocks.retry')}
+          </Button>
+        </p>
+      )}
+
       {mocks.isPending ? (
         <MockTableSkeleton />
-      ) : mocks.isError ? (
+      ) : mocks.isError && !mocks.data ? (
         <Alert variant="destructive">
           <AlertCircleIcon />
           <AlertTitle>{t('mocks.loadFailed')}</AlertTitle>
           <AlertDescription>
-            <p>{mocks.error.message}</p>
+            <p>{mocks.error?.message}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => void mocks.refetch()}>
               {t('mocks.retry')}
             </Button>

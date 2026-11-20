@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { MoreHorizontalIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { StubMapping } from '@/server/wiremock/types'
@@ -35,10 +36,10 @@ export function NewMockButton() {
   const t = useT()
   return (
     <Button asChild>
-      <a href="/mocks/new">
+      <Link to="/mocks/new">
         <PlusIcon data-icon="inline-start" />
         {t('mocks.new')}
-      </a>
+      </Link>
     </Button>
   )
 }
@@ -83,7 +84,9 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
           <DropdownMenuItem asChild>
-            <a href={`/mocks/${encodeURIComponent(stub.id)}`}>{t('mocks.open')}</a>
+            <Link to="/mocks/$id" params={{ id: stub.id }}>
+              {t('mocks.open')}
+            </Link>
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() =>
@@ -139,12 +142,21 @@ export function ResetMineButton() {
         <AlertDialogContent className="glass-panel">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {count === undefined ? t('mocks.resetCounting') : t('mocks.resetTitle', { count })}
+              {mine.isError
+                ? t('mocks.resetCountFailed')
+                : count === undefined
+                  ? t('mocks.resetCounting')
+                  : t('mocks.resetTitle', { count })}
             </AlertDialogTitle>
-            <AlertDialogDescription>{t('mocks.resetBody')}</AlertDialogDescription>
+            <AlertDialogDescription>{mine.isError ? mine.error.message : t('mocks.resetBody')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            {mine.isError && (
+              <Button variant="outline" onClick={() => void mine.refetch()}>
+                {t('mocks.retry')}
+              </Button>
+            )}
             <AlertDialogAction
               variant="destructive"
               disabled={count === undefined || count === 0}

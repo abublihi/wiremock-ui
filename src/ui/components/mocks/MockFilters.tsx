@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { SearchIcon } from 'lucide-react'
 import type { Integration } from '@/server/catalog/types'
 import { Input } from '@/ui/components/ui/input'
@@ -25,15 +25,23 @@ export function MockFilters({
   const t = useT()
   const owner = search.owner ?? 'me'
   const [text, setText] = useState(search.q ?? '')
+  const pushed = useRef(search.q ?? '')
 
-  // Follow the URL (Clear filters, back/forward) …
-  useEffect(() => setText(search.q ?? ''), [search.q])
+  // Follow the URL (Clear filters, back/forward) — but not our own echo, which would clobber keystrokes typed meanwhile …
+  useEffect(() => {
+    if ((search.q ?? '') === pushed.current) return
+    pushed.current = search.q ?? ''
+    setText(pushed.current)
+  }, [search.q])
   // … and push typing to it after a pause.
   useEffect(() => {
-    if (text === (search.q ?? '')) return
-    const timer = setTimeout(() => onChange({ q: text || undefined }), DEBOUNCE_MS)
+    if (text === pushed.current) return
+    const timer = setTimeout(() => {
+      pushed.current = text
+      onChange({ q: text || undefined })
+    }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [text, search.q, onChange])
+  }, [text, onChange])
 
   return (
     <div className="flex flex-wrap items-center gap-2">

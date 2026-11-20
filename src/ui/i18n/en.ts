@@ -98,6 +98,8 @@ export const en = {
   'mocks.clearFilters': 'Clear filters',
   'mocks.loadFailed': 'Could not load mocks',
   'mocks.retry': 'Retry',
+  'mocks.refreshFailed': 'Could not refresh: {message}',
+  'mocks.resetCountFailed': 'Could not count your mocks',
 
   'editor.newTitle': 'New mock',
   'editor.newCaption': '// pick an endpoint from the catalog',

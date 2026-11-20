@@ -1,4 +1,4 @@
-import { queryOptions, type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, queryOptions, type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useT } from '@/ui/i18n'
@@ -73,6 +73,7 @@ export function useMocks(filter: MockFilter, options: { enabled?: boolean } = {}
   return useQuery({
     queryKey: queryKeys.mockList(filter),
     queryFn: () => apiFetch<StubMapping[]>('/api/mocks', { query: filter }),
+    placeholderData: keepPreviousData,
     enabled: options.enabled ?? true,
   })
 }

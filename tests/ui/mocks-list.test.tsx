@@ -4,7 +4,13 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { MocksPage, type MocksSearch } from '@/routes/_app/mocks.index'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Outlet, RouterProvider, createMemoryHistory, createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import { render } from '@testing-library/react'
+import { Toaster } from '@/ui/components/ui/sonner'
+import { TooltipProvider } from '@/ui/components/ui/tooltip'
+import { PrefsProvider } from '@/ui/i18n'
+import { MocksPage, MocksRoute, Route, type MocksSearch } from '@/routes/_app/mocks.index'
 import { renderApp } from './helpers'
 
 const server = setupServer()
@@ -142,6 +148,30 @@ describe('mock list', () => {
     await waitFor(() => expect(calls.restore).toEqual({ version: 7 }))
   })
 
+  it('reset count request carries owner=me and a failure shows Retry', async () => {
+    const seen: URL[] = []
+    let fail = true
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/mocks`, ({ request }) => {
+        const url = new URL(request.url)
+        seen.push(url)
+        if (url.searchParams.get('owner') === 'me' && fail && seen.length > 1) return HttpResponse.json({ error: 'boom' }, { status: 500 })
+        return HttpResponse.json([stub('a')])
+      }),
+    )
+    await renderApp(<Harness initial={{ owner: 'all' }} />)
+    await screen.findByText('Mock a')
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('button', { name: 'Reset my mocks' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await within(dialog).findByText('Could not count your mocks')
+    expect(seen.some((u) => u.searchParams.get('owner') === 'me')).toBe(true)
+    fail = false
+    await ue.click(within(dialog).getByRole('button', { name: 'Retry' }))
+    await within(dialog).findByText(/Delete your 1 mocks\?/)
+  })
+
   it('reset my mocks shows the count in the confirm and the result toast', async () => {
     server.use(
       http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
@@ -184,5 +214,59 @@ describe('mock list', () => {
     mockApi([stub('a')])
     await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }))
     await screen.findByText('Mock a')
+  })
+})
+
+describe('mocks route search', () => {
+  const validate = Route.options.validateSearch as (raw: Record<string, unknown>) => MocksSearch
+
+  it('coerces numbers and strings, ignores everything else', () => {
+    expect(validate({ status: 404, q: 2024, integration: 123, owner: 'all' })).toEqual({ status: '404', q: '2024', integration: '123', owner: 'all' })
+    expect(validate({ status: [404], q: { a: 1 }, integration: null, owner: true })).toEqual({})
+    expect(validate({ status: Number.NaN, q: '' })).toEqual({})
+  })
+
+  async function renderRoute(path: string) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const root = createRootRoute({
+      component: () => (
+        <QueryClientProvider client={queryClient}>
+          <PrefsProvider prefs={{ theme: 'system' }} onThemeChange={() => {}}>
+            <TooltipProvider>
+              <Outlet />
+            </TooltipProvider>
+            <Toaster />
+          </PrefsProvider>
+        </QueryClientProvider>
+      ),
+    })
+    const mocks = createRoute({ getParentRoute: () => root, path: '/mocks', validateSearch: validate, component: MocksRoute })
+    const detail = createRoute({ getParentRoute: () => root, path: '/mocks/$id', component: () => <main>detail</main> })
+    const create = createRoute({ getParentRoute: () => root, path: '/mocks/new', component: () => <main>new</main> })
+    const router = createRouter({
+      routeTree: root.addChildren([mocks, detail, create]),
+      history: createMemoryHistory({ initialEntries: [path] }),
+    })
+    render(<RouterProvider router={router} />)
+    return router
+  }
+
+  it('?status=404 from the URL filters the request; switching to All updates the URL', async () => {
+    const seen = mockApi([stub('a')])
+    const router = await renderRoute('/mocks?status=404')
+    await screen.findByText('Mock a')
+    expect(seen[0]!.url.searchParams.get('status')).toBe('404')
+    expect(seen[0]!.url.searchParams.get('owner')).toBe('me')
+    await userEvent.setup().click(screen.getByRole('radio', { name: 'All mocks' }))
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ owner: 'all', status: '404' }))
+    await waitFor(() => expect(seen.some((s) => !s.url.searchParams.has('owner'))).toBe(true))
+  })
+
+  it('links to the editor routes', async () => {
+    mockApi([stub('a')])
+    await renderRoute('/mocks')
+    await screen.findByText('Mock a')
+    expect(screen.getByRole('link', { name: 'Mock a' }).getAttribute('href')).toBe('/mocks/a')
+    expect(screen.getAllByRole('link', { name: 'New mock' })[0]!.getAttribute('href')).toBe('/mocks/new')
   })
 })
