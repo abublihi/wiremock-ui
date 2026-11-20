@@ -7,10 +7,10 @@ import { endpointsQueryOptions, queryKeys, useIntegrations, useSession } from '@
 import { Button } from '@/ui/components/ui/button'
 import { useWireMockOnly, useWiremockPublicUrl } from '@/ui/config'
 import { useT, type MessageKey } from '@/ui/i18n'
-import { CHECKLIST_DISMISSED_KEY, CHECKLIST_DONE_KEY, REQUEST_LOG_SEEN_KEY, REQUEST_SENT_KEY } from '@/ui/lib/guide'
+import { type ChecklistFlag, checklistKey } from '@/ui/lib/guide'
 import { cn } from '@/ui/lib/utils'
 
-// ── Per-browser flags (localStorage), safe when storage is blocked and on the server ─────────────────────────────
+// ── Per-browser, per-user flags (localStorage), safe when storage is blocked and on the server ─────────────────────────────
 
 const FLAG_EVENT = 'wmui-flag-change'
 
@@ -41,24 +41,35 @@ function subscribeFlags(onChange: () => void) {
   }
 }
 
-/** A remembered yes/no for this browser; `serverValue` is what the server render (and the first paint) uses. */
-export function useFlag(key: string, serverValue: boolean): boolean {
+/**
+ * A remembered yes/no for this browser and the signed-in user; `serverValue` is what the server render (and the first
+ * paint, and the moment before the session is known) uses.
+ */
+export function useFlag(flag: ChecklistFlag, userId: string | undefined, serverValue: boolean): boolean {
   return useSyncExternalStore(
     subscribeFlags,
-    () => readFlag(key),
+    () => (userId === undefined ? serverValue : readFlag(checklistKey(flag, userId))),
     () => serverValue,
   )
 }
 
+/** The signed-in user's id: the checklist's flags are kept per user. */
+export function useChecklistUser(): string | undefined {
+  return useSession().data?.user.id
+}
+
 /** Shows the checklist on the Mocks page again (the Guide's "Show the Getting started checklist"). */
-export function reopenChecklist(): void {
-  setFlag(CHECKLIST_DONE_KEY, false)
-  setFlag(CHECKLIST_DISMISSED_KEY, false)
+export function reopenChecklist(userId: string | undefined): void {
+  if (userId === undefined) return
+  setFlag(checklistKey('done', userId), false)
+  setFlag(checklistKey('dismissed', userId), false)
 }
 
 /** The request log calls this once it has shown a request: the checklist's last step. */
-export function markRequestLogSeen(): void {
-  if (!readFlag(REQUEST_LOG_SEEN_KEY)) setFlag(REQUEST_LOG_SEEN_KEY, true)
+export function markRequestLogSeen(userId: string | undefined): void {
+  if (userId === undefined) return
+  const key = checklistKey('requestLogSeen', userId)
+  if (!readFlag(key)) setFlag(key, true)
 }
 
 // ── The checklist ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -71,17 +82,18 @@ const ENDPOINT_PROBE = 10
 /**
  * First-run "Getting started" on the Mocks page: five steps from an integration to the request log, each ticked from
  * real data (an integration exists, an endpoint exists, a mock exists, WireMock has received a request, the request
- * log was opened). Dismissed per browser; the Guide shows it again.
+ * log was opened). Dismissed per browser and user; the Guide shows it again.
  */
 export function GettingStartedChecklist() {
   const t = useT()
   // Server render and first paint: hidden, so a dismissed checklist never flashes.
   // Hidden (and asking the server nothing) once dismissed or once every step is done.
-  const dismissed = useFlag(CHECKLIST_DISMISSED_KEY, true)
-  const finished = useFlag(CHECKLIST_DONE_KEY, true)
+  const userId = useChecklistUser()
+  const dismissed = useFlag('dismissed', userId, true)
+  const finished = useFlag('done', userId, true)
   const hidden = dismissed || finished
-  const seenLog = useFlag(REQUEST_LOG_SEEN_KEY, false)
-  const sent = useFlag(REQUEST_SENT_KEY, false)
+  const seenLog = useFlag('requestLogSeen', userId, false)
+  const sent = useFlag('requestSent', userId, false)
   // WireMock-only mode has no owners: every mock counts.
   const wiremockOnly = useWireMockOnly()
   const user = useSession().data?.user.username
@@ -115,12 +127,12 @@ export function GettingStartedChecklist() {
   })
   const hasRequest = sent || (requests.data ?? 0) > 0
   useEffect(() => {
-    if (hasRequest && !sent) setFlag(REQUEST_SENT_KEY, true)
-  }, [hasRequest, sent])
+    if (hasRequest && !sent && userId) setFlag(checklistKey('requestSent', userId), true)
+  }, [hasRequest, sent, userId])
   const doneNow = all.length > 0 && hasEndpoint && (mocks.data ?? 0) > 0 && hasRequest && seenLog
   useEffect(() => {
-    if (doneNow && !hidden) setFlag(CHECKLIST_DONE_KEY, true)
-  }, [doneNow, hidden])
+    if (doneNow && !hidden && userId) setFlag(checklistKey('done', userId), true)
+  }, [doneNow, hidden, userId])
   if (hidden) return null
 
   const firstIntegration = integrations.data?.[0]?.key
@@ -196,7 +208,7 @@ export function GettingStartedChecklist() {
             size="icon-sm"
             aria-label={t('checklist.dismiss')}
             title={t('checklist.dismiss')}
-            onClick={() => setFlag(CHECKLIST_DISMISSED_KEY, true)}
+            onClick={() => userId && setFlag(checklistKey('dismissed', userId), true)}
           >
             <XIcon />
           </Button>

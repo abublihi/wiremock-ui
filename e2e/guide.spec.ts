@@ -72,7 +72,10 @@ test('Getting started, end to end, from the guide\'s links only', async ({ page 
 
   // Every step is ticked: the checklist on Mocks has hidden itself for good.
   await page.goto('/mocks')
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('wmui.gettingStarted.done'))).toBe('1')
+  // Kept per user: wmui.checklist.<user id>.done.
+  await expect
+    .poll(() => page.evaluate(() => Object.keys(localStorage).some((k) => /^wmui\.checklist\.[^.]+\.done$/.test(k) && localStorage.getItem(k) === '1')))
+    .toBe(true)
   await expect(page.getByRole('heading', { name: 'Getting started' })).toBeHidden()
 })
 

@@ -14,9 +14,7 @@ import { GuidePage } from '@/ui/components/guide/GuidePage'
 import { HelpPanel, useGuideShortcut } from '@/ui/components/guide/HelpPanel'
 import { Term } from '@/ui/components/guide/Term'
 import {
-  CHECKLIST_DISMISSED_KEY,
-  CHECKLIST_DONE_KEY,
-  REQUEST_SENT_KEY,
+  checklistKey,
   GLOSSARY,
   GUIDE_SECTIONS,
   guideHref,
@@ -27,6 +25,11 @@ import {
   sectionForPath,
 } from '@/ui/lib/guide'
 import { renderApp } from './helpers'
+
+// The test session signs in as user u1.
+const CHECKLIST_DISMISSED_KEY = 'wmui.checklist.u1.dismissed'
+const CHECKLIST_DONE_KEY = 'wmui.checklist.u1.done'
+const REQUEST_SENT_KEY = 'wmui.checklist.u1.requestSent'
 
 const GUIDE_DIR = join(process.cwd(), 'docs/guide')
 const files = readdirSync(GUIDE_DIR).filter((f) => f.endsWith('.md'))
@@ -373,7 +376,7 @@ describe('Getting started checklist', () => {
     expect(screen.getByRole('link', { name: /Open the request log/ })).toBeTruthy()
     // The mock step counts the signed-in user's own mocks.
     expect(mockQueries.at(-1)?.get('owner')).toBe('sara')
-    act(() => markRequestLogSeen())
+    act(() => markRequestLogSeen('u1'))
     // All five done: it hides itself for good (until the Guide shows it again).
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Getting started' })).toBeNull())
     expect(window.localStorage.getItem(CHECKLIST_DONE_KEY)).toBe('1')
@@ -393,7 +396,15 @@ describe('Getting started checklist', () => {
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Hide the Getting started checklist' }))
     expect(screen.queryByRole('heading', { name: 'Getting started' })).toBeNull()
     expect(window.localStorage.getItem(CHECKLIST_DISMISSED_KEY)).toBe('1')
-    act(() => reopenChecklist())
+    act(() => reopenChecklist('u1'))
+    expect(await screen.findByRole('heading', { name: 'Getting started' })).toBeTruthy()
+  })
+
+  it('keeps its flags per user: someone else on this browser still sees their own checklist', async () => {
+    api({})
+    window.localStorage.setItem(checklistKey('dismissed', 'someone-else'), '1')
+    window.localStorage.setItem(checklistKey('done', 'someone-else'), '1')
+    await renderApp(<GettingStartedChecklist />)
     expect(await screen.findByRole('heading', { name: 'Getting started' })).toBeTruthy()
   })
 })

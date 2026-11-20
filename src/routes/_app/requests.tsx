@@ -6,7 +6,7 @@ import { type RequestFilter, useClearRequests, useDocumentVisible, useIntegratio
 import { useRecordingAllowed } from '@/ui/config'
 import { emptyMessage } from '@/ui/components/recording/RecordForms'
 import { WithTerm } from '@/ui/components/guide/Term'
-import { markRequestLogSeen } from '@/ui/components/guide/GettingStarted'
+import { markRequestLogSeen, useChecklistUser } from '@/ui/components/guide/GettingStarted'
 import { LiveDot } from '@/ui/components/common/LiveDot'
 import { CountTool } from '@/ui/components/requests/CountTool'
 import { RequestDrawer } from '@/ui/components/requests/RequestDrawer'
@@ -90,9 +90,10 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
   const unmatched = rows.filter((r) => !r.matched).length
   // The Getting started checklist's last step: the request log showed a request.
   const shown = rows.length > 0
+  const checklistUser = useChecklistUser()
   useEffect(() => {
-    if (shown) markRequestLogSeen()
-  }, [shown])
+    if (shown) markRequestLogSeen(checklistUser)
+  }, [shown, checklistUser])
   const clearFilters = () =>
     onSearchChange({ matched: undefined, integration: undefined, status: undefined, q: undefined, range: undefined })
   const open = useCallback((id: string) => onSearchChange({ open: id }), [onSearchChange])

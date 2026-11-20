@@ -6,7 +6,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '
 import { useT } from '@/ui/i18n'
 import { GUIDE_SECTIONS, filterMenu, type GuideSection } from '@/ui/lib/guide'
 import { cn } from '@/ui/lib/utils'
-import { reopenChecklist } from './GettingStarted'
+import { reopenChecklist, useChecklistUser } from './GettingStarted'
 import { GuideMarkdown } from './GuideMarkdown'
 
 /**
@@ -184,6 +184,7 @@ function GuideMenu({ sections, current }: { sections: GuideSection[]; current: s
 function GuideSectionView({ section }: { section: GuideSection }) {
   const t = useT()
   const navigate = useNavigate()
+  const checklistUser = useChecklistUser()
   return (
     <section
       id={section.slug}
@@ -204,7 +205,7 @@ function GuideSectionView({ section }: { section: GuideSection }) {
           size="sm"
           className="mt-3"
           onClick={() => {
-            reopenChecklist()
+            reopenChecklist(checklistUser)
             void navigate({ to: '/mocks' })
           }}
         >
