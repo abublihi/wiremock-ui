@@ -79,3 +79,38 @@ test('importing the same collection again changes nothing and deletes nothing', 
   expect(report).toMatchObject({ created: 0, updated: 0, unchanged: plan.mocks, pruned: 0 })
   expect((await env.rt.store.listAll()).length).toBe(before)
 })
+
+test('re-importing with "Create new" (the default) adds -2 endpoints with mocks of their own and leaves the originals alone', async () => {
+  const snapshot = async () =>
+    (await env.rt.store.listAll())
+      .filter((s) => s.metadata?.wiremockUi?.integration === 'shop-api')
+      .map((s) => ({ id: s.id, endpoint: s.metadata!.wiremockUi!.endpoint, name: s.name }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+  const before = await snapshot()
+  // What the Import page does when the integration exists: plan against the stored catalog with the default actions.
+  const stored = (await env.rt.catalog.getIntegration('shop-api')) as Integration
+  const existing = { integration: stored, endpointKeys: (await env.rt.catalog.listEndpoints('shop-api')).map((e) => e.key) }
+  const again = planPostman(collection, { integration: stored, existing })
+  expect(again.rows.map((r) => r.key)).toEqual(['get-order-2', 'search-orders-2', 'create-order-2', 'sign-in-2', 'customer-graph-2'])
+  const res = await runImport(env.rt, req('/api/import', 'POST', again.bundle, as(admin)))
+  expect(await res.json()).toMatchObject({ created: plan.mocks, updated: 0, pruned: 0 })
+
+  const after = await snapshot()
+  // The original endpoints keep exactly the mocks they had.
+  expect(after.filter((m) => !m.endpoint!.endsWith('-2'))).toEqual(before)
+  const copies = after.filter((m) => m.endpoint!.endsWith('-2'))
+  expect(copies).toHaveLength(plan.mocks)
+  expect(new Set(copies.map((m) => m.endpoint))).toEqual(new Set(['get-order-2', 'search-orders-2', 'create-order-2', 'sign-in-2']))
+
+  // Overwrite on every row: same keys, same ids — nothing new, nothing duplicated.
+  const endpointKeys = (await env.rt.catalog.listEndpoints('shop-api')).map((e) => e.key)
+  const overwrite = planPostman(collection, {
+    integration: stored,
+    existing: { integration: stored, endpointKeys },
+    choices: Object.fromEntries(again.rows.map((r) => [r.id, { action: 'overwrite' as const }])),
+  })
+  const res2 = await runImport(env.rt, req('/api/import', 'POST', overwrite.bundle, as(admin)))
+  expect(await res2.json()).toMatchObject({ created: 0, updated: 0, unchanged: plan.mocks, pruned: 0 })
+  expect(await snapshot()).toEqual(after)
+  expect((await env.rt.catalog.listEndpoints('shop-api')).length).toBe(10)
+})

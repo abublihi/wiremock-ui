@@ -114,12 +114,15 @@ export function useMocks(filter: MockFilter, options: { enabled?: boolean } = {}
   })
 }
 
-export function useIntegrations() {
-  return useQuery({
+export const integrationsQueryOptions = () =>
+  queryOptions({
     queryKey: queryKeys.integrations,
     queryFn: () => apiFetch<Integration[]>('/api/integrations'),
     staleTime: 60_000,
   })
+
+export function useIntegrations() {
+  return useQuery(integrationsQueryOptions())
 }
 
 export function useDuplicateMock() {

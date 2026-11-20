@@ -69,6 +69,11 @@ export function ImportPanel() {
       const { results, skipped } = await loadPicked(picked, { folder })
       const label = results.length === 1 ? results[0].path : t('import.filesLabel', { count: results.length })
       setLoaded({ label, results, skipped })
+    } catch (error) {
+      // Anything unexpected while reading becomes one error row instead of an unhandled rejection.
+      const path = picked.length === 1 ? picked[0].path : t('import.filesLabel', { count: picked.length })
+      const message = error instanceof Error ? error.message : String(error)
+      setLoaded({ label: path, results: [{ path, ok: false, error: { key: 'import.fileShape', params: { message } } }], skipped: [] })
     } finally {
       setReading(false)
     }
@@ -117,7 +122,12 @@ export function ImportPanel() {
         onDrop={(e) => {
           e.preventDefault()
           setDragging(false)
-          void pickedFromDrop(e.dataTransfer).then(({ picked, fromFolder }) => choose(picked, (p) => fromFolder.has(p.path)))
+          void pickedFromDrop(e.dataTransfer)
+            .then(({ picked, fromFolder }) => choose(picked, (p) => fromFolder.has(p.path)))
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error)
+              setLoaded({ label: '', results: [{ path: '', ok: false, error: { key: 'import.fileShape', params: { message } } }], skipped: [] })
+            })
         }}
         className={cn(
           'flex flex-col items-center gap-3 rounded-md border border-dashed border-line bg-surface px-4 py-10 text-center transition-colors',

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -6,6 +7,10 @@ import {
   commonFirstSegment,
   defaultIntegration,
   isPostmanCollection,
+  MAX_FOLDER_DEPTH,
+  mockId,
+  sha1,
+  uuidFromName,
   parsePostman,
   pathUnder,
   planPostman,
@@ -155,6 +160,7 @@ describe('planning the import', () => {
     const p = plan()
     const stub = p.bundle.mocks.find((m) => m.name === 'Get order — Order found')!
     expect(stub).toEqual({
+      id: mockId('shop', 'get-order', { id: 'r0e0', name: 'Order found' }),
       name: 'Get order — Order found',
       priority: 10,
       request: { method: 'GET', urlPathTemplate: '/api/orders/{orderId}' },
@@ -240,5 +246,66 @@ describe('planning the import', () => {
     it('Overwrite on a row without a conflict is just a create', () => {
       expect(plan({ existing, choices: { r1: { action: 'overwrite' } } }).rows[1].action).toBe('create')
     })
+  })
+})
+
+describe('mock ids', () => {
+  it('sha1 matches node:crypto, including multi-byte text and multi-block input', () => {
+    for (const text of ['', 'abc', 'héllo wörld '.repeat(20), 'x'.repeat(55), 'x'.repeat(56), 'x'.repeat(64)]) {
+      expect(Buffer.from(sha1(text)).toString('hex')).toBe(createHash('sha1').update(text).digest('hex'))
+    }
+  })
+
+  it('are version-5 UUIDs, stable per integration + endpoint + example, different otherwise', () => {
+    expect(uuidFromName('a')).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    const ids = (p: ReturnType<typeof plan>) => p.bundle.mocks.map((m) => m.id)
+    expect(ids(plan())).toEqual(ids(plan()))
+    expect(new Set(ids(plan())).size).toBe(plan().mocks)
+    // "Create new" on a re-import: the -2 endpoints get mocks of their own.
+    const existing = { integration, endpointKeys: plan().rows.map((r) => r.key) }
+    const again = planPostman(shop(), { integration, existing })
+    expect(again.rows.every((r) => r.key.endsWith('-2'))).toBe(true)
+    expect(ids(again).filter((id) => ids(plan()).includes(id))).toEqual([])
+    // Overwrite keeps the key, so the same ids: an update, not a duplicate.
+    const overwrite = planPostman(shop(), { integration, existing, choices: Object.fromEntries(again.rows.map((r) => [r.id, { action: 'overwrite' as const }])) })
+    expect(ids(overwrite)).toEqual(ids(plan()))
+    // Another integration key (even with the same prefix) never takes over these mocks.
+    expect(ids(planPostman(shop(), { integration: { ...integration, key: 'shop-copy' } })).filter((id) => ids(plan()).includes(id))).toEqual([])
+  })
+})
+
+describe('odd input never crashes', () => {
+  const collection = (item: unknown[]) => ({ info: { name: 'Deep', schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json' }, item })
+
+  it('folders nested deeper than the cap make the file an error, not a crash', () => {
+    let items: unknown[] = [{ name: 'leaf', request: { method: 'GET', url: '/x' } }]
+    for (let i = 0; i < MAX_FOLDER_DEPTH + 5; i++) items = [{ name: `f${i}`, item: items }]
+    expect(() => parsePostman(collection(items))).toThrow(/nested more than 64 deep/)
+    const r = parseSourceFile({ path: 'deep.json', text: JSON.stringify(collection(items)) })
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.error).toEqual({ key: 'import.fileShape', params: { message: 'deep.json: folders are nested more than 64 deep' } })
+    // At the cap it still reads.
+    let ok: unknown[] = [{ name: 'leaf', request: { method: 'GET', url: '/x' } }]
+    for (let i = 0; i < MAX_FOLDER_DEPTH; i++) ok = [{ name: `f${i}`, item: ok }]
+    expect(parsePostman(collection(ok)).requests).toHaveLength(1)
+  })
+
+  it('a deeply nested JSON body plans without throwing', () => {
+    const deep = '['.repeat(20000) + ']'.repeat(20000)
+    const raw = (text: string) => ({ mode: 'raw', raw: text, options: { raw: { language: 'json' } } })
+    const c = parsePostman(
+      collection([
+        {
+          name: 'Deep',
+          request: { method: 'POST', url: '/deep', body: raw('{}') },
+          response: [
+            { name: 'ok', code: 200, header: [{ key: 'Content-Type', value: 'application/json' }], body: deep, originalRequest: { method: 'POST', url: '/deep', body: raw('{}') } },
+            { name: 'deep', code: 400, header: [{ key: 'Content-Type', value: 'application/json' }], body: '{}', originalRequest: { method: 'POST', url: '/deep', body: raw(deep) } },
+          ],
+        },
+      ]),
+    )
+    const p = planPostman(c, { integration: { key: 'd', name: 'D', prefix: '/' } })
+    expect(p.mocks).toBe(2)
   })
 })

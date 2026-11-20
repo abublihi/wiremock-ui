@@ -97,12 +97,17 @@ export function parseSourceFile(file: SourceFile): FileResult {
   } catch (error) {
     return { path: file.path, ok: false, error: { key: 'import.invalidJson', params: { name: file.path, message: error instanceof Error ? error.message : '' } } }
   }
-  if (isPostmanCollection(json)) {
-    const postman = parsePostman(json)
-    const bundle = emptyBundle()
-    return { path: file.path, ok: true, bundle, summary: summaryOf(bundle), postman }
-  }
   try {
+    if (isPostmanCollection(json)) {
+      let postman: PostmanCollection
+      try {
+        postman = parsePostman(json)
+      } catch (error) {
+        throw new Error(`${file.path}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      const bundle = emptyBundle()
+      return { path: file.path, ok: true, bundle, summary: summaryOf(bundle), postman }
+    }
     const bundle = parseBundle(json, file.path)
     return { path: file.path, ok: true, bundle, summary: summaryOf(bundle) }
   } catch (error) {

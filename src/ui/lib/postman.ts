@@ -64,6 +64,9 @@ export function isPostmanCollection(json: unknown): boolean {
   return isObject(json) && isObject(json.info) && typeof json.info.schema === 'string' && SCHEMA.test(json.info.schema)
 }
 
+/** Deeper folders make the collection unreadable (and would exhaust the stack). */
+export const MAX_FOLDER_DEPTH = 64
+
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
 
 /* ---------- Parsing ---------- */
@@ -280,6 +283,7 @@ export function parsePostman(json: unknown): PostmanCollection {
 
   const walk = (items: unknown, folder: string[]) => {
     if (!Array.isArray(items)) return
+    if (folder.length > MAX_FOLDER_DEPTH) throw new Error(`folders are nested more than ${MAX_FOLDER_DEPTH} deep`)
     for (const item of items) {
       if (!isObject(item)) continue
       const itemName = str(item.name)?.trim() ?? ''
@@ -482,15 +486,33 @@ export function pathUnder(prefix: string, path: string): string {
   return path
 }
 
-const canonical = (v: unknown): string =>
+const canonicalOf = (v: unknown): string =>
   Array.isArray(v)
-    ? `[${v.map(canonical).join(',')}]`
+    ? `[${v.map(canonicalOf).join(',')}]`
     : isObject(v)
       ? `{${Object.keys(v)
           .sort()
-          .map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`)
+          .map((k) => `${JSON.stringify(k)}:${canonicalOf(v[k])}`)
           .join(',')}}`
       : JSON.stringify(v)
+
+/** Key-order-free JSON text; undefined when the value is too deep to walk. */
+function canonical(v: unknown): string | undefined {
+  try {
+    return canonicalOf(v)
+  } catch {
+    return undefined
+  }
+}
+
+/** JSON text re-indented, or the text as it is when it cannot be. */
+function pretty(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2)
+  } catch {
+    return text
+  }
+}
 
 const formFields = (text: string): Map<string, string> => new Map(queryOfRaw(`?${text}`))
 
@@ -500,7 +522,10 @@ function distinguishing(variant: PmRequestInfo, reference: PmRequestInfo, templa
   const vb = variant.body
   const rb = reference.body
   if (vb?.kind === 'json' && isJson(vb.text)) {
-    const same = rb?.kind === 'json' && isJson(rb.text) && canonical(JSON.parse(rb.text)) === canonical(JSON.parse(vb.text))
+    const a = rb?.kind === 'json' && isJson(rb.text) ? canonical(JSON.parse(rb.text)) : undefined
+    const b = canonical(JSON.parse(vb.text))
+    // Too deep to compare: compare the text instead.
+    const same = rb !== undefined && (a !== undefined && b !== undefined ? a === b : rb.text.trim() === vb.text.trim())
     if (!same) extra.bodyPatterns = [{ equalToJson: vb.text, ignoreExtraElements: true }]
   } else if (vb?.kind === 'form') {
     const ref = rb?.kind === 'form' ? formFields(rb.text) : new Map<string, string>()
@@ -594,13 +619,13 @@ export function planPostman(c: PostmanCollection, opts: PlanOptions): Plan {
       const k = String(e.status)
       if (k in exampleResponses) continue
       if (contentType === 'json' && e.body.trim() !== '' && !isJson(e.body)) continue
-      exampleResponses[k] = contentType === 'json' && e.body.trim() !== '' ? JSON.stringify(JSON.parse(e.body), null, 2) : e.body
+      exampleResponses[k] = contentType === 'json' && e.body.trim() !== '' ? pretty(e.body) : e.body
     }
     const reqBody = (def?.request ?? r.request).body ?? r.request.body
     const exampleRequest =
       reqBody && (contentType !== 'json' || isJson(reqBody.text))
         ? contentType === 'json'
-          ? JSON.stringify(JSON.parse(reqBody.text), null, 2)
+          ? pretty(reqBody.text)
           : reqBody.text
         : undefined
     bundle.catalog.push({
@@ -619,8 +644,11 @@ export function planPostman(c: PostmanCollection, opts: PlanOptions): Plan {
 
     const base = { method: r.request.method, [template ? 'urlPathTemplate' : 'urlPath']: root + path }
     const meta = { wiremockUi: { integration: integration.key, endpoint: key } }
+    // An id per (integration, endpoint, example): importing again into the same endpoint (Overwrite) updates these
+    // mocks; "Create new" (another endpoint key) or another integration gets mocks of its own.
     const stub = (example: PmExample, priority: number, extra: Record<string, unknown>) =>
       ({
+        id: mockId(integration.key, key, example),
         name: `${name} — ${example.name}`,
         priority,
         request: { ...base, ...extra },
@@ -644,7 +672,7 @@ export function planPostman(c: PostmanCollection, opts: PlanOptions): Plan {
           row.skipped.push({ name: e.name, reason: 'postman.skipSameRequest' })
           continue
         }
-        const sig = canonical(extra)
+        const sig = canonical(extra) ?? `${seen.size}:${e.id}`
         if (seen.has(sig)) {
           row.skipped.push({ name: e.name, reason: 'postman.skipDuplicate' })
           continue
@@ -670,3 +698,63 @@ export function planPostman(c: PostmanCollection, opts: PlanOptions): Plan {
 
 /** Requests left out of the plan (a method the catalog has no place for). */
 export const unusableRequests = (c: PostmanCollection) => c.requests.filter((r) => !(METHODS as readonly string[]).includes(r.request.method))
+
+/* ---------- Mock ids ---------- */
+
+/** SHA-1 of a UTF-8 string (pure, synchronous: the plan is built while rendering). */
+export function sha1(text: string): Uint8Array {
+  const bytes = new TextEncoder().encode(text)
+  const length = bytes.length
+  const words = new Uint32Array((((length + 8) >> 6) + 1) * 16)
+  for (let i = 0; i < length; i++) words[i >> 2] |= bytes[i] << (24 - (i % 4) * 8)
+  words[length >> 2] |= 0x80 << (24 - (length % 4) * 8)
+  words[words.length - 1] = length * 8
+  words[words.length - 2] = Math.floor((length * 8) / 0x100000000)
+  let [h0, h1, h2, h3, h4] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0]
+  const w = new Uint32Array(80)
+  const rotl = (x: number, n: number) => (x << n) | (x >>> (32 - n))
+  for (let block = 0; block < words.length; block += 16) {
+    for (let t = 0; t < 16; t++) w[t] = words[block + t]
+    for (let t = 16; t < 80; t++) w[t] = rotl(w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16], 1)
+    let [a, b, c, d, e] = [h0, h1, h2, h3, h4]
+    for (let t = 0; t < 80; t++) {
+      const f = t < 20 ? (b & c) | (~b & d) : t < 40 ? b ^ c ^ d : t < 60 ? (b & c) | (b & d) | (c & d) : b ^ c ^ d
+      const k = t < 20 ? 0x5a827999 : t < 40 ? 0x6ed9eba1 : t < 60 ? 0x8f1bbcdc : 0xca62c1d6
+      const temp = (rotl(a, 5) + f + e + k + w[t]) >>> 0
+      e = d
+      d = c
+      c = rotl(b, 30) >>> 0
+      b = a
+      a = temp
+    }
+    h0 = (h0 + a) >>> 0
+    h1 = (h1 + b) >>> 0
+    h2 = (h2 + c) >>> 0
+    h3 = (h3 + d) >>> 0
+    h4 = (h4 + e) >>> 0
+  }
+  const out = new Uint8Array(20)
+  ;[h0, h1, h2, h3, h4].forEach((h, i) => {
+    out[i * 4] = h >>> 24
+    out[i * 4 + 1] = (h >>> 16) & 0xff
+    out[i * 4 + 2] = (h >>> 8) & 0xff
+    out[i * 4 + 3] = h & 0xff
+  })
+  return out
+}
+
+/** A version-5-style UUID (as WireMock and the store expect) from the SHA-1 of `name`. */
+export function uuidFromName(name: string): string {
+  const hash = sha1(name)
+  hash[6] = (hash[6] & 0x0f) | 0x50
+  hash[8] = (hash[8] & 0x3f) | 0x80
+  const hex = [...hash.slice(0, 16)].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+}
+
+/** The mock id for one example of one endpoint: stable across imports, different per endpoint key and integration. */
+export function mockId(integration: string, endpoint: string, example: Pick<PmExample, 'id' | 'name'>): string {
+  // The example's index within its request (`r3e1` → 1) keeps two examples with the same name apart.
+  const index = example.id.replace(/^r\d+e/, '')
+  return uuidFromName(`wiremock-ui/postman/${integration}/${endpoint}/${index}/${example.name}`)
+}

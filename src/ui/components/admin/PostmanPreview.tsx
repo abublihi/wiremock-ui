@@ -1,7 +1,9 @@
-import { useId, useMemo, useState } from 'react'
+import { useDeferredValue, useId, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircleIcon, InfoIcon, TriangleAlertIcon, UploadIcon } from 'lucide-react'
 import type { ImportReport } from '@/server/bundle/importer'
-import { useEndpoints, useImport, useIntegrations } from '@/ui/api/queries'
+import type { Endpoint, Integration } from '@/server/catalog/types'
+import { endpointsQueryOptions, integrationsQueryOptions, useEndpoints, useImport, useIntegrations } from '@/ui/api/queries'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { StatusBadge } from '@/ui/components/common/StatusBadge'
 import { Eyebrow } from '@/ui/components/editor/EditorShell'
@@ -22,6 +24,7 @@ import {
   planPostman,
   prefixProblem,
   type IntegrationFields,
+  type Plan,
   type PlanRow,
   type PostmanCollection,
   type RowAction,
@@ -48,43 +51,59 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
     return collection.description ? { ...base, description: collection.description } : base
   })
   const [choices, setChoices] = useState<Record<string, RowChoice>>({})
+  const queryClient = useQueryClient()
   const integrations = useIntegrations()
   const stored = integrations.data?.find((i) => i.key === fields.key)
   const endpoints = useEndpoints(stored?.key)
   const common = commonFirstSegment(collection)
+  const [submitting, setSubmitting] = useState(false)
 
-  const plan = useMemo(
-    () =>
-      planPostman(collection, {
-        integration: fields,
-        existing: stored ? { integration: stored, endpointKeys: (endpoints.data ?? []).map((e) => e.key) } : undefined,
-        choices,
-      }),
+  const planned = useMemo(
+    () => safePlan(collection, fields, stored, endpoints.data, choices),
     [collection, fields, stored, endpoints.data, choices],
   )
+  const plan = planned.plan
 
   const keyError = isCatalogKey(fields.key) ? undefined : 'postman.keyInvalid'
   const nameError = stored || fields.name.trim() !== '' ? undefined : 'postman.nameEmpty'
   const prefixError = stored ? undefined : prefixProblem(fields.prefix)
+  // Without the stored catalog the page cannot tell an update from a new integration, or spot key clashes.
   const checking = integrations.isPending || (stored !== undefined && endpoints.isPending)
-  const bytes = useMemo(() => new TextEncoder().encode(JSON.stringify(plan.bundle)).length, [plan.bundle])
-  const tooBig = bytes > MAX_IMPORT_BYTES
-  const blocked = Boolean(keyError || nameError || prefixError) || checking || plan.endpoints === 0 || tooBig || endpoints.isError
+  const loadError = integrations.isError ? integrations.error : stored && endpoints.isError ? endpoints.error : null
+  // The request size is checked off the typing path: a big collection re-plans on every key stroke.
+  const deferredBundle = useDeferredValue(plan.bundle)
+  const bytes = useMemo(() => bundleBytes(deferredBundle), [deferredBundle])
+  const tooBig = bytes === undefined || bytes > MAX_IMPORT_BYTES
+  const blocked =
+    Boolean(keyError || nameError || prefixError || planned.error || loadError) || checking || plan.endpoints === 0 || tooBig
 
   const warnings = [...collection.warnings, ...collection.requests.flatMap((r) => r.notes)]
   const skipped = plan.rows.flatMap((r) => r.skipped.map((s) => ({ row: r, ...s })))
   const exampleCount = collection.requests.reduce((n, r) => n + r.examples.length, 0)
+  const shownRows = plan.rows.slice(0, MAX_ROWS)
 
   const set = (patch: Partial<IntegrationFields>) => setFields((f) => ({ ...f, ...patch }))
   const choose = (rowId: string, patch: RowChoice) => setChoices((c) => ({ ...c, [rowId]: { ...c[rowId], ...patch } }))
 
   const submit = async () => {
-    if (blocked) return
+    if (blocked || submitting) return
+    setSubmitting(true)
     try {
-      const report = await run.mutateAsync({ bundle: plan.bundle, prune: false })
-      onImported(report, plan.integration)
+      // Plan again from a fresh read of the catalog: someone may have added the integration or an endpoint since.
+      const freshIntegrations = await queryClient.fetchQuery({ ...integrationsQueryOptions(), staleTime: 0 })
+      const freshStored = freshIntegrations.find((i) => i.key === fields.key)
+      const freshEndpoints = freshStored ? await queryClient.fetchQuery({ ...endpointsQueryOptions(freshStored.key), staleTime: 0 }) : undefined
+      const fresh = safePlan(collection, fields, freshStored, freshEndpoints, choices)
+      // What the page shows is what gets sent: when the fresh plan differs, the table re-renders and the user looks again.
+      if (fresh.error || bundleText(fresh.plan.bundle) !== bundleText(plan.bundle)) return
+      const size = bundleBytes(fresh.plan.bundle)
+      if (size === undefined || size > MAX_IMPORT_BYTES) return
+      const report = await run.mutateAsync({ bundle: fresh.plan.bundle, prune: false })
+      onImported(report, fresh.plan.integration)
     } catch {
-      // shown from run.error
+      // shown from run.error or the queries' errors
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -131,8 +150,9 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
               disabled={Boolean(stored)}
               onChange={(e) => set({ name: e.target.value })}
               aria-invalid={Boolean(nameError)}
+              aria-describedby={nameError ? fieldId('name-error') : undefined}
             />
-            {nameError && <FieldError>{t(nameError)}</FieldError>}
+            {nameError && <FieldError id={fieldId('name-error')}>{t(nameError)}</FieldError>}
           </Field>
           <Field data-invalid={Boolean(prefixError)}>
             <FieldLabel htmlFor={fieldId('prefix')}>{t('postman.prefix')}</FieldLabel>
@@ -142,12 +162,12 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
               disabled={Boolean(stored)}
               onChange={(e) => set({ prefix: e.target.value })}
               aria-invalid={Boolean(prefixError)}
-              aria-describedby={fieldId('prefix-hint')}
+              aria-describedby={prefixError ? `${fieldId('prefix-error')} ${fieldId('prefix-hint')}` : fieldId('prefix-hint')}
               className="font-mono"
               spellCheck={false}
               autoCapitalize="off"
             />
-            {prefixError && <FieldError>{t(prefixError)}</FieldError>}
+            {prefixError && <FieldError id={fieldId('prefix-error')}>{t(prefixError)}</FieldError>}
           </Field>
         </div>
         <FieldDescription id={fieldId('prefix-hint')} className="text-xs">
@@ -195,7 +215,7 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
               </TableRow>
             </TableHeader>
             <TableBody>
-              {plan.rows.map((row) => (
+              {shownRows.map((row) => (
                 <RequestRow key={row.id} row={row} onChoose={(patch) => choose(row.id, patch)} />
               ))}
             </TableBody>
@@ -231,16 +251,23 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
       )}
 
       {plan.endpoints === 0 && <p className="text-xs text-muted-foreground">{t('postman.nothing')}</p>}
-      {tooBig && (
+      {bytes !== undefined && tooBig && (
         <Alert variant="destructive" role="alert">
           <AlertCircleIcon />
-          <AlertDescription>{t('import.mergedTooLarge', { size: megabytes(bytes) })}</AlertDescription>
+          <AlertDescription>{t('import.mergedTooLarge', { size: megabytes(bytes ?? 0) })}</AlertDescription>
         </Alert>
       )}
-      {endpoints.isError && (
+      {loadError && (
         <Alert variant="destructive" role="alert">
           <AlertCircleIcon />
-          <AlertDescription>{endpoints.error.message || t('error.generic')}</AlertDescription>
+          <AlertTitle>{t('editor.pickLoadFailed')}</AlertTitle>
+          <AlertDescription>{loadError.message || t('error.generic')}</AlertDescription>
+        </Alert>
+      )}
+      {planned.error && (
+        <Alert variant="destructive" role="alert">
+          <AlertCircleIcon />
+          <AlertDescription>{t('import.fileShape', { message: planned.error })}</AlertDescription>
         </Alert>
       )}
       {run.isError && (
@@ -251,13 +278,55 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
         </Alert>
       )}
       <div>
-        <Button onClick={() => void submit()} disabled={run.isPending || blocked}>
-          {run.isPending ? <Spinner data-icon="inline-start" /> : <UploadIcon data-icon="inline-start" />}
-          {run.isPending ? t('import.running') : t('postman.run', { endpoints: plan.endpoints, mocks: plan.mocks })}
+        <Button onClick={() => void submit()} disabled={run.isPending || submitting || blocked}>
+          {run.isPending || submitting ? <Spinner data-icon="inline-start" /> : <UploadIcon data-icon="inline-start" />}
+          {run.isPending || submitting ? t('import.running') : t('postman.run', { endpoints: plan.endpoints, mocks: plan.mocks })}
         </Button>
       </div>
     </section>
   )
+}
+
+/** Rows drawn at most; the rest are imported with their defaults (a huge table would freeze the page). */
+const MAX_ROWS = 500
+
+const EMPTY_PLAN = (fields: IntegrationFields): Plan => ({
+  integration: fields,
+  addsToExisting: false,
+  rows: [],
+  bundle: { integrations: [], catalog: [], mocks: [], oidcIdentities: [] },
+  endpoints: 0,
+  mocks: 0,
+})
+
+/** The plan, or why it could not be made: rendering never throws on an odd collection. */
+function safePlan(
+  collection: PostmanCollection,
+  fields: IntegrationFields,
+  stored: Integration | undefined,
+  endpoints: Endpoint[] | undefined,
+  choices: Record<string, RowChoice>,
+): { plan: Plan; error?: string } {
+  try {
+    const existing = stored ? { integration: stored, endpointKeys: (endpoints ?? []).map((e) => e.key) } : undefined
+    return { plan: planPostman(collection, { integration: fields, existing, choices }) }
+  } catch (error) {
+    return { plan: EMPTY_PLAN(fields), error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+function bundleText(bundle: Plan['bundle']): string | undefined {
+  try {
+    return JSON.stringify(bundle)
+  } catch {
+    return undefined
+  }
+}
+
+/** The request body's size, or undefined when it cannot be serialised. */
+function bundleBytes(bundle: Plan['bundle']): number | undefined {
+  const text = bundleText(bundle)
+  return text === undefined ? undefined : new TextEncoder().encode(text).length
 }
 
 function RequestRow({ row, onChoose }: { row: PlanRow; onChoose: (patch: RowChoice) => void }) {

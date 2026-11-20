@@ -150,6 +150,60 @@ describe('Postman preview on the Import page', () => {
     })
   })
 
+  it('a failed integrations load blocks the import and says so', async () => {
+    const calls = mockApi()
+    server.use(http.get(`${BASE}/api/integrations`, () => HttpResponse.json({ error: 'store is down' }, { status: 503 })))
+    await pick()
+    const region = await preview()
+    await within(region).findByText('Could not load the catalog')
+    expect((within(region).getByRole('button', { name: /^Import 5 endpoints/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('checks the catalog again before sending: an integration created meanwhile turns rows into conflicts instead of being overwritten', async () => {
+    const calls = mockApi()
+    const ue = await pick()
+    const region = await preview()
+    expect(within(rowOf('Get order')).getByText('New')).toBeTruthy()
+    // Someone creates the integration (with a get-order endpoint) while this page is open.
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([{ key: 'shop-api', name: 'Shop (theirs)', prefix: '/shop-api', ...stamp }])),
+      http.get(`${BASE}/api/integrations/:key/endpoints`, () => HttpResponse.json([endpoint('get-order')])),
+    )
+    await ue.click(within(region).getByRole('button', { name: 'Import 5 endpoints and 8 mocks' }))
+    await waitFor(() => expect(within(rowOf('Get order')).getByText('Key exists')).toBeTruthy())
+    expect(calls).toHaveLength(0)
+    await within(region).findByText(/Adds to the existing integration Shop \(theirs\)/)
+    // Looked at again, the user imports: the integration is not sent and get-order becomes get-order-2.
+    await ue.click(within(region).getByRole('button', { name: 'Import 5 endpoints and 8 mocks' }))
+    await screen.findByText('Import finished')
+    expect(calls[0].body.integrations).toEqual([])
+    expect(calls[0].body.catalog[0].key).toBe('get-order-2')
+  })
+
+  it('links the name and prefix errors to their fields', async () => {
+    mockApi()
+    const ue = await pick()
+    const region = await preview()
+    await ue.clear(within(region).getByLabelText('Name'))
+    await ue.clear(within(region).getByLabelText('Prefix'))
+    expect(within(region).getByLabelText('Name').getAttribute('aria-describedby')).toBe(within(region).getByText('Give the integration a name.').id)
+    const described = within(region).getByLabelText('Prefix').getAttribute('aria-describedby')!.split(' ')
+    expect(described).toContain(within(region).getByText('The prefix must start with /.').id)
+  })
+
+  it('draws at most 500 rows of a huge collection but imports every request', async () => {
+    const calls = mockApi()
+    const item = Array.from({ length: 520 }, (_, i) => ({ name: `Req ${i}`, request: { method: 'GET', url: `/r/${i}` } }))
+    const big = JSON.stringify({ info: { name: 'Big', schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json' }, item })
+    const ue = await pick(<ImportPage />, [file(big, 'big.json')])
+    const region = await screen.findByRole('region', { name: /Postman collection: Big/ })
+    expect(within(region).getAllByRole('row')).toHaveLength(501) // header + 500
+    await ue.click(within(region).getByRole('button', { name: 'Import 520 endpoints and 0 mocks' }))
+    await screen.findByText('Import finished')
+    expect(calls[0].body.catalog).toHaveLength(520)
+  })
+
   it('in WireMock-only mode, says the catalog is kept in memory', async () => {
     mockApi()
     await pick(
