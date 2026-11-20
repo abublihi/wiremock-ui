@@ -1,10 +1,13 @@
 import { useSyncExternalStore } from 'react'
-import { keepPreviousData, queryOptions, type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, queryOptions, type QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useT } from '@/ui/i18n'
 import type { SimpleMockInput } from '@/server/catalog/build'
+import type { AuditPage } from '@/server/audit/log'
+import type { ImportReport } from '@/server/bundle/importer'
 import type { Endpoint, Integration } from '@/server/catalog/types'
+import type { PublicUser } from '@/server/users/types'
 import type { NearMissView, RequestSummary } from '@/server/requests/journal'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
 import { SESSION_KEY, apiFetch, type SessionData } from './client'
@@ -32,6 +35,8 @@ export const queryKeys = {
   requestList: (filter: RequestFilter) => ['requests', 'list', filter] as const,
   request: (id: string) => ['requests', 'detail', id] as const,
   nearMisses: (id: string) => ['requests', 'near-misses', id] as const,
+  users: ['users'] as const,
+  audit: ['audit'] as const,
 } as const
 
 export const sessionQueryOptions = (fetchSession: () => Promise<SessionData> = defaultFetchSession) =>
@@ -371,5 +376,62 @@ export function useDeleteEndpoint() {
     mutationFn: ({ integration, key }: { integration: string; key: string }) =>
       apiFetch<void>(`${integrationPath(integration)}/endpoints/${encodeURIComponent(key)}`, { method: 'DELETE' }),
     onSuccess: (_void, input) => queryClient.invalidateQueries({ queryKey: queryKeys.endpoints(input.integration) }),
+  })
+}
+
+export function useUsers() {
+  return useQuery({ queryKey: queryKeys.users, queryFn: () => apiFetch<PublicUser[]>('/api/users') })
+}
+
+export function useCreateUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { username: string; displayName?: string; password: string }) =>
+      apiFetch<PublicUser>('/api/users', { method: 'POST', body: input }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.users }),
+  })
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string; displayName?: string; password?: string; disabled?: boolean }) =>
+      apiFetch<PublicUser>(`/api/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.users }),
+  })
+}
+
+export function useDeleteUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.users }),
+  })
+}
+
+export const AUDIT_PAGE_SIZE = 50
+
+export function useAudit() {
+  return useInfiniteQuery({
+    queryKey: queryKeys.audit,
+    queryFn: ({ pageParam }) =>
+      apiFetch<AuditPage>('/api/audit', { query: { limit: AUDIT_PAGE_SIZE, cursor: pageParam } }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  })
+}
+
+export function useImport() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ bundle, prune }: { bundle: unknown; prune: boolean }) =>
+      apiFetch<ImportReport>('/api/import', { method: 'POST', body: bundle, query: { prune: prune ? 'true' : undefined } }),
+    // An import can touch mocks, the catalog and the audit trail.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.audit }),
+      ]),
   })
 }
