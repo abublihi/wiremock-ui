@@ -1,9 +1,19 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { createCatalogMock } from '../../../src/server/http/handlers/catalog'
-import { createMock, listMocks, updateMock } from '../../../src/server/http/handlers/mocks'
+import { createMock, deleteMock, listMocks, updateMock } from '../../../src/server/http/handlers/mocks'
 import type { StubMapping } from '../../../src/server/wiremock/types'
 import type { Endpoint, Integration } from '../../../src/server/catalog/types'
-import { type BuilderDraft, lastStepMocks, movedOn, newStep, nextStateName, toCreates } from '../../../src/ui/lib/scenario-builder'
+import {
+  type BuilderDraft,
+  editChanges,
+  lastStepMocks,
+  loadScenario,
+  movedOn,
+  newStep,
+  nextStateName,
+  removeStep,
+  toCreates,
+} from '../../../src/ui/lib/scenario-builder'
 import { login, req, startTestRuntime } from '../../helpers/http'
 
 // The scenario builder's output, sent through the same create endpoints the page uses: WireMock answers as the steps say.
@@ -138,4 +148,62 @@ test('a step added after the last one: the old last step answers first, then mov
   const answers = []
   for (let i = 0; i < 4; i++) answers.push(JSON.parse((await call('/shop/orders/status?id=77')).body))
   expect(answers).toEqual([{ status: 'pending' }, { status: 'approved' }, { status: 'paid out' }, { status: 'paid out' }])
+})
+
+/** Loads a scenario like the edit page (GET /api/mocks?scenario=), applies `edit`, saves the difference like the page. */
+async function editScenario(name: string, edit: (draft: BuilderDraft) => BuilderDraft): Promise<number[]> {
+  const res = await listMocks(env.rt, req(`/api/mocks?scenario=${encodeURIComponent(name)}`, 'GET', undefined, as()))
+  const loaded = loadScenario((await res.json()) as StubMapping[], name)
+  const draft = edit({ name, request: { kind: 'existing' }, steps: loaded.steps })
+  const statuses: number[] = []
+  for (const change of editChanges(loaded, draft)) {
+    const version = (stub: StubMapping) => stub.metadata!.wiremockUi!.version
+    const out =
+      change.kind === 'create'
+        ? await createMock(env.rt, req('/api/mocks', 'POST', change.stub, as()))
+        : change.kind === 'update'
+          ? await updateMock(env.rt, req(`/api/mocks/${change.before.id}`, 'PUT', { stub: change.stub, version: version(change.before) }, as()), { id: change.before.id })
+          : await deleteMock(env.rt, req(`/api/mocks/${change.before.id}?version=${version(change.before)}`, 'DELETE', undefined, as()), { id: change.before.id })
+    statuses.push(out.status)
+  }
+  await env.rt.wiremock.resetScenarios()
+  return statuses
+}
+
+test('editing a scenario as one unit: WireMock answers as edited (changed body, added step, rename, removed step)', async () => {
+  const draft: BuilderDraft = {
+    name: 'shipment',
+    request: { kind: 'catalog', integration, endpoint, isDefault: false, keyValue: '55' },
+    steps: [newStep('a', { body: '{"status":"packed"}' }), newStep('b', { state: 'transit', body: '{"status":"moving"}' })],
+  }
+  expect(await save(draft)).toEqual([201, 201])
+  const answers = async (n: number) => {
+    const out = []
+    for (let i = 0; i < n; i++) out.push(JSON.parse((await call('/shop/orders/status?id=55')).body))
+    return out
+  }
+  expect(await answers(2)).toEqual([{ status: 'packed' }, { status: 'moving' }])
+
+  // Step 2 answers differently, a step 3 is added after it, and the scenario is renamed: 1 create + 2 updates.
+  const edited = await editScenario('shipment', (d) => ({
+    ...d,
+    name: 'shipment-v2',
+    steps: [
+      ...d.steps.map((s) => (s.state === 'transit' ? { ...s, body: '{"status":"in transit"}' } : s)),
+      newStep('c', { state: 'delivered', body: '{"status":"delivered"}' }),
+    ],
+  }))
+  expect(edited).toEqual([201, 200, 200])
+  expect(await answers(4)).toEqual([{ status: 'packed' }, { status: 'in transit' }, { status: 'delivered' }, { status: 'delivered' }])
+  const scenarios = await env.rt.scenarios.list()
+  expect(scenarios.find((s) => s.name === 'shipment')).toBeUndefined()
+  expect(scenarios.find((s) => s.name === 'shipment-v2')!.possibleStates).toEqual(['Started', 'transit', 'delivered'])
+  // The new step kept the catalog link of the step before it.
+  const mocks = (await (await listMocks(env.rt, req('/api/mocks?scenario=shipment-v2', 'GET', undefined, as()))).json()) as StubMapping[]
+  expect(mocks.map((m) => m.metadata?.wiremockUi?.endpoint)).toEqual(['order-status', 'order-status', 'order-status'])
+
+  // Step 2 removed: step 1 now moves straight to delivered (1 update + 1 delete).
+  const transit = (await editScenario('shipment-v2', (d) => ({ ...d, steps: removeStep(d.steps, d.steps[1].id) })))
+  expect(transit).toEqual([200, 204])
+  expect(await answers(3)).toEqual([{ status: 'packed' }, { status: 'delivered' }, { status: 'delivered' }])
 })

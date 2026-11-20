@@ -84,6 +84,19 @@ describe('mock list', () => {
     expect(within(row('Mock plain')).queryByText('Calls back after responding')).toBeNull()
   })
 
+  it('the Scenario mocks chip asks for mocks of any scenario and groups them', async () => {
+    const step = (id: string, state: string) => ({ ...stub(id), scenarioName: 'refund', requiredScenarioState: state })
+    const seen = mockApi([step('s1', 'Started'), step('s2', 'paid')] as ReturnType<typeof stub>[])
+    await renderApp(<Harness />)
+    await screen.findByRole('button', { name: 'Scenario: refund · 2 steps' })
+    const chip = screen.getByRole('button', { name: 'Scenario mocks' })
+    expect(chip.getAttribute('aria-pressed')).toBe('false')
+    await userEvent.setup().click(chip)
+    expect(lastSearch.scenarios).toBe('only')
+    await waitFor(() => expect(seen.at(-1)!.url.searchParams.get('scenario')).toBe('*'))
+    expect(chip.getAttribute('aria-pressed')).toBe('true')
+  })
+
   it('switching to All mocks updates the search and refetches', async () => {
     const seen = mockApi([stub('a')])
     await renderApp(<Harness />)

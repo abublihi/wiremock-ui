@@ -1,13 +1,17 @@
+import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { WebhookIcon } from 'lucide-react'
+import { ChevronRightIcon, MoreHorizontalIcon, PencilIcon, WebhookIcon, WorkflowIcon } from 'lucide-react'
 import type { StubMapping } from '@/server/wiremock/types'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { StatusBadge } from '@/ui/components/common/StatusBadge'
 import { Badge } from '@/ui/components/ui/badge'
+import { Button } from '@/ui/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/ui/components/ui/dropdown-menu'
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/components/ui/tooltip'
 import { useT } from '@/ui/i18n'
+import { groupMocks } from '@/ui/lib/scenario-builder'
 import { relativeTime } from '@/ui/lib/time'
 import { cn } from '@/ui/lib/utils'
 import { MockRowActions, mockName } from './MockActions'
@@ -77,61 +81,163 @@ function UpdatedAt({ iso }: { iso?: string }) {
   )
 }
 
+/**
+ * The mock rows. A scenario's mocks (one per step) show as one collapsible row, placed where its first mock is; the
+ * grouping works on the rows given, so a paged list groups each page on its own.
+ */
 export function MockTable({ mocks }: { mocks: StubMapping[] }) {
-  const t = useT()
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
+  const toggle = (name: string) =>
+    setOpen((all) => {
+      const next = new Set(all)
+      if (!next.delete(name)) next.add(name)
+      return next
+    })
   return (
     <TableShell>
       <TableBody className="stagger-children">
-        {mocks.map((stub) => {
-          const meta = stub.metadata?.wiremockUi
-          const method = typeof stub.request.method === 'string' ? stub.request.method : 'ANY'
-          const status = typeof stub.response.status === 'number' ? stub.response.status : 200
-          const proxyUrl = typeof stub.response.proxyBaseUrl === 'string' ? stub.response.proxyBaseUrl : undefined
-          const owner = meta?.owner ?? 'baseline'
-          return (
-            <TableRow key={stub.id} className="hover:bg-surface-2">
-              <TableCell className="max-w-28 whitespace-normal md:max-w-64">
-                <Link to="/mocks/$id" params={{ id: stub.id }} className="font-medium hover:text-signal-fg hover:underline">
-                  {stub.name || t('mocks.unnamed')}
-                </Link>
-                {hasWebhook(stub) && <WebhookMark />}
-                {(meta?.integration || meta?.endpoint) && (
-                  <p className="truncate text-[11px] text-muted-foreground">
-                    {[meta.integration, meta.endpoint].filter(Boolean).join(' · ')}
-                  </p>
-                )}
-              </TableCell>
-              <TableCell className="max-w-36 md:max-w-80">
-                <div className="flex items-center gap-2">
-                  <MethodBadge method={method} />
-                  <span dir="ltr" className="truncate font-mono text-xs" title={requestUrl(stub)}>
-                    {requestUrl(stub)}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell>
-                {proxyUrl !== undefined ? <ProxyBadge url={proxyUrl} /> : <StatusBadge status={status} />}
-              </TableCell>
-              <TableCell className="hidden md:table-cell">
-                {owner === 'baseline' ? (
-                  <Badge variant="outline" className="border-hazard/40 bg-hazard/10 text-hazard-fg">
-                    {t('mocks.baseline')}
-                  </Badge>
-                ) : (
-                  <span className="text-xs">{owner}</span>
-                )}
-              </TableCell>
-              <TableCell className="hidden text-xs md:table-cell">
-                <UpdatedAt iso={meta?.updatedAt} />
-              </TableCell>
-              <TableCell className="text-end">
-                <MockRowActions stub={stub} />
-              </TableCell>
-            </TableRow>
-          )
-        })}
+        {groupMocks(mocks).map((row) =>
+          row.kind === 'mock' ? (
+            <MockRow key={row.stub.id} stub={row.stub} />
+          ) : (
+            <ScenarioRows key={`scenario:${row.name}`} name={row.name} mocks={row.mocks} open={open.has(row.name)} onToggle={() => toggle(row.name)} />
+          ),
+        )}
       </TableBody>
     </TableShell>
+  )
+}
+
+function MockRow({ stub, step }: { stub: StubMapping; step?: string }) {
+  const t = useT()
+  const meta = stub.metadata?.wiremockUi
+  const method = typeof stub.request.method === 'string' ? stub.request.method : 'ANY'
+  const status = typeof stub.response.status === 'number' ? stub.response.status : 200
+  const proxyUrl = typeof stub.response.proxyBaseUrl === 'string' ? stub.response.proxyBaseUrl : undefined
+  const owner = meta?.owner ?? 'baseline'
+  return (
+    <TableRow data-step={step !== undefined || undefined} className="hover:bg-surface-2 data-step:bg-surface-2/40">
+      <TableCell className={cn('max-w-28 whitespace-normal md:max-w-64', step !== undefined && 'border-s-2 border-signal/40 ps-6')}>
+        <Link to="/mocks/$id" params={{ id: stub.id }} className="font-medium hover:text-signal-fg hover:underline">
+          {stub.name || t('mocks.unnamed')}
+        </Link>
+        {hasWebhook(stub) && <WebhookMark />}
+        {step !== undefined ? (
+          <p dir="ltr" className="truncate font-mono text-[11px] text-muted-foreground">
+            {step}
+          </p>
+        ) : (
+          (meta?.integration || meta?.endpoint) && (
+            <p className="truncate text-[11px] text-muted-foreground">{[meta.integration, meta.endpoint].filter(Boolean).join(' · ')}</p>
+          )
+        )}
+      </TableCell>
+      <TableCell className="max-w-36 md:max-w-80">
+        <div className="flex items-center gap-2">
+          <MethodBadge method={method} />
+          <span dir="ltr" className="truncate font-mono text-xs" title={requestUrl(stub)}>
+            {requestUrl(stub)}
+          </span>
+        </div>
+      </TableCell>
+      <TableCell>{proxyUrl !== undefined ? <ProxyBadge url={proxyUrl} /> : <StatusBadge status={status} />}</TableCell>
+      <TableCell className="hidden md:table-cell">
+        {owner === 'baseline' ? (
+          <Badge variant="outline" className="border-hazard/40 bg-hazard/10 text-hazard-fg">
+            {t('mocks.baseline')}
+          </Badge>
+        ) : (
+          <span className="text-xs">{owner}</span>
+        )}
+      </TableCell>
+      <TableCell className="hidden text-xs md:table-cell">
+        <UpdatedAt iso={meta?.updatedAt} />
+      </TableCell>
+      <TableCell className="text-end">
+        <MockRowActions stub={stub} />
+      </TableCell>
+    </TableRow>
+  )
+}
+
+/** "Scenario: name · N steps", expandable to its step mocks, with Edit scenario and Open in Scenarios. */
+function ScenarioRows({ name, mocks, open, onToggle }: { name: string; mocks: StubMapping[]; open: boolean; onToggle: () => void }) {
+  const t = useT()
+  const requests = [...new Set(mocks.map((m) => `${typeof m.request.method === 'string' ? m.request.method : 'ANY'} ${requestUrl(m)}`))]
+  const [method, url] = requests.length === 1 ? [requests[0].split(' ')[0], requestUrl(mocks[0])] : []
+  const statuses = [...new Set(mocks.map((m) => (typeof m.response.status === 'number' ? m.response.status : 200)))]
+  const owners = [...new Set(mocks.map((m) => m.metadata?.wiremockUi?.owner ?? 'baseline'))]
+  const latest = mocks.map((m) => m.metadata?.wiremockUi?.updatedAt).filter((d): d is string => Boolean(d)).sort().at(-1)
+  const label = t(mocks.length === 1 ? 'mocks.scenarioGroupOne' : 'mocks.scenarioGroup', { name, count: mocks.length })
+  const state = (stub: StubMapping) => {
+    const from = typeof stub.requiredScenarioState === 'string' ? stub.requiredScenarioState : t('scenarios.anyState')
+    return typeof stub.newScenarioState === 'string' ? `${from} → ${stub.newScenarioState}` : from
+  }
+  return (
+    <>
+      <TableRow data-scenario={name} className="hover:bg-surface-2">
+        <TableCell className="max-w-28 whitespace-normal md:max-w-64">
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={onToggle}
+            className="group flex items-start gap-1.5 rounded-sm text-start font-medium outline-none hover:text-signal-fg focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronRightIcon aria-hidden className={cn('mt-0.5 size-3.5 shrink-0 transition-transform motion-reduce:transition-none', open && 'rotate-90')} />
+            <WorkflowIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-signal-fg" />
+            <span className="[overflow-wrap:anywhere]">{label}</span>
+          </button>
+        </TableCell>
+        <TableCell className="max-w-36 md:max-w-80">
+          {method ? (
+            <div className="flex items-center gap-2">
+              <MethodBadge method={method} />
+              <span dir="ltr" className="truncate font-mono text-xs" title={url}>
+                {url}
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">{t('mocks.scenarioRequests', { count: requests.length })}</span>
+          )}
+        </TableCell>
+        <TableCell>
+          <div className="flex flex-wrap gap-1">
+            {statuses.slice(0, 3).map((status) => (
+              <StatusBadge key={status} status={status} />
+            ))}
+            {statuses.length > 3 && <span className="text-xs text-muted-foreground">+{statuses.length - 3}</span>}
+          </div>
+        </TableCell>
+        <TableCell className="hidden text-xs md:table-cell">{owners.join(', ')}</TableCell>
+        <TableCell className="hidden text-xs md:table-cell">
+          <UpdatedAt iso={latest} />
+        </TableCell>
+        <TableCell className="text-end">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label={t('mocks.scenarioActionsFor', { name })}>
+                <MoreHorizontalIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link to="/scenarios/$name/edit" params={{ name }}>
+                  <PencilIcon />
+                  {t('scenarios.edit')}
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/scenarios" search={{ scenario: name }}>
+                  <WorkflowIcon />
+                  {t('editor.scenario.open')}
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+      </TableRow>
+      {open && mocks.map((stub) => <MockRow key={stub.id} stub={stub} step={state(stub)} />)}
+    </>
   )
 }
 

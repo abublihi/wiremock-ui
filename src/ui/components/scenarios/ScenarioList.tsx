@@ -1,10 +1,25 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { PlusIcon, RotateCcwIcon } from 'lucide-react'
+import { PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Scenario } from '@/server/scenarios/service'
-import { useResetScenarios, useSetScenarioState } from '@/ui/api/queries'
+import type { StubMapping } from '@/server/wiremock/types'
+import { apiFetch } from '@/ui/api/client'
+import { queryKeys, useDeleteMock, useResetScenarios, useSetScenarioState } from '@/ui/api/queries'
 import { LiveDot } from '@/ui/components/common/LiveDot'
+import { MethodBadge } from '@/ui/components/common/MethodBadge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/ui/components/ui/alert-dialog'
 import { Button } from '@/ui/components/ui/button'
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/components/ui/tooltip'
@@ -12,7 +27,7 @@ import { useT } from '@/ui/i18n'
 import { nextStateName } from '@/ui/lib/scenario-builder'
 import { StateMachine } from './StateMachine'
 
-/** One card per scenario: its name, live state, Reset, "Add a mock to this scenario", and the state diagram. */
+/** One card per scenario: its name, live state, Edit, Add a mock, Reset, Delete, and the state diagram. */
 export function ScenarioList({ scenarios, focus }: { scenarios: Scenario[]; focus?: string }) {
   return (
     <ul className="flex flex-col gap-4">
@@ -85,6 +100,12 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button asChild size="sm">
+            <Link to="/scenarios/$name/edit" params={{ name: scenario.name }}>
+              <PencilIcon data-icon="inline-start" />
+              {t('scenarios.edit')}
+            </Link>
+          </Button>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button asChild variant="outline" size="sm">
@@ -108,10 +129,80 @@ function ScenarioCard({ scenario, focused }: { scenario: Scenario; focused: bool
               <TooltipContent className="max-w-64">{t('scenarios.notSettable')}</TooltipContent>
             </Tooltip>
           )}
+          <DeleteScenarioButton scenario={scenario} />
         </div>
       </header>
       <StateMachine scenario={scenario} busy={busy} onSetState={(state) => void onSetState(state)} />
     </article>
+  )
+}
+
+/** Deletes every mock of a scenario, after a confirm that lists them. */
+function DeleteScenarioButton({ scenario }: { scenario: Scenario }) {
+  const t = useT()
+  const queryClient = useQueryClient()
+  const deleteMock = useDeleteMock()
+  const [busy, setBusy] = useState(false)
+  const count = scenario.mocks.length
+  // Listed in the order the scenario runs; any-state mocks last.
+  const at = (state?: string) => (state === undefined ? scenario.possibleStates.length : scenario.possibleStates.indexOf(state))
+  const listed = [...scenario.mocks].sort((a, b) => at(a.requiredState) - at(b.requiredState))
+  const confirm = async () => {
+    setBusy(true)
+    try {
+      // The current versions: a mock changed meanwhile is refused rather than deleted blind.
+      const stubs = await apiFetch<StubMapping[]>('/api/mocks', { query: { scenario: scenario.name } })
+      const left: string[] = []
+      for (const stub of stubs) {
+        try {
+          await deleteMock.mutateAsync({ id: stub.id, version: stub.metadata?.wiremockUi?.version ?? 0 })
+        } catch {
+          left.push(stub.name ?? stub.id)
+        }
+      }
+      if (left.length > 0) toast.error(t('scenarios.deleteFailed', { name: scenario.name, names: left.join(', ') }), { duration: Number.POSITIVE_INFINITY })
+      else toast.success(t(stubs.length === 1 ? 'scenarios.deletedOne' : 'scenarios.deleted', { name: scenario.name, count: stubs.length }))
+    } catch (error) {
+      toast.error(t('scenarios.deleteFailed', { name: scenario.name, names: t('scenarios.deleteAll') }), {
+        description: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.scenarios })
+      setBusy(false)
+    }
+  }
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="outline" size="sm" disabled={busy} className="text-mismatch hover:text-mismatch">
+          <Trash2Icon data-icon="inline-start" />
+          {t('scenarios.delete')}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent className="glass-panel">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('scenarios.deleteTitle', { name: scenario.name })}</AlertDialogTitle>
+          <AlertDialogDescription>{t(count === 1 ? 'scenarios.deleteBodyOne' : 'scenarios.deleteBody', { count })}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <ul aria-label={t('scenarios.deleteList')} className="flex max-h-60 flex-col gap-1.5 overflow-y-auto text-xs">
+          {listed.map((mock) => (
+            <li key={mock.id} className="flex min-w-0 items-center gap-2 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
+              {mock.method && <MethodBadge method={mock.method} />}
+              <span className="truncate font-medium">{mock.name || t('scenarios.unnamedMock')}</span>
+              <span dir="ltr" className="ms-auto shrink-0 font-mono text-[11px] text-muted-foreground">
+                {mock.requiredState ?? t('scenarios.anyState')}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => void confirm()}>
+            {t(count === 1 ? 'scenarios.deleteConfirmOne' : 'scenarios.deleteConfirm', { count })}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 

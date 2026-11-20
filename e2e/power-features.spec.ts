@@ -129,6 +129,46 @@ test('the scenario builder makes a 2-step scenario that the test panel runs step
   await expect(panel.getByText('Matched another mock')).toBeVisible()
 })
 
+test('editing a scenario as one unit: add a step after the last, save, and WireMock answers it', async ({ page, request }) => {
+  const scenario = 'e2e-edit'
+  for (const [requiredState, newState, body] of [
+    ['Started', 'checked', '{"step":"one"}'],
+    ['checked', undefined, '{"step":"two"}'],
+  ] as const) {
+    const res = await request.post('/api/integrations/nic/endpoints/fetch-citizen/mocks', {
+      headers: AUTH,
+      data: { keyValue: '7000000007', status: 200, body, name: `${scenario} — ${requiredState}`, scenario: { name: scenario, requiredState, ...(newState ? { newState } : {}) } },
+    })
+    expect(res.status(), await res.text()).toBe(201)
+    remember(((await res.json()) as { id: string }).id)
+  }
+
+  await signIn(page, USER_A)
+  await page.goto(`/scenarios?scenario=${scenario}`)
+  await page.getByRole('article', { name: scenario }).getByRole('link', { name: 'Edit scenario' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Edit scenario' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Step 2 state' })).toHaveValue('checked')
+  await page.getByRole('button', { name: 'Add step' }).click()
+  await page.getByRole('textbox', { name: 'Step 3 state' }).fill('gone')
+  await page.getByRole('spinbutton', { name: 'Step 3 response status' }).fill('404')
+  await page.getByRole('button', { name: 'Save scenario' }).click()
+  await expect(page.getByText(`Scenario ${scenario} saved: 1 added, 1 changed, 0 removed`)).toBeVisible()
+  await expect(page).toHaveURL(/\/scenarios\?scenario=e2e-edit$/)
+
+  const mocks = (await (await request.get(`/api/mocks?scenario=${scenario}`, { headers: AUTH })).json()) as { id: string; requiredScenarioState: string }[]
+  for (const m of mocks) remember(m.id)
+  const gone = mocks.find((m) => m.requiredScenarioState === 'gone')!
+  await request.post('/api/scenarios/reset', { headers: AUTH, data: { name: scenario } })
+
+  const call = () =>
+    fetch(`${wiremockUrl()}/nic/citizens/fetch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idNo: '7000000007' }) })
+  expect(await (await call()).json()).toEqual({ step: 'one' })
+  expect(await (await call()).json()).toEqual({ step: 'two' })
+  const third = await call()
+  expect(third.status).toBe(404)
+  expect(third.headers.get('Matched-Stub-Id')).toBe(gone.id)
+})
+
 test('a proxy mock made in Simple mode forwards to the real service', async ({ page, request }) => {
   // The "real service" is WireMock itself, as seen from inside its container.
   await createStub(request, {

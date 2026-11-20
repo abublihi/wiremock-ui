@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { AlertCircleIcon, FlaskConicalIcon, TerminalIcon } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { AlertCircleIcon, ArrowUpRightIcon, FlaskConicalIcon, TerminalIcon, WorkflowIcon } from 'lucide-react'
 import type { StubMapping } from '@/server/wiremock/types'
 import { ApiError } from '@/ui/api/client'
 import { useEndpoints, useIntegrations, useMock } from '@/ui/api/queries'
@@ -68,6 +69,7 @@ export function EditMockPage({ id }: { id: string }) {
   const catalog = integration && endpoint ? { integration, endpoint } : undefined
   const ref = catalog ? t('editor.endpointRef', { integration: catalog.integration.name, endpoint: catalog.endpoint.name }) : opened.id
   const tested = draftFromStub(opened, endpoint)
+  const scenario = typeof opened.scenarioName === 'string' && opened.scenarioName !== '' ? opened.scenarioName : undefined
   const unavailable = meta?.endpoint ? t('editor.endpointMissing', { ref: `${meta.integration}/${meta.endpoint}` }) : t('editor.noCatalog')
 
   return (
@@ -75,6 +77,7 @@ export function EditMockPage({ id }: { id: string }) {
       title={opened.name || opened.id}
       caption={t('editor.editCaption', { ref, version: meta?.version ?? 0 })}
       aside={catalog && <EndpointInfo integration={catalog.integration} endpoint={catalog.endpoint} />}
+      notice={scenario && <ScenarioLink name={scenario} />}
       actions={
         // Both act on the saved version: that is what WireMock serves.
         <>
@@ -106,5 +109,28 @@ export function EditMockPage({ id }: { id: string }) {
         onRestored={(stub, dirty) => !dirty && load(stub)}
       />
     </EditorShell>
+  )
+}
+
+/** A step mock: it is one of its scenario's mocks, which the builder edits together. */
+function ScenarioLink({ name }: { name: string }) {
+  const t = useT()
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-signal/30 bg-signal/5 px-3 py-2 text-xs">
+      <WorkflowIcon aria-hidden className="size-3.5 shrink-0 text-signal-fg" />
+      <span>
+        {t('editor.partOfScenario')}{' '}
+        <span dir="ltr" className="font-mono font-semibold">
+          {name}
+        </span>
+      </span>
+      <span aria-hidden className="text-muted-foreground">
+        —
+      </span>
+      <Link to="/scenarios/$name/edit" params={{ name }} className="inline-flex items-center gap-1 text-signal-fg hover:underline">
+        {t('editor.editWholeScenario')}
+        <ArrowUpRightIcon aria-hidden className="size-3" />
+      </Link>
+    </p>
   )
 }

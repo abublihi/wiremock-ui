@@ -43,6 +43,7 @@ import { Route as ApiScenariosResetRouteImport } from './routes/api/scenarios.re
 import { Route as ApiSessionPasswordRouteImport } from './routes/api/session.password'
 import { Route as ApiUsersIdRouteImport } from './routes/api/users.$id'
 import { Route as AppCatalogKeyIndexRouteImport } from './routes/_app/catalog.$key.index'
+import { Route as AppScenariosNameEditRouteImport } from './routes/_app/scenarios.$name.edit'
 import { Route as ApiIntegrationsKeyEndpointsRouteImport } from './routes/api/integrations.$key.endpoints'
 import { Route as ApiMocksIdDuplicateRouteImport } from './routes/api/mocks.$id.duplicate'
 import { Route as ApiMocksIdHistoryRouteImport } from './routes/api/mocks.$id.history'
@@ -224,6 +225,11 @@ const AppCatalogKeyIndexRoute = AppCatalogKeyIndexRouteImport.update({
   path: '/catalog/$key/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppScenariosNameEditRoute = AppScenariosNameEditRouteImport.update({
+  id: '/scenarios/$name/edit',
+  path: '/scenarios/$name/edit',
+  getParentRoute: () => AppRoute,
+} as any)
 const ApiIntegrationsKeyEndpointsRoute =
   ApiIntegrationsKeyEndpointsRouteImport.update({
     id: '/endpoints',
@@ -319,6 +325,7 @@ export interface FileRoutesByFullPath {
   '/catalog/': typeof AppCatalogIndexRoute
   '/mocks/': typeof AppMocksIndexRoute
   '/scenarios/': typeof AppScenariosIndexRoute
+  '/scenarios/$name/edit': typeof AppScenariosNameEditRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
@@ -365,6 +372,7 @@ export interface FileRoutesByTo {
   '/catalog': typeof AppCatalogIndexRoute
   '/mocks': typeof AppMocksIndexRoute
   '/scenarios': typeof AppScenariosIndexRoute
+  '/scenarios/$name/edit': typeof AppScenariosNameEditRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
@@ -413,6 +421,7 @@ export interface FileRoutesById {
   '/_app/catalog/': typeof AppCatalogIndexRoute
   '/_app/mocks/': typeof AppMocksIndexRoute
   '/_app/scenarios/': typeof AppScenariosIndexRoute
+  '/_app/scenarios/$name/edit': typeof AppScenariosNameEditRoute
   '/api/integrations/$key/endpoints': typeof ApiIntegrationsKeyEndpointsRouteWithChildren
   '/api/mocks/$id/duplicate': typeof ApiMocksIdDuplicateRoute
   '/api/mocks/$id/history': typeof ApiMocksIdHistoryRoute
@@ -461,6 +470,7 @@ export interface FileRouteTypes {
     | '/catalog/'
     | '/mocks/'
     | '/scenarios/'
+    | '/scenarios/$name/edit'
     | '/api/integrations/$key/endpoints'
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
@@ -507,6 +517,7 @@ export interface FileRouteTypes {
     | '/catalog'
     | '/mocks'
     | '/scenarios'
+    | '/scenarios/$name/edit'
     | '/api/integrations/$key/endpoints'
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
@@ -554,6 +565,7 @@ export interface FileRouteTypes {
     | '/_app/catalog/'
     | '/_app/mocks/'
     | '/_app/scenarios/'
+    | '/_app/scenarios/$name/edit'
     | '/api/integrations/$key/endpoints'
     | '/api/mocks/$id/duplicate'
     | '/api/mocks/$id/history'
@@ -825,6 +837,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCatalogKeyIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/scenarios/$name/edit': {
+      id: '/_app/scenarios/$name/edit'
+      path: '/scenarios/$name/edit'
+      fullPath: '/scenarios/$name/edit'
+      preLoaderRoute: typeof AppScenariosNameEditRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/api/integrations/$key/endpoints': {
       id: '/api/integrations/$key/endpoints'
       path: '/endpoints'
@@ -917,6 +936,7 @@ interface AppRouteChildren {
   AppCatalogIndexRoute: typeof AppCatalogIndexRoute
   AppMocksIndexRoute: typeof AppMocksIndexRoute
   AppScenariosIndexRoute: typeof AppScenariosIndexRoute
+  AppScenariosNameEditRoute: typeof AppScenariosNameEditRoute
   AppCatalogKeyIndexRoute: typeof AppCatalogKeyIndexRoute
   AppCatalogKeyEndpointsNewRoute: typeof AppCatalogKeyEndpointsNewRoute
   AppCatalogKeyEndpointsEndpointEditRoute: typeof AppCatalogKeyEndpointsEndpointEditRoute
@@ -934,6 +954,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCatalogIndexRoute: AppCatalogIndexRoute,
   AppMocksIndexRoute: AppMocksIndexRoute,
   AppScenariosIndexRoute: AppScenariosIndexRoute,
+  AppScenariosNameEditRoute: AppScenariosNameEditRoute,
   AppCatalogKeyIndexRoute: AppCatalogKeyIndexRoute,
   AppCatalogKeyEndpointsNewRoute: AppCatalogKeyEndpointsNewRoute,
   AppCatalogKeyEndpointsEndpointEditRoute:

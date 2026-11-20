@@ -183,6 +183,8 @@ Some flows need the same request to get a different answer the second time: "pen
 
 **Why is a scenario made of mocks?** WireMock has no scenario object of its own. A scenario exists only because several mocks share a scenario name. Each mock says "I answer only while the scenario is in state X" and, optionally, "then move it to state Y". Every scenario starts in `Started`. So a two-step "pending → approved" flow is two mocks: one answers in `Started` and moves to `approved`, the other answers in `approved`.
 
+**Can a scenario be one mock?** No: a scenario is stored as one mock per step because WireMock answers one response per mock; wiremock-ui lets you edit it as one. The builder creates and edits all of a scenario's steps together, the Scenarios page deletes them together, and the Mocks list folds them into one row.
+
 ### Build a scenario
 
 ![Scenario builder](screenshots/scenario-builder-dark.png)
@@ -208,9 +210,27 @@ For the loan example: name `loan-approval`, request **NIC → Loan status** with
 
 On a scenario's card, **Add a mock to this scenario** adds a step after the scenario's last state. It opens the mock editor with a banner "Adding a step to scenario …" and the **Scenario (stateful)** section already filled in: the scenario name, and **Only answers when the scenario is in state** set to a new state such as `step-3` (rename it if you like; letters, digits and `- _ .`). Pick the same request the scenario answers and write the answer.
 
-Why a new state? A mock only answers while the scenario is in its state. If the new mock answered in the last state too, two mocks would match the same call and the newest would win, so the old last step would never answer again. Instead the new step waits in its own state, and the old last step has to move the scenario there. That is what the banner's checkbox, on by default, does: **Make the current last step move to …**. After the new mock is saved, every mock that answers in the last state and stays there gets **Then move the scenario to state** set to the new state (through the normal save, so someone else's newer edit is never overwritten). The calls then run old last step first, then the new step. If that update fails (someone changed the mock meanwhile, say), a message names the mock and offers to open it, so you can set **Then move the scenario to state** yourself. Untick the box to leave the old last step alone.
+Why a new state? A mock only answers while the scenario is in its state. If the new mock answered in the last state too, two mocks would match the same call and the newest would win, so the old last step would never answer again. Instead the new step waits in its own state, and the old last step has to move the scenario there. That is what the banner's checkbox, on by default, does: **Make the current last step move to …**. After the new mock is saved, every mock that answers in the last state, stays there and matches the same request as the new mock gets **Then move the scenario to state** set to the new state (through the normal save, so someone else's newer edit is never overwritten). The calls then run old last step first, then the new step. If that update fails (someone changed the mock meanwhile, say), a message names the mock and offers to open it, so you can set **Then move the scenario to state** yourself. Untick the box to leave the old last step alone. Mocks of the scenario for other requests (another endpoint, another key) are never moved on: their callers would land in a state where nothing answers them. When no mock of the picked endpoint answers in the last state, the banner says so and offers no checkbox; after saving, a message says when no mock matched the new step's request.
+
+The **Edit scenario** page below does the same in one place: **Add step** after the last one, and the old last step moves on to it when you save.
 
 You can also put any mock in a scenario by hand: in the mock editor, turn on **Answer differently on later calls** and fill in the scenario name, the state it answers in (blank means `Started`) and, optionally, the state to move to.
+
+### Edit or delete a scenario
+
+![Edit scenario](screenshots/scenario-edit-dark.png)
+
+**Edit scenario** on a scenario's card (or in the Mocks list, or **Edit the whole scenario** in the mock editor of any of its mocks) opens the builder over the scenario's mocks, one step per state in the order the scenario runs:
+
+- Rename the scenario, rename states, change each step's status, headers, body and delay, change where a step moves the scenario, and add, remove or reorder steps, as when building one.
+- The request is shown read-only: every step keeps the request its mock matches. If the steps match different requests, each step shows its own; a step you add uses the request (and catalog endpoint) of the step before it. To change a request, open that mock in the mock editor.
+- Mocks the builder can't show as a step are listed under **Kept as is** with the reason, and saving leaves them untouched: mocks that answer in any state, answers the builder has no field for (proxy, webhook, fault, file body, a delay that is not whole seconds…), and a second mock answering in a state another step already answers in. Renaming the scenario does not rename them; the page warns you.
+- **Save scenario** writes only the difference: new steps are created, changed steps updated (with their versions, so someone else's newer edit is refused, not overwritten), removed steps deleted. Mock names of the form `<scenario> — <state>` follow a rename; names you chose stay. It is all or nothing: if a write is refused, the ones before it are undone (created mocks deleted, changed and deleted ones restored to the version you opened) and the page says which step failed. Every write is in the audit log as usual.
+- Leaving with unsaved changes asks first.
+
+**Delete scenario** on the card shows the mocks it removes and deletes all of them after you confirm.
+
+In **Mocks**, the mocks of a scenario show as one row, **Scenario: name · N steps**. Click it to see the step mocks (each with the state it answers in and the state it moves to); its menu has **Edit scenario** and **Open in Scenarios**. The **Scenario mocks** filter shows only mocks that belong to a scenario. The list groups the mocks it shows, so with a filter (or a page of a long list) a group holds the scenario's mocks that are listed.
 
 ### Watch and control scenarios
 
@@ -398,6 +418,7 @@ curl -u $AUTH -X POST $UI/api/integrations/nic/endpoints/fetch-citizen/mocks -H 
 curl -u $AUTH -X POST $UI/api/mocks -H "$JSON" \
   -d '{"request":{"method":"GET","urlPath":"/hello"},"response":{"status":200,"body":"hi"}}'
 curl -u $AUTH "$UI/api/mocks?owner=me"          # yours; no owner = all, owner=baseline = baseline
+curl -u $AUTH "$UI/api/mocks?scenario=order-flow" # one scenario's mocks; scenario=* every mock in a scenario
 # update and delete need the current version (from the create or list response)
 curl -u $AUTH -X PUT $UI/api/mocks/<id> -H "$JSON" \
   -d '{"version":1,"stub":{"request":{"method":"GET","urlPath":"/hello"},"response":{"status":200,"body":"hello again"}}}'

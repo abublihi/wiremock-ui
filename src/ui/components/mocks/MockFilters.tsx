@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { SearchIcon } from 'lucide-react'
+import { SearchIcon, WorkflowIcon } from 'lucide-react'
 import type { Integration } from '@/server/catalog/types'
 import { Input } from '@/ui/components/ui/input'
+import { Toggle } from '@/ui/components/ui/toggle'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
 
-export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string }
+/** `scenarios: 'only'`: only mocks that belong to a scenario (the "Scenario mocks" chip). */
+export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string; scenarios?: 'only' }
 
 const ANY = '__any__'
 const STATUSES = ['200', '201', '204', '400', '401', '403', '404', '409', '422', '500', '502', '503']
@@ -104,6 +106,17 @@ export function MockFilters({
           ))}
         </SelectContent>
       </Select>
+
+      <Toggle
+        variant="outline"
+        size="sm"
+        pressed={search.scenarios === 'only'}
+        onPressedChange={(on) => onChange({ scenarios: on ? 'only' : undefined })}
+        className={ON}
+      >
+        <WorkflowIcon />
+        {t('mocks.scenarioOnly')}
+      </Toggle>
     </div>
   )
 }

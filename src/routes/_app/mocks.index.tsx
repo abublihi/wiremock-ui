@@ -27,6 +27,7 @@ export const Route = createFileRoute('/_app/mocks/')({
     integration: str(raw.integration),
     status: str(raw.status),
     q: str(raw.q),
+    scenarios: raw.scenarios === 'only' ? 'only' : undefined,
   }),
   component: MocksRoute,
 })
@@ -55,15 +56,21 @@ export function MocksPage({
   // WireMock-only mode lists everything WireMock serves (no owner filter, no "Reset my mocks").
   const owner = wiremockOnly ? 'all' : (search.owner ?? 'me')
   // 'all' is the UI's word for no owner filter; the API treats an owner value literally.
-  const mocks = useMocks({ owner: owner === 'all' ? undefined : owner, integration: search.integration, status: search.status, q: search.q })
+  const mocks = useMocks({
+    owner: owner === 'all' ? undefined : owner,
+    integration: search.integration,
+    status: search.status,
+    q: search.q,
+    scenario: search.scenarios === 'only' ? '*' : undefined,
+  })
   const integrations = useIntegrations()
   // Nothing to build mocks from yet: the first step is the catalog, not New mock.
   const noCatalog = integrations.data?.length === 0
-  const filtered = Boolean(search.integration || search.status || search.q || (!wiremockOnly && owner !== 'me'))
+  const filtered = Boolean(search.integration || search.status || search.q || search.scenarios || (!wiremockOnly && owner !== 'me'))
 
   const count = mocks.data?.length ?? 0
   const baseline = (mocks.data ?? []).filter((m) => (m.metadata?.wiremockUi?.owner ?? 'baseline') === 'baseline').length
-  const clearFilters = () => onSearchChange({ owner: undefined, integration: undefined, status: undefined, q: undefined })
+  const clearFilters = () => onSearchChange({ owner: undefined, integration: undefined, status: undefined, q: undefined, scenarios: undefined })
 
   return (
     <div className="fade-up flex flex-col gap-5">

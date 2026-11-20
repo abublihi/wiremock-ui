@@ -8,6 +8,7 @@ import {
   ArrowLeftRightIcon,
   ArrowUpIcon,
   ArrowUpRightIcon,
+  InfoIcon,
   PlusIcon,
   SaveIcon,
   Trash2Icon,
@@ -17,12 +18,15 @@ import { toast } from 'sonner'
 import type { StubMapping } from '@/server/wiremock/types'
 import {
   queryKeys,
+  restoreMock,
   useCreateCatalogMock,
   useCreateMock,
   useDeleteMock,
   useEndpoints,
   useIntegrations,
+  useMocks,
   useScenarios,
+  useUpdateMock,
 } from '@/ui/api/queries'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
@@ -40,14 +44,20 @@ import { Button } from '@/ui/components/ui/button'
 import { Field, FieldDescription, FieldError, FieldLabel, FieldLegend, FieldSet } from '@/ui/components/ui/field'
 import { Input } from '@/ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
+import { Skeleton } from '@/ui/components/ui/skeleton'
 import { Spinner } from '@/ui/components/ui/spinner'
 import { Switch } from '@/ui/components/ui/switch'
 import { Textarea } from '@/ui/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useT } from '@/ui/i18n'
-import { STARTED, exampleFor } from '@/ui/lib/editor-sync'
+import { STARTED, exampleFor, fromEditable, linkOf, toEditable } from '@/ui/lib/editor-sync'
 import {
   type BuilderDraft,
+  type EditChange,
+  type KeptMock,
+  type LoadedScenario,
+  editChanges,
+  loadScenario,
   type BuilderErrors,
   type BuilderStep,
   type CatalogRequest,
@@ -76,11 +86,65 @@ const messageOf = (error: unknown, fallback: string) => (error instanceof Error 
 
 type Picked = { integration: string; endpoint: string }
 
+const URL_FIELDS = ['url', 'urlPath', 'urlPathTemplate', 'urlPattern', 'urlPathPattern'] as const
+/** The method and URL a mock matches, as the request summary shows them. */
+function requestOf(stub: StubMapping | undefined): { method?: string; url?: string } {
+  const request = (stub?.request ?? {}) as Record<string, unknown>
+  const method = typeof request.method === 'string' ? request.method : undefined
+  const url = URL_FIELDS.map((f) => request[f]).find((v): v is string => typeof v === 'string')
+  return { method, url }
+}
+/** The stub as it was saved (to put back when a save is undone). */
+const asSaved = (stub: StubMapping) => fromEditable(toEditable(stub), linkOf(stub))
+
 /**
- * "New scenario": one request and an ordered list of steps (state, answer, where it moves next), saved as one mock per
- * step through the usual create endpoints — all of them, or none (a refused step removes the ones made before it).
+ * The scenario builder. Without `editName`: "New scenario" — one request and an ordered list of steps (state, answer,
+ * where it moves next), saved as one mock per step. With it: "Edit scenario" — the same form over that scenario's mocks,
+ * saved as the difference (create, update, delete). Either way all of it is saved, or none.
  */
-export function ScenarioBuilder() {
+export function ScenarioBuilder({ editName }: { editName?: string } = {}) {
+  return editName === undefined ? <BuilderForm /> : <ScenarioEditLoader name={editName} />
+}
+
+/** Loads a scenario's mocks for the edit form; explains a scenario it can't edit as steps. */
+function ScenarioEditLoader({ name }: { name: string }) {
+  const t = useT()
+  const mocks = useMocks({ scenario: name })
+  // Loaded once: background refetches never replace the user's draft.
+  const [loaded, setLoaded] = useState<LoadedScenario>()
+  if (!loaded && mocks.data && !mocks.isPlaceholderData) setLoaded(loadScenario(mocks.data, name))
+  const back = (
+    <Link to="/scenarios" search={{ scenario: name }} className={backLinkClass}>
+      <ArrowLeftIcon aria-hidden className="size-3.5" />
+      {t('builder.back')}
+    </Link>
+  )
+  const problem = mocks.isError
+    ? { title: t('builder.editLoadFailed'), body: mocks.error.message }
+    : loaded && loaded.steps.length === 0 && loaded.kept.length === 0
+      ? { title: t('builder.editMissing', { name }), body: t('builder.editMissingBody') }
+      : loaded?.startedMissing
+        ? { title: t('builder.editNoStart', { name }), body: t('builder.editNoStartBody') }
+        : undefined
+  if (problem || !loaded) {
+    return (
+      <EditorShell title={t('builder.editTitle')} caption={`// ${name}`} back={back}>
+        {problem ? (
+          <Alert variant="destructive">
+            <AlertCircleIcon />
+            <AlertTitle>{problem.title}</AlertTitle>
+            <AlertDescription>{problem.body}</AlertDescription>
+          </Alert>
+        ) : (
+          <Skeleton className="h-96 w-full" />
+        )}
+      </EditorShell>
+    )
+  }
+  return <BuilderForm edit={loaded} />
+}
+
+function BuilderForm({ edit }: { edit?: LoadedScenario }) {
   const t = useT()
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
@@ -90,13 +154,15 @@ export function ScenarioBuilder() {
   const createCatalog = useCreateCatalogMock()
   const createFree = useCreateMock()
   const deleteMock = useDeleteMock()
+  const updateMock = useUpdateMock()
 
   const counter = useRef(2)
   const nextId = () => `step-${++counter.current}`
-  const [name, setName] = useState('')
-  const [steps, setSteps] = useState<BuilderStep[]>(() => [newStep('step-1'), newStep('step-2')])
+  const [name, setName] = useState(edit?.name ?? '')
+  const [steps, setSteps] = useState<BuilderStep[]>(() => edit?.steps ?? [newStep('step-1'), newStep('step-2')])
   const [kind, setKind] = useState<'catalog' | 'free'>('catalog')
-  const [picked, setPicked] = useState<Picked | null>(null)
+  // Editing: the catalog endpoint of the scenario's first step, for its status and body checks.
+  const [picked, setPicked] = useState<Picked | null>(() => (edit ? (linkOf(edit.steps[0]?.source ?? {}) ?? null) : null))
   const [key, setKey] = useState({ isDefault: false, keyValue: '' })
   const [free, setFree] = useState({ method: 'GET', url: '' })
   const [touched, setTouched] = useState(false)
@@ -112,16 +178,28 @@ export function ScenarioBuilder() {
 
   const catalogRequest: CatalogRequest | null =
     integration && endpoint ? { kind: 'catalog', integration, endpoint, isDefault: key.isDefault || !endpoint.lookup, keyValue: key.keyValue } : null
-  const draft: BuilderDraft = { name, request: kind === 'catalog' ? catalogRequest : { kind: 'free', ...free }, steps }
-  const errors = validateDraft(draft)
+  const firstRequest = requestOf(edit?.steps[0]?.source)
+  const draft: BuilderDraft = {
+    name,
+    request: edit
+      ? { kind: 'existing', ...firstRequest, ...(endpoint ? { endpoint } : {}) }
+      : kind === 'catalog'
+        ? catalogRequest
+        : { kind: 'free', ...free },
+    steps,
+  }
+  const errors = validateDraft(draft, { keepName: edit?.name })
   const shown: BuilderErrors = attempted ? errors : { steps: {}, ...(errors.name?.key === 'builder.nameUnsettable' ? { name: errors.name } : {}) }
   const msg = (m: Message | undefined) => (m ? t(m.key, m.vars) : undefined)
-  const existing = scenarios.data?.find((s) => s.name === name.trim())
+  // Another scenario of that name (editing: renaming onto it would merge the two).
+  const existing = scenarios.data?.find((s) => s.name === name.trim() && s.name !== edit?.name)
+  const renamedWithKept = edit && edit.kept.length > 0 && name.trim() !== edit.name
 
   // A newly picked endpoint fills the bodies the user has not written with its examples.
   const filledFor = useRef<string | null>(null)
   useEffect(() => {
-    if (!endpoint) return
+    // Editing: loaded bodies are the mocks' own, never replaced by examples.
+    if (!endpoint || edit) return
     const ref = `${endpoint.integration}/${endpoint.key}`
     if (filledFor.current === ref) return
     filledFor.current = ref
@@ -146,7 +224,7 @@ export function ScenarioBuilder() {
     setFailure(null)
   }
   const onStatus = (step: BuilderStep, status: string) => {
-    const example = endpoint && kind === 'catalog' ? exampleFor(endpoint, Number(status)) : ''
+    const example = endpoint && kind === 'catalog' && !edit ? exampleFor(endpoint, Number(status)) : ''
     const refill = (step.bodyFromExample || step.body === '') && example !== ''
     updateStep(step.id, { status, ...(refill ? { body: example, bodyFromExample: true } : {}) })
   }
@@ -179,6 +257,13 @@ export function ScenarioBuilder() {
   }
   const add = () => {
     const step = newStep(nextId())
+    if (edit) {
+      // A step added while editing answers like the mocks around it: it starts with the last step's headers.
+      setSteps((all) => [...all, { ...step, headers: (all.at(-1)?.headers ?? []).map((h) => ({ ...h })) }])
+      setTouched(true)
+      requestAnimationFrame(() => document.getElementById(id(`${step.id}-state`))?.focus())
+      return
+    }
     const example = endpoint && kind === 'catalog' ? exampleFor(endpoint, 200) : ''
     setSteps((all) => [...all, { ...step, body: example, bodyFromExample: example !== '' }])
     setTouched(true)
@@ -187,7 +272,7 @@ export function ScenarioBuilder() {
 
   // Leaving with unsaved steps asks first.
   const dirtyRef = useRef(false)
-  dirtyRef.current = touched || name !== '' || picked !== null
+  dirtyRef.current = edit ? touched || name !== edit.name : touched || name !== '' || picked !== null
   const leaving = useRef(false)
   const blocker = useBlocker({
     shouldBlockFn: () => dirtyRef.current && !leaving.current,
@@ -205,6 +290,14 @@ export function ScenarioBuilder() {
       return
     }
     setSaving(true)
+    if (edit) {
+      try {
+        await saveEdit(edit)
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
     const created: StubMapping[] = []
     const scenarioName = name.trim()
     try {
@@ -238,20 +331,90 @@ export function ScenarioBuilder() {
     }
   }
 
+  /**
+   * Editing: writes the difference — creates, then updates (with versions), then deletes. A refused write undoes the
+   * ones before it, newest first: created mocks are deleted, changed and deleted ones restored to their version.
+   */
+  type Done = { kind: 'created'; stub: StubMapping } | { kind: 'updated'; before: StubMapping; after: StubMapping } | { kind: 'deleted'; before: StubMapping }
+  const undo = async (done: Done[]): Promise<StubMapping[]> => {
+    const left: StubMapping[] = []
+    const version = (stub: StubMapping) => stub.metadata?.wiremockUi?.version ?? 0
+    for (const step of [...done].reverse()) {
+      try {
+        if (step.kind === 'created') await deleteMock.mutateAsync({ id: step.stub.id, version: version(step.stub) })
+        else {
+          try {
+            await restoreMock(queryClient, step.before.id, version(step.before))
+          } catch {
+            // No history (WireMock-only mode): put the old stub back by hand.
+            if (step.kind === 'updated') await updateMock.mutateAsync({ id: step.before.id, stub: asSaved(step.before), version: version(step.after) })
+            else await createFree.mutateAsync(asSaved(step.before))
+          }
+        }
+      } catch {
+        left.push(step.kind === 'created' ? step.stub : step.before)
+      }
+    }
+    return left
+  }
+  const saveEdit = async (loaded: LoadedScenario) => {
+    const scenarioName = name.trim()
+    const changes = editChanges(loaded, draft)
+    if (changes.length === 0) {
+      toast.info(t('builder.noChanges'))
+      return
+    }
+    const done: Done[] = []
+    const version = (stub: StubMapping) => stub.metadata?.wiremockUi?.version ?? 0
+    const what = (change: EditChange) =>
+      change.kind === 'delete'
+        ? t('builder.editRemoving', { name: change.before.name ?? change.before.id })
+        : t('builder.editStep', { n: change.step, state: change.state })
+    for (const change of changes) {
+      try {
+        if (change.kind === 'create') done.push({ kind: 'created', stub: await createFree.mutateAsync(change.stub) })
+        else if (change.kind === 'update')
+          done.push({ kind: 'updated', before: change.before, after: await updateMock.mutateAsync({ id: change.before.id, stub: change.stub, version: version(change.before) }) })
+        else {
+          await deleteMock.mutateAsync({ id: change.before.id, version: version(change.before) })
+          done.push({ kind: 'deleted', before: change.before })
+        }
+      } catch (error) {
+        const left = await undo(done)
+        const vars = { what: what(change), message: messageOf(error, t('error.generic')).replace(/\.$/, ''), names: left.map((s) => s.name ?? s.id).join(', ') }
+        setFailure(t(left.length > 0 ? 'builder.editRollbackFailed' : 'builder.editFailed', vars))
+        await queryClient.invalidateQueries({ queryKey: queryKeys.scenarios })
+        return
+      }
+    }
+    await queryClient.invalidateQueries({ queryKey: queryKeys.scenarios })
+    const count = (kind: EditChange['kind']) => changes.filter((c) => c.kind === kind).length
+    toast.success(t('builder.saved', { name: scenarioName, added: count('create'), changed: count('update'), removed: count('delete') }))
+    leaving.current = true
+    await navigate({ to: '/scenarios', search: { scenario: scenarioName } })
+  }
+
   const preview = previewScenario(draft, (n) => t('builder.step', { n }))
-  const bodyLanguage = kind === 'free' ? 'json' : endpoint?.contentType === 'json' || endpoint?.contentType === 'xml' ? endpoint.contentType : null
+  const bodyLanguage =
+    kind === 'free' || (edit && !endpoint) ? 'json' : endpoint?.contentType === 'json' || endpoint?.contentType === 'xml' ? endpoint.contentType : null
+  // Editing steps that match different requests: each step shows its own (a new step uses the one before it).
+  const stepRequest = (i: number) => {
+    if (!edit || edit.sameRequest) return undefined
+    const source = steps.slice(0, i + 1).reverse().find((s) => s.source)?.source ?? edit.steps[0]?.source
+    return requestOf(source)
+  }
 
   return (
     <EditorShell
-      title={t('builder.title')}
-      caption={t('builder.caption')}
+      title={edit ? t('builder.editTitle') : t('builder.title')}
+      caption={edit ? t('builder.editCaption', { name: edit.name, count: edit.steps.length + edit.kept.length }) : t('builder.caption')}
       back={
-        <Link to="/scenarios" className={backLinkClass}>
+        <Link to="/scenarios" search={edit ? { scenario: edit.name } : {}} className={backLinkClass}>
           <ArrowLeftIcon aria-hidden className="size-3.5" />
           {t('builder.back')}
         </Link>
       }
-      notice={<Explainer />}
+      notice={<Explainer editing={Boolean(edit)} />}
       aside={
         <section aria-labelledby={id('diagram')} className="glow-border flex flex-col gap-3 rounded-md border border-line bg-surface p-4">
           <Eyebrow id={id('diagram')}>{t('builder.diagram')}</Eyebrow>
@@ -264,7 +427,7 @@ export function ScenarioBuilder() {
         {failure && (
           <Alert variant="destructive">
             <AlertCircleIcon />
-            <AlertTitle>{t('builder.failedTitle')}</AlertTitle>
+            <AlertTitle>{edit ? t('builder.editFailedTitle') : t('builder.failedTitle')}</AlertTitle>
             <AlertDescription>{failure}</AlertDescription>
           </Alert>
         )}
@@ -301,10 +464,33 @@ export function ScenarioBuilder() {
                 </Link>
               </p>
             )}
+            {renamedWithKept && (
+              <p className="flex items-start gap-1.5 text-xs text-hazard-fg">
+                <TriangleAlertIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+                <span>{t('builder.renameKept', { count: edit.kept.length, name: edit.name })}</span>
+              </p>
+            )}
             {shown.name && <FieldError id={id('name-error')}>{msg(shown.name)}</FieldError>}
           </Field>
         </Section>
 
+        {edit ? (
+          <Section title={t('builder.section.request')} hint={edit.sameRequest ? t('builder.editRequestHint') : t('builder.editRequestsHint')}>
+            {edit.sameRequest && (
+              <div className="flex min-w-0 items-center gap-2 rounded-md border border-line bg-surface-2 px-3 py-2.5">
+                {firstRequest.method && <MethodBadge method={firstRequest.method} />}
+                <span className="flex min-w-0 flex-col">
+                  {integration && endpoint && (
+                    <span className="truncate text-sm font-medium">{t('editor.endpointRef', { integration: integration.name, endpoint: endpoint.name })}</span>
+                  )}
+                  <span dir="ltr" className="truncate font-mono text-xs text-muted-foreground">
+                    {firstRequest.url ?? '—'}
+                  </span>
+                </span>
+              </div>
+            )}
+          </Section>
+        ) : (
         <Section title={t('builder.section.request')} hint={t('builder.requestHint')}>
           <FieldSet className="gap-2">
             <FieldLegend variant="label" id={id('kind-label')}>
@@ -435,6 +621,7 @@ export function ScenarioBuilder() {
             </div>
           )}
         </Section>
+        )}
 
         <Section title={t('builder.section.steps')} hint={t('builder.stepsHint')}>
           <ol aria-label={t('builder.stepsLabel')} className="flex flex-col gap-3">
@@ -449,7 +636,9 @@ export function ScenarioBuilder() {
                 msg={msg}
                 bodyLanguage={bodyLanguage}
                 exampleShown={kind === 'catalog' && step.bodyFromExample && step.body !== ''}
-                catalog={kind === 'catalog'}
+                catalog={kind === 'catalog' && !edit}
+                request={stepRequest(i)}
+                mockId={step.source?.id}
                 onChange={(patch) => updateStep(step.id, patch)}
                 onStatus={(status) => onStatus(step, status)}
                 onMove={(dir) => move(step, dir)}
@@ -466,6 +655,8 @@ export function ScenarioBuilder() {
           </p>
         </Section>
 
+        {edit && edit.kept.length > 0 && <KeptSection kept={edit.kept} />}
+
         <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-3 border-t border-line bg-canvas/85 px-1 py-3 backdrop-blur">
           {attempted && hasErrors(errors) && (
             <p role="alert" className="me-auto text-xs text-mismatch">
@@ -474,7 +665,7 @@ export function ScenarioBuilder() {
           )}
           <Button type="submit" disabled={saving}>
             {saving ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
-            {saving ? t('builder.saving') : t('builder.save')}
+            {saving ? (edit ? t('builder.editSaving') : t('builder.saving')) : edit ? t('builder.editSave') : t('builder.save')}
           </Button>
         </div>
       </form>
@@ -483,7 +674,7 @@ export function ScenarioBuilder() {
         <AlertDialogContent className="glass-panel">
           <AlertDialogHeader>
             <AlertDialogTitle>{t('editor.leaveTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('builder.leaveBody')}</AlertDialogDescription>
+            <AlertDialogDescription>{edit ? t('builder.editLeaveBody') : t('builder.leaveBody')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => blocker.reset?.()}>{t('editor.stay')}</AlertDialogCancel>
@@ -508,6 +699,8 @@ function StepCard({
   bodyLanguage,
   exampleShown,
   catalog,
+  request,
+  mockId,
   onChange,
   onStatus,
   onMove,
@@ -523,6 +716,10 @@ function StepCard({
   exampleShown: boolean
   /** A catalog request: its mocks reopen in Simple mode unless the step adds custom headers. */
   catalog: boolean
+  /** Editing steps of different requests: the request this step matches (read-only). */
+  request?: { method?: string; url?: string }
+  /** Editing: the mock this step was loaded from. */
+  mockId?: string
   onChange: (patch: Partial<BuilderStep>) => void
   onStatus: (status: string) => void
   onMove: (dir: 'up' | 'down') => void
@@ -556,6 +753,14 @@ function StepCard({
           </span>
         </h3>
         <div className="flex items-center gap-1">
+          {mockId && (
+            <Button asChild variant="ghost" size="xs" className="text-muted-foreground">
+              <Link to="/mocks/$id" params={{ id: mockId }} aria-label={t('builder.openMockOf', { n })}>
+                {t('builder.openMock')}
+                <ArrowUpRightIcon data-icon="inline-end" />
+              </Link>
+            </Button>
+          )}
           <Button
             id={id('up')}
             type="button"
@@ -591,6 +796,16 @@ function StepCard({
         </div>
       </div>
 
+      {request && (
+        <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+          <span className="shrink-0">{t('builder.stepRequest')}</span>
+          {request.method && <MethodBadge method={request.method} />}
+          <span dir="ltr" className="truncate font-mono">
+            {request.url ?? '—'}
+          </span>
+        </p>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <Field data-invalid={Boolean(errors.state)}>
           <FieldLabel htmlFor={id('state')}>{t('builder.state')}</FieldLabel>
@@ -623,6 +838,9 @@ function StepCard({
               <SelectItem value="next">{last ? t('builder.moveNextLast') : t('builder.moveNext', { state: nextState })}</SelectItem>
               {/* On the last step the default already stays. */}
               {!last && <SelectItem value="stay">{t('builder.moveStay', { state: stateLabel })}</SelectItem>}
+              {step.moveTo.startsWith('state:') && (
+                <SelectItem value={step.moveTo}>{t('builder.moveState', { state: step.moveTo.slice('state:'.length) })}</SelectItem>
+              )}
               {steps.map((other, j) =>
                 j === index ? null : (
                   <SelectItem key={other.id} value={`step:${other.id}`}>
@@ -732,7 +950,7 @@ function StepCard({
 }
 
 /** The plain-words "what is a scenario" strip, with the order-status example as two calls. */
-function Explainer() {
+function Explainer({ editing = false }: { editing?: boolean }) {
   const t = useT()
   const titleId = useId()
   return (
@@ -743,7 +961,7 @@ function Explainer() {
           {t('builder.explainTitle')}
         </h2>
         <p className="text-sm leading-relaxed">{t('builder.explain')}</p>
-        <p className="text-xs leading-relaxed text-muted-foreground">{t('builder.explainMore')}</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">{editing ? t('builder.editExplainMore') : t('builder.explainMore')}</p>
       </div>
       <ol aria-hidden className="flex shrink-0 flex-col gap-1.5 font-mono text-[11px]">
         <li className="flex items-center gap-2 rounded-sm border border-line/70 bg-surface-2 px-2 py-1.5">
@@ -759,6 +977,48 @@ function Explainer() {
         </li>
       </ol>
     </section>
+  )
+}
+
+const KEPT_REASON = { anyState: 'builder.keptAnyState', response: 'builder.keptResponse', sameState: 'builder.keptSameState' } as const
+
+/** Mocks of the scenario the builder can't show as steps: listed with the reason, saved untouched. */
+function KeptSection({ kept }: { kept: KeptMock[] }) {
+  const t = useT()
+  return (
+    <Section title={t('builder.keptTitle', { count: kept.length })} hint={t('builder.keptHint')}>
+      <ul className="flex flex-col gap-2">
+        {kept.map(({ stub, reason }) => {
+          const { method, url } = requestOf(stub)
+          return (
+            <li key={stub.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-surface-2/50 px-3 py-2">
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex min-w-0 items-center gap-2">
+                  {method && <MethodBadge method={method} />}
+                  <span className="truncate text-sm font-medium">{stub.name || t('mocks.unnamed')}</span>
+                </span>
+                <span className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <InfoIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+                  <span>
+                    <span dir="ltr" className="font-mono">
+                      {url}
+                    </span>
+                    {url && ' · '}
+                    {t(KEPT_REASON[reason], { state: typeof stub.requiredScenarioState === 'string' ? stub.requiredScenarioState : '' })}
+                  </span>
+                </span>
+              </span>
+              <Button asChild variant="outline" size="xs">
+                <Link to="/mocks/$id" params={{ id: stub.id }}>
+                  {t('builder.openMock')}
+                  <ArrowUpRightIcon data-icon="inline-end" />
+                </Link>
+              </Button>
+            </li>
+          )
+        })}
+      </ul>
+    </Section>
   )
 }
 
