@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { ValidationError } from '../errors'
 import { assertBase64Body, assertHttpUrl, assertWebhook } from '../mocks/power-fields'
+import { trimTrailingSlashes } from '../url'
 import type { MockInput } from '../mocks/service'
 import type { Endpoint, Integration } from './types'
 
@@ -134,7 +135,8 @@ function requestFor(integration: Integration, endpoint: Endpoint, keyValue: stri
 function proxyResponse(proxy: NonNullable<SimpleMockInput['proxy']>): Record<string, unknown> {
   assertHttpUrl(proxy.baseUrl, 'proxy.baseUrl')
   if (proxy.stripPrefix !== undefined && !proxy.stripPrefix.startsWith('/')) throw new ValidationError('proxy.stripPrefix must start with /')
-  const response: Record<string, unknown> = { proxyBaseUrl: proxy.baseUrl }
+  // `https://api.example.com/` would forward to `https://api.example.com//path`: trailing slashes are dropped.
+  const response: Record<string, unknown> = { proxyBaseUrl: trimTrailingSlashes(proxy.baseUrl.trim()) }
   if (proxy.addHeaders && Object.keys(proxy.addHeaders).length > 0) response.additionalProxyRequestHeaders = proxy.addHeaders
   // WireMock 3.13.1 only removes names listed in lower case (tests/server/wiremock/power-features.test.ts).
   if (proxy.removeHeaders && proxy.removeHeaders.length > 0) response.removeProxyRequestHeaders = proxy.removeHeaders.map((h) => h.toLowerCase())

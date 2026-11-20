@@ -1,5 +1,5 @@
 import { ValidationError } from '../errors'
-import { isHttpUrl } from '../url'
+import { isHttpUrl, trimTrailingSlashes } from '../url'
 
 /**
  * Field rules for proxying (response.proxyBaseUrl …), webhooks (serveEventListeners) and scenarios, in WireMock
@@ -126,10 +126,15 @@ export function assertPowerFields(stub: { response: Record<string, unknown> } & 
 /**
  * Stored forms WireMock 3.13.1 needs: it only removes proxy request headers listed in lower case
  * (power-features.test.ts), and header names are case-insensitive, so that list is lower-cased; webhook methods
- * are upper-cased. Call after assertPowerFields.
+ * are upper-cased; a proxy base URL loses its trailing slashes. Call after assertPowerFields.
  */
 export function normalisePowerFields<T extends { response: Record<string, unknown> } & Record<string, unknown>>(stub: T): T {
   let out = stub
+  // `https://api.example.com/` would forward to `https://api.example.com//path`: trailing slashes are dropped.
+  const base = stub.response.proxyBaseUrl
+  if (typeof base === 'string' && base !== trimTrailingSlashes(base.trim())) {
+    out = { ...out, response: { ...out.response, proxyBaseUrl: trimTrailingSlashes(base.trim()) } }
+  }
   const remove = stub.response.removeProxyRequestHeaders
   if (Array.isArray(remove)) {
     out = { ...out, response: { ...out.response, removeProxyRequestHeaders: remove.map((h) => (typeof h === 'string' ? h.toLowerCase() : h)) } }
