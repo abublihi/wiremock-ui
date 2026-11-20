@@ -69,7 +69,8 @@ function defaultFetchSession() {
   return apiFetch<SessionData>('/api/session', { redirectOnUnauthorized: false })
 }
 
-export type ServerConfig = PublicConfig
+// `seedPrune` (SEED_PRUNE) is optional so an older server without it reads as off.
+export type ServerConfig = Omit<PublicConfig, 'seedPrune'> & { seedPrune?: boolean }
 
 /** How the server runs (store driver, …); it only changes with a restart, so it is never refetched. */
 export const serverConfigQueryOptions = (fetchConfig: () => Promise<ServerConfig> = () => apiFetch<ServerConfig>('/api/config')) =>
@@ -641,6 +642,8 @@ export function useAcceptRecording() {
         queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
         queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
         queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
+        // Repeated requests are accepted as scenarios.
+        queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
       ]),
   })
 }

@@ -281,6 +281,70 @@ describe('review list', () => {
   })
 })
 
+describe('review list: repeated requests and SEED_PRUNE', () => {
+  const step = (id: string, required: string, next: string | undefined, body: string) => ({
+    id, method: 'GET', url: '/shop/cart', status: 200, bodySize: body.length,
+    stub: {
+      name: 'GET /shop/cart', request: { method: 'GET', urlPath: '/shop/cart' }, response: { status: 200, body },
+      scenarioName: 'scenario-1-cart', requiredScenarioState: required, ...(next ? { newScenarioState: next } : {}),
+    },
+  })
+  const repeated = () => review({ items: [review().items[1], step('c2', 'scenario-1-cart-2', undefined, 'two'), step('c1', 'Started', 'scenario-1-cart-2', 'one')] })
+
+  it('groups a recorded scenario as one item; Keep only the first answer discards the rest and accepts it without its scenario', async () => {
+    catalog()
+    let current = repeated()
+    const discarded: unknown[] = []
+    const accepted: unknown[] = []
+    server.use(
+      http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [summaryOf(current)] })),
+      http.get(`${BASE}/api/recordings/rec-1`, () => HttpResponse.json(current)),
+      http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })),
+      http.post(`${BASE}/api/recordings/rec-1/discard`, async ({ request }) => {
+        const body = (await request.json()) as { ids: string[] }
+        discarded.push(body)
+        current = { ...current, items: current.items.filter((i) => !body.ids.includes(i.id)) }
+        return HttpResponse.json({ recording: current })
+      }),
+      http.post(`${BASE}/api/recordings/rec-1/accept`, async ({ request }) => {
+        accepted.push(await request.json())
+        return HttpResponse.json({ created: [{ id: 'i2', mockId: 'm1' }, { id: 'c1', mockId: 'm2' }], failed: [], recording: null })
+      }),
+    )
+    const ue = userEvent.setup()
+    await renderApp(withConfig(<RecordingPage search={{ review: 'rec-1' }} />))
+    const group = (await screen.findByText('Same request · 2 answers in order')).closest('li')!
+    // Replay order (Started first), not list order.
+    expect(within(group).getAllByRole('checkbox')).toHaveLength(2)
+    await ue.click(within(group).getAllByText('Show recorded answer (3 B)')[0])
+    expect(within(group).getByText('one')).toBeTruthy()
+    await ue.click(within(group).getByRole('button', { name: 'Keep only the first answer' }))
+    await waitFor(() => expect(discarded).toEqual([{ ids: ['c2'] }]))
+    expect(await screen.findByText('Plain mock: gives this answer every time')).toBeTruthy()
+    expect(screen.queryByText(/answers in order/)).toBeNull()
+    await ue.click(screen.getByRole('button', { name: 'Accept 2 selected' }))
+    await waitFor(() => expect(accepted).toHaveLength(1))
+    expect((accepted[0] as { items: unknown[] }).items).toContainEqual(expect.objectContaining({ id: 'c1', withoutScenario: true }))
+  })
+
+  it('turns Baseline off and says why when SEED_PRUNE is on', async () => {
+    catalog()
+    server.use(
+      http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [summaryOf(review())] })),
+      http.get(`${BASE}/api/recordings/rec-1`, () => HttpResponse.json(review())),
+      http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })),
+    )
+    await renderApp(
+      <ServerConfigProvider config={{ ...config(), seedPrune: true }}>
+        <RecordingPage search={{ review: 'rec-1' }} />
+      </ServerConfigProvider>,
+    )
+    const baseline = (await screen.findByRole('radio', { name: 'Baseline (shared)' })) as HTMLButtonElement
+    expect(baseline.disabled).toBe(true)
+    expect(screen.getByText(/Baseline is off because SEED_PRUNE is on/)).toBeTruthy()
+  })
+})
+
 describe('review list limits', () => {
   it('a too-large row is flagged and cannot be selected; leftovers in WireMock are called out (WireMock-only wording)', async () => {
     catalog()

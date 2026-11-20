@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { AlertTriangleIcon, CheckIcon, FileWarningIcon, CopyIcon, GitBranchIcon, SearchXIcon, ShieldAlertIcon, Trash2Icon } from 'lucide-react'
@@ -27,9 +27,9 @@ import { Input } from '@/ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import { Spinner } from '@/ui/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
-import { useWireMockOnly } from '@/ui/config'
+import { useSeedPrune, useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
-import { NEW_ENDPOINT, acceptPayload, formatBytes, newEndpointFor, suggestLink, type RowChoice } from '@/ui/lib/recording'
+import { NEW_ENDPOINT, acceptPayload, formatBytes, groupReviewItems, newEndpointFor, suggestLink, type ReviewGroup, type RowChoice } from '@/ui/lib/recording'
 import { relativeTime } from '@/ui/lib/time'
 import { cn } from '@/ui/lib/utils'
 
@@ -80,12 +80,18 @@ export function ReviewList({ recording }: { recording: Recording }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set(recording.items.filter(preselected).map((i) => i.id)))
   const [choices, setChoices] = useState<Record<string, RowChoice>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [owner, setOwner] = useState<'me' | 'baseline'>('me')
+  const [chosenOwner, setOwner] = useState<'me' | 'baseline'>('me')
+  // SEED_PRUNE deletes baseline mocks that are not in the seed on the next restart: the server refuses them, so the option is off.
+  const seedPrune = useSeedPrune()
+  const owner = seedPrune ? 'me' : chosenOwner
+  // Rows kept as plain mocks ("Keep only the first answer"): accepted without their scenario fields.
+  const [plain, setPlain] = useState<ReadonlySet<string>>(() => new Set())
   const accept = useAcceptRecording()
   const discard = useDiscardRecording()
   const busy = accept.isPending || discard.isPending
 
   const items = recording.items
+  const groups = useMemo(() => groupReviewItems(items), [items])
   const wiremockOnly = useWireMockOnly()
   const choiceOf = (item: ReviewItem): RowChoice => choices[item.id] ?? { name: '', ...suggestLink(item, allIntegrations, endpoints) }
   const setChoice = (item: ReviewItem, patch: Partial<RowChoice>) => setChoices((prev) => ({ ...prev, [item.id]: { ...choiceOf(item), ...patch } }))
@@ -106,7 +112,7 @@ export function ReviewList({ recording }: { recording: Recording }) {
   }
 
   const onAccept = async () => {
-    const payload = acceptPayload(picked.map((item) => ({ item, ...choiceOf(item) })), allIntegrations)
+    const payload = acceptPayload(picked.map((item) => ({ item, ...choiceOf(item) })), allIntegrations, plain)
     try {
       const result = await accept.mutateAsync({ id: recording.id, items: payload, owner })
       setErrors(Object.fromEntries(result.failed.map((f) => [f.id, f.error])))
@@ -134,6 +140,38 @@ export function ReviewList({ recording }: { recording: Recording }) {
       toast.error(t('recording.discardFailed'), { description: error instanceof Error ? error.message : undefined })
     }
   }
+
+  /** Drops a recorded scenario's later answers and keeps the first as a plain mock (what recording with the switch off gives). */
+  const keepFirst = async (group: ReviewGroup) => {
+    const [first, ...rest] = group.items
+    if (rest.length > 0) {
+      try {
+        const left = await discard.mutateAsync({ id: recording.id, ids: rest.map((i) => i.id) })
+        afterChange(left)
+      } catch (error) {
+        toast.error(t('recording.discardFailed'), { description: error instanceof Error ? error.message : undefined })
+        return
+      }
+    }
+    setPlain((prev) => new Set([...prev, first.id]))
+    if (acceptable(first)) toggle(first.id, true)
+    toast.success(t('recording.keptFirst'))
+  }
+
+  const rowFor = (item: ReviewItem) => (
+    <ReviewRow
+      key={item.id}
+      item={item}
+      plain={plain.has(item.id)}
+      checked={selected.has(item.id)}
+      onCheck={(on) => toggle(item.id, on)}
+      choice={choiceOf(item)}
+      onChoice={(patch) => setChoice(item, patch)}
+      integrations={allIntegrations}
+      endpoints={endpoints}
+      error={errors[item.id]}
+    />
+  )
 
   const source = recording.target ?? t('recording.realDataSourceLog')
   return (
@@ -174,7 +212,7 @@ export function ReviewList({ recording }: { recording: Recording }) {
           />
           {t('recording.selectAll')}
         </label>
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <span id={`${ids}-owner`} className="text-muted-foreground">
             {t('recording.owner')}
           </span>
@@ -183,16 +221,22 @@ export function ReviewList({ recording }: { recording: Recording }) {
             size="sm"
             variant="outline"
             aria-labelledby={`${ids}-owner`}
+            aria-describedby={seedPrune ? `${ids}-prune` : undefined}
             value={owner}
             onValueChange={(v) => v && setOwner(v as 'me' | 'baseline')}
           >
             <ToggleGroupItem value="me" className={`px-2.5 text-xs ${ON}`}>
               {t('recording.ownerMe')}
             </ToggleGroupItem>
-            <ToggleGroupItem value="baseline" className={`px-2.5 text-xs ${ON}`}>
+            <ToggleGroupItem value="baseline" disabled={seedPrune} className={`px-2.5 text-xs ${ON}`}>
               {t('recording.ownerBaseline')}
             </ToggleGroupItem>
           </ToggleGroup>
+          {seedPrune && (
+            <span id={`${ids}-prune`} className="basis-full text-[11px] text-muted-foreground sm:basis-auto sm:max-w-md">
+              {t('recording.ownerBaselineSeedPrune')}
+            </span>
+          )}
         </div>
         <div className="ms-auto flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" disabled={busy || picked.length === 0} onClick={() => void onDiscard(picked.map((i) => i.id))}>
@@ -226,26 +270,46 @@ export function ReviewList({ recording }: { recording: Recording }) {
       </div>
 
       <ul className="flex flex-col gap-3">
-        {items.map((item) => (
-          <ReviewRow
-            key={item.id}
-            item={item}
-            checked={selected.has(item.id)}
-            onCheck={(on) => toggle(item.id, on)}
-            choice={choiceOf(item)}
-            onChoice={(patch) => setChoice(item, patch)}
-            integrations={allIntegrations}
-            endpoints={endpoints}
-            error={errors[item.id]}
-          />
-        ))}
+        {groups.map((group) =>
+          group.scenario === undefined || plain.has(group.items[0].id) ? (
+            group.items.map(rowFor)
+          ) : (
+            <ScenarioGroup key={`scenario:${group.scenario}`} group={group} busy={busy} onKeepFirst={() => void keepFirst(group)}>
+              {group.items.map(rowFor)}
+            </ScenarioGroup>
+          ),
+        )}
       </ul>
     </section>
   )
 }
 
+/** A recorded scenario's rows as one item: the same request, answered differently on each call, in replay order. */
+function ScenarioGroup({ group, busy, onKeepFirst, children }: { group: ReviewGroup; busy: boolean; onKeepFirst: () => void; children: ReactNode }) {
+  const t = useT()
+  const ids = useId()
+  const first = group.items[0]
+  return (
+    <li aria-labelledby={`${ids}-title`} className="flex flex-col gap-2 rounded-md border border-dashed border-line p-2">
+      <div className="flex flex-wrap items-center gap-2 px-1">
+        <GitBranchIcon aria-hidden className="size-3.5 text-muted-foreground" />
+        <MethodBadge method={first.method} />
+        <span id={`${ids}-title`} className="text-xs font-medium">
+          {t('recording.groupTitle', { count: group.items.length })}
+        </span>
+        <Button size="sm" variant="outline" className="ms-auto h-7 text-xs" disabled={busy} onClick={onKeepFirst}>
+          {t('recording.keepFirst')}
+        </Button>
+        <p className="basis-full text-[11px] text-muted-foreground">{t('recording.groupHint', { name: group.scenario ?? '' })}</p>
+      </div>
+      <ol className="flex flex-col gap-2">{children}</ol>
+    </li>
+  )
+}
+
 function ReviewRow({
   item,
+  plain,
   checked,
   onCheck,
   choice,
@@ -255,6 +319,7 @@ function ReviewRow({
   error,
 }: {
   item: ReviewItem
+  plain: boolean
   checked: boolean
   onCheck: (on: boolean) => void
   choice: RowChoice
@@ -269,7 +334,7 @@ function ReviewRow({
   const hasBody = bodyText(item) !== null
   const integration = integrations.find((i) => i.key === choice.integration)
   const options = integration ? (endpoints[integration.key] ?? []) : []
-  const scenario = typeof item.stub.scenarioName === 'string' ? item.stub.scenarioName : undefined
+  const scenario = !plain && typeof item.stub.scenarioName === 'string' ? item.stub.scenarioName : undefined
   const label = item.stub.name ?? `${item.method} ${item.url}`
   return (
     <li
@@ -288,7 +353,7 @@ function ReviewRow({
         {item.status !== null ? <StatusBadge status={item.status} /> : <span className="font-mono text-[10px] text-mismatch">{t('recording.fault')}</span>}
         <span className="font-mono text-[10px] text-muted-foreground tabular-nums">{item.bodySize > 0 ? formatBytes(item.bodySize) : t('recording.noBody')}</span>
       </div>
-      {(item.duplicateOf || item.unmatched || item.tooLarge || scenario) && (
+      {(item.duplicateOf || item.unmatched || item.tooLarge || scenario || plain) && (
         <div className="flex flex-wrap gap-2 text-[11px]">
           {item.duplicateOf && (
             <Link
@@ -318,6 +383,7 @@ function ReviewRow({
               {t('recording.scenario', { name: scenario })}
             </span>
           )}
+          {plain && <span className="inline-flex items-center gap-1 rounded-sm border border-line px-1.5 py-0.5 text-muted-foreground">{t('recording.plain')}</span>}
         </div>
       )}
       <div className="grid gap-2 sm:grid-cols-3">

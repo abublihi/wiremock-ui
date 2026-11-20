@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { ReviewItem } from '@/server/recording/types'
-import { acceptPayload, formatBytes, NEW_ENDPOINT, newEndpointFor, suggestLink, type RowChoice } from '@/ui/lib/recording'
+import { acceptPayload, formatBytes, groupReviewItems, NEW_ENDPOINT, newEndpointFor, suggestLink, type RowChoice } from '@/ui/lib/recording'
 
 const integration = (key: string, prefix: string): Integration => ({ key, name: key, prefix, updatedAt: '', updatedBy: '' })
 const endpoint = (over: Partial<Endpoint>): Endpoint => ({
@@ -59,4 +59,36 @@ it('formatBytes', () => {
   expect(formatBytes(1023)).toBe('1023 B')
   expect(formatBytes(2048)).toBe('2.0 KB')
   expect(formatBytes(3 * 1024 * 1024)).toBe('3.0 MB')
+})
+
+describe('groupReviewItems', () => {
+  const step = (id: string, scenario: string, required: string, next?: string): ReviewItem => {
+    const base = item('GET', '/shop/items', id)
+    return { ...base, stub: { ...base.stub, scenarioName: scenario, requiredScenarioState: required, ...(next ? { newScenarioState: next } : {}) } }
+  }
+  it('keeps plain rows on their own and puts a recorded scenario in one group, in answer order', () => {
+    const a = item('GET', '/a')
+    const s3 = step('s3', 'scn', 'scn-3')
+    const s1 = step('s1', 'scn', 'Started', 'scn-2')
+    const s2 = step('s2', 'scn', 'scn-2', 'scn-3')
+    const b = item('GET', '/b')
+    const groups = groupReviewItems([a, s3, s1, b, s2])
+    expect(groups.map((g) => [g.scenario, g.items.map((i) => i.id)])).toEqual([
+      [undefined, ['/a']],
+      ['scn', ['s1', 's2', 's3']],
+      [undefined, ['/b']],
+    ])
+  })
+  it('falls back to list order when the chain is broken', () => {
+    const groups = groupReviewItems([step('x2', 's', 's-2'), step('x9', 's', 'odd')])
+    expect(groups[0].items.map((i) => i.id)).toEqual(['x2', 'x9'])
+  })
+})
+
+describe('acceptPayload: first answer only', () => {
+  it('marks a row kept without its scenario', () => {
+    const row = { item: item('GET', '/a', 'r1'), name: '', integration: '', endpoint: '' }
+    expect(acceptPayload([row], [], new Set(['r1']))).toEqual([{ id: 'r1', withoutScenario: true }])
+    expect(acceptPayload([row], [])).toEqual([{ id: 'r1' }])
+  })
 })

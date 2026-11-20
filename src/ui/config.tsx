@@ -32,3 +32,8 @@ export function useWiremockPublicUrl(): string | undefined {
 export function useRecordingAllowed(): boolean {
   return useContext(ServerConfigContext)?.recordingAllowed === true
 }
+
+/** True when SEED_PRUNE is on: baseline mocks that are not in the seed are deleted on the next restart. */
+export function useSeedPrune(): boolean {
+  return useContext(ServerConfigContext)?.seedPrune === true
+}

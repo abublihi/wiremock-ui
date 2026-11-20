@@ -49,17 +49,24 @@ export type AcceptItem = {
   integration?: string
   endpoint?: string
   newEndpoint?: { key: string; name: string }
+  /** Keep the recorded answer as a plain mock: drop its scenario fields ("Keep only the first answer"). */
+  withoutScenario?: true
 }
 
 /**
  * The accept request's items. The server works through them in order, so the first row of a new endpoint
  * creates it and later rows for the same key simply link to it.
  */
-export function acceptPayload(rows: (RowChoice & { item: ReviewItem })[], integrations: Integration[]): AcceptItem[] {
+export function acceptPayload(
+  rows: (RowChoice & { item: ReviewItem })[],
+  integrations: Integration[],
+  withoutScenario: ReadonlySet<string> = new Set(),
+): AcceptItem[] {
   const created = new Set<string>()
   return rows.map(({ item, name, integration, endpoint }) => {
     const out: AcceptItem = { id: item.id }
     if (name.trim()) out.name = name.trim()
+    if (withoutScenario.has(item.id)) out.withoutScenario = true
     const target = integrations.find((i) => i.key === integration)
     if (!target) return out
     out.integration = target.key
@@ -80,4 +87,49 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** Review rows as the list shows them: a plain row alone, or every row of one recorded scenario together. */
+export type ReviewGroup = { scenario?: string; items: ReviewItem[] }
+
+const scenarioOf = (item: ReviewItem) => (typeof item.stub.scenarioName === 'string' ? item.stub.scenarioName : undefined)
+
+/**
+ * Groups the rows of each recorded scenario ("Same request · N answers in order") where its first row stands, its rows
+ * ordered by the state chain (Started → its new state → …); rows off the chain follow in list order.
+ */
+export function groupReviewItems(items: ReviewItem[]): ReviewGroup[] {
+  const groups: ReviewGroup[] = []
+  const byScenario = new Map<string, ReviewGroup>()
+  for (const item of items) {
+    const scenario = scenarioOf(item)
+    if (scenario === undefined) {
+      groups.push({ items: [item] })
+      continue
+    }
+    const group = byScenario.get(scenario)
+    if (group) group.items.push(item)
+    else {
+      const fresh = { scenario, items: [item] }
+      byScenario.set(scenario, fresh)
+      groups.push(fresh)
+    }
+  }
+  for (const group of byScenario.values()) group.items = chainOrder(group.items)
+  return groups
+}
+
+function chainOrder(items: ReviewItem[]): ReviewItem[] {
+  const ordered: ReviewItem[] = []
+  const left = new Set(items)
+  let state: unknown = 'Started'
+  for (;;) {
+    const next = [...left].find((i) => i.stub.requiredScenarioState === state)
+    if (!next) break
+    ordered.push(next)
+    left.delete(next)
+    state = next.stub.newScenarioState
+    if (typeof state !== 'string') break
+  }
+  return [...ordered, ...items.filter((i) => left.has(i))]
 }
