@@ -120,7 +120,7 @@ sequenceDiagram
   S-->>B: saved stub (version + 1)
 ```
 
-WireMock is written first so that a saved mock is always served; if the store then refuses, the WireMock write is undone. Every stub is written with `persistent: false`: WireMock's own files never hold a second copy that could disagree with the store.
+WireMock is written first so that a saved mock is always served; if the store then refuses, the WireMock write is undone. Every stub is written with `persistent: false` (except in WireMock-only mode, which keeps a stub's own `persistent` flag): WireMock's own files never hold a second copy that could disagree with the store.
 
 ### Keeping WireMock in sync (the reconciler)
 
@@ -162,7 +162,7 @@ For looking at and editing a WireMock's own stubs without storing anything. Wire
 
 ### Sign-in, sessions and audit
 
-- **Browser sessions**: an `HttpOnly`, `SameSite=Lax` cookie valid for 12 hours, `Secure` when `PUBLIC_UI_URL` is `https`. Every write made with a session needs the session's CSRF token in the `X-CSRF-Token` header (the UI sends it).
+- **Browser sessions**: an `HttpOnly`, `SameSite=Lax` cookie valid for 12 hours, `Secure` when `PUBLIC_UI_URL` is `https`, when the request itself came over `https`, or (with `TRUST_PROXY=true`) when the proxy says so in `X-Forwarded-Proto: https`. Every write made with a session needs the session's CSRF token in the `X-CSRF-Token` header (the UI sends it).
 - **Scripts**: HTTP Basic auth with a user's name and password on any `/api` call; no CSRF token needed.
 - **Rate limit**: 10 failed sign-ins in 15 minutes from one IP blocks that IP until the window ends (`TRUST_PROXY` decides where the IP comes from).
 - **No roles**: everyone who can sign in can do everything. Passwords are bcrypt hashes.
@@ -181,7 +181,7 @@ For looking at and editing a WireMock's own stubs without storing anything. Wire
 | `src/server/wiremock/client.ts` | The WireMock admin API client. |
 | `src/server/http/handlers/` | Framework-free REST handlers; `src/routes/api/` are thin route files. |
 | `src/ui/`, `src/routes/_app/` | The React UI. |
-| `docs/guide/` | The user guide, shown in the app too. |
+| `docs/guide/` | The user guide, shown in the app too. Links between its pages that point at app pages (`/mocks`, `/scenarios`…) work in the app, not on GitHub. |
 
 ## Configuration reference
 
@@ -191,8 +191,8 @@ Everything is set through environment variables. Empty values count as unset. Bo
 
 | Variable | Default | Allowed values | Required | Modes | Example | What it does |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ADMIN_USER` | none | any name | **required** | all | `admin` | Username of the first account, created on the first start when there are no accounts yet. Changing it later does nothing (except in `none` mode, where it is the only account). |
-| `ADMIN_PASSWORD` | none | 8–72 characters | **required** | all | `choose-a-password` | Password of that first account. Changing it later does nothing outside `none` mode; see [Resetting a password](docs/INSTALL.md#resetting-a-password). |
+| `ADMIN_USER` | none | 2–32 characters: a-z, 0-9, `.`, `_`, `-` (lower-cased); not `baseline`, `system` or `wiremock` | **required** | all | `admin` | Username of the first account, created on the first start when there are no accounts yet. Changing it later does nothing (except in `none` mode, where it is the only account). |
+| `ADMIN_PASSWORD` | none | at least 8 characters, at most 72 bytes (UTF-8) | **required** | all | `choose-a-password` | Password of that first account. Changing it later does nothing outside `none` mode; see [Resetting a password](docs/INSTALL.md#resetting-a-password). |
 | `SESSION_SECRET` | none | any string; use 32+ random characters | **required** | all | `$(openssl rand -hex 32)` | Secret for browser sessions. |
 | `WIREMOCK_URL` | `http://localhost:8080` | URL | optional | all | `http://wiremock:8080` | Where the UI reaches WireMock (admin API and the test relay). Compose sets it. |
 | `WIREMOCK_PUBLIC_URL` | `WIREMOCK_URL` | `http://` or `https://` URL | optional | all | `http://localhost:8080` | Where applications and testers reach WireMock's stub port. Only used in curl commands and docs; the UI never calls it. |
@@ -204,7 +204,7 @@ Everything is set through environment variables. Empty values count as unset. Bo
 | `SYNC_INTERVAL_SECONDS` | `5` | positive number | optional | sqlite, redis | `10` | How often the reconciler checks the marker stub and re-syncs a WireMock that lost its stubs. A full sync also runs every 10 minutes. |
 | `BOOT_TIMEOUT_SECONDS` | `60` | positive integer | optional | all | `120` | How long the start waits for WireMock and the store before giving up. |
 | `TRUST_PROXY` | `false` | boolean | optional | all | `true` | Behind a reverse proxy: take the client IP for the sign-in rate limit from `X-Forwarded-For` (rightmost hop). |
-| `PUBLIC_UI_URL` | none | URL | optional | all | `https://mocks.example.com` | The address people use to reach the UI. An `https` URL makes session cookies `Secure`. |
+| `PUBLIC_UI_URL` | none | URL | optional | all | `https://mocks.example.com` | The address people use to reach the UI. An `https` URL makes session cookies `Secure` (they are also `Secure` on any `https` request, see Security). |
 | `SEED_PATH` | none | bundle file or folder of `*.json` | optional | all | `examples/seed.json` | Imported on every start as baseline mocks (and integrations). See [Import and export](docs/guide/import-export.md). |
 | `SEED_PRUNE` | `false` | boolean | optional | sqlite, redis | `true` | With `SEED_PATH`: delete baseline mocks that are no longer in the seed. People's own mocks are never touched. Ignored in `none` mode. |
 | `RECORDING_ALLOWED` | `true` | boolean | optional | all | `false` | `false` turns recording and "create mocks from the request log" off: the Recording page is hidden and the API answers 403. Recording, like proxy mocks, lets signed-in users make WireMock connect to any address it can reach. |
