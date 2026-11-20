@@ -32,3 +32,15 @@ test('reads a simple XPath element and gives up on anything else', () => {
   expect(requestKeyValue({ location: 'xPath', expression: '/req/citizen/idNo/text()' }, '/x', req({ body: xml }))).toBe('42')
   expect(requestKeyValue({ location: 'xPath', expression: 'count(//idNo)' }, '/x', req({ body: xml }))).toBeNull()
 })
+
+test('Load older continues after a cursor row that left the log without skipping rows of the same instant', async () => {
+  const { startAfterCursor } = await import('../../../src/server/requests/journal')
+  const at = (iso: string) => ({ loggedDateString: iso, loggedDate: Date.parse(iso) })
+  const ev = (id: string, iso: string) => ({ id, wasMatched: true, request: { method: 'GET', url: '/', ...at(iso) } }) as never
+  const events = [ev('d', '2026-11-20T10:00:02.000Z'), ev('b', '2026-11-20T10:00:01.000Z'), ev('a', '2026-11-20T10:00:01.000Z'), ev('z', '2026-11-20T10:00:00.000Z')]
+  const cursorAt = Date.parse('2026-11-20T10:00:01.000Z')
+  expect(startAfterCursor(events, { at: cursorAt, id: 'b' })).toBe(2)
+  // The cursor row "c" is gone: "b" and "a" (same instant, smaller id) still come next.
+  expect(startAfterCursor(events, { at: cursorAt, id: 'c' })).toBe(1)
+  expect(startAfterCursor(events, { at: Date.parse('2026-11-20T09:00:00.000Z'), id: 'x' })).toBe(-1)
+})

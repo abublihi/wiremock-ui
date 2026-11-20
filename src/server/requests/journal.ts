@@ -97,9 +97,7 @@ export class RequestJournal {
     for (let scan = Math.min(MAX_SCAN, Math.max(1000, 2 * limit)); ; scan = Math.min(MAX_SCAN, scan * 2)) {
       const events = await this.deps.wiremock.listRequests({ limit: scan, since: filter.since })
       const full = events.length >= scan
-      const found = events.findIndex((e) => e.id === cursor.id)
-      // The cursor row itself, or (if it left the log) the first row logged before it.
-      const start = found !== -1 ? found + 1 : events.findIndex((e) => loggedMs(e) < cursor.at)
+      const start = startAfterCursor(events, cursor)
       if (start === -1) {
         if (full && scan < MAX_SCAN) continue
         return { requests: [], nextCursor: null, ...(full ? { scanLimitReached: true } : {}) }
@@ -232,6 +230,20 @@ export class RequestJournal {
 
 /** `<loggedAt ISO>|<id>`: the row a "Load older" page starts below. */
 export const requestCursor = (row: Pick<RequestSummary, 'loggedAt' | 'id'>) => `${row.loggedAt}|${row.id}`
+
+/**
+ * Where "Load older" continues in a newest-first list: after the cursor row, or (if it left the log) at the first row
+ * that sorts after it: logged earlier, or at the same time with a smaller id (rows of the same instant are not
+ * skipped). -1 when none.
+ */
+export function startAfterCursor(events: LoggedEvent[], cursor: { at: number; id: string }): number {
+  const found = events.findIndex((e) => e.id === cursor.id)
+  if (found !== -1) return found + 1
+  return events.findIndex((e) => {
+    const at = loggedMs(e)
+    return at < cursor.at || (at === cursor.at && e.id < cursor.id)
+  })
+}
 
 export function parseRequestCursor(raw: string): { at: number; id: string } {
   const bar = raw.lastIndexOf('|')
