@@ -469,8 +469,11 @@ export function useCountRequests() {
 
 /** Sends one request to WireMock through the server relay (the browser never talks to WireMock itself). */
 export function useSendTestRequest() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: TestRequestInput) => apiFetch<TestRequestResult>('/api/test-request', { method: 'POST', body: input }),
+    // The test request is in WireMock's log now: an open request log (or its unmatched badge) picks it up straight away.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
   })
 }
 

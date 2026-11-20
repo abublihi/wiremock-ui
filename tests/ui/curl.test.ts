@@ -86,6 +86,19 @@ describe('joinUrl', () => {
     )
     expect(joinUrl(PUBLIC, '/x', [])).toBe(`${PUBLIC}/x`)
   })
+
+  it('encodes what a path cannot hold and keeps valid escapes', () => {
+    expect(joinUrl(PUBLIC, '/a b/ü/50%/%2F#x?y', [])).toBe(`${PUBLIC}/a%20b/%C3%BC/50%25/%2F%23x%3Fy`)
+    expect(joinUrl(PUBLIC, "/a-b_c.d~e/!$&'()*+,;=:@", [])).toBe(`${PUBLIC}/a-b_c.d~e/!$&'()*+,;=:@`)
+  })
+})
+
+describe('buildCurl edge cases', () => {
+  it('keeps a CRLF body as is and adds no Content-Type of its own', () => {
+    const cmd = buildCurl({ method: 'POST', url: `${PUBLIC}/x`, body: 'a\r\nb' })
+    expect(cmd).toBe(`curl '${PUBLIC}/x' \\\n  -X POST \\\n  --data-raw 'a\r\nb'`)
+    expect(cmd).not.toContain('Content-Type')
+  })
 })
 
 // ── Stub → request ───────────────────────────────────────────────────────────

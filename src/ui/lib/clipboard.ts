@@ -33,3 +33,21 @@ export async function copyText(text: string): Promise<void> {
   }
   if (!ok) throw new Error('The browser refused to copy. Select the text and copy it by hand.')
 }
+
+/**
+ * Copies text that is still being worked out (a fetch first). Safari only lets a page write to the clipboard during
+ * the click itself, so where ClipboardItem exists the write starts now with a promise of the text; elsewhere the text
+ * is awaited and copied as usual.
+ */
+export async function copyTextLater(text: Promise<string>): Promise<void> {
+  const Item = typeof window !== 'undefined' ? (window as { ClipboardItem?: typeof ClipboardItem }).ClipboardItem : undefined
+  if (Item && navigator.clipboard?.write) {
+    try {
+      await navigator.clipboard.write([new Item({ 'text/plain': text.then((s) => new Blob([s], { type: 'text/plain' })) })])
+      return
+    } catch {
+      // not allowed here: fall back below
+    }
+  }
+  await copyText(await text)
+}

@@ -81,7 +81,7 @@ export function EditMockPage({ id }: { id: string }) {
       actions={
         // Both act on the saved version: that is what WireMock serves.
         <>
-          <Button variant="outline" size="sm" onClick={() => void copyCurl(publicUrl === undefined ? undefined : curlFromStub(opened, endpoint, publicUrl), t)}>
+          <Button variant="outline" size="sm" title={t('curl.savedHint')} onClick={() => void copyCurl(publicUrl === undefined ? undefined : curlFromStub(opened, endpoint, publicUrl), t)}>
             <TerminalIcon data-icon="inline-start" />
             {t('curl.copy')}
           </Button>

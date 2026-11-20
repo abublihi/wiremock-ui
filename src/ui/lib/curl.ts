@@ -46,6 +46,14 @@ export function buildCurl(spec: CurlSpec): string {
   return `# ${spec.comment.replace(/[\r\n]+/g, ' ')}\n${command}`
 }
 
+/**
+ * A typed path made safe for a URL: characters a path may hold stay, %XX escapes stay, anything else (a space, a
+ * stray %, ?, #, non-ASCII) is percent-encoded so curl sends the path that was typed.
+ */
+export function encodePath(path: string): string {
+  return path.replace(/%(?![0-9A-Fa-f]{2})|[^A-Za-z0-9\-._~!$&'()*+,;=:@/%]/gu, (c) => encodeURIComponent(c))
+}
+
 /** WireMock's public URL + path + the query, each name and value percent-encoded. */
 export function joinUrl(publicUrl: string, path: string, query: Pair[]): string {
   const base = publicUrl.replace(/\/+$/, '')
@@ -53,7 +61,7 @@ export function joinUrl(publicUrl: string, path: string, query: Pair[]): string 
     .filter((p) => p.name !== '')
     .map((p) => `${encodeURIComponent(p.name)}=${encodeURIComponent(p.value)}`)
     .join('&')
-  return `${base}${path.startsWith('/') ? '' : '/'}${path}${qs ? `?${qs}` : ''}`
+  return `${base}${path.startsWith('/') ? '' : '/'}${encodePath(path)}${qs ? `?${qs}` : ''}`
 }
 
 /** A draft (from the test panel) as curl. */

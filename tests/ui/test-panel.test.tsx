@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import type { TestRequestResult } from '@/server/wiremock/relay'
 import type { LoggedEvent } from '@/server/wiremock/types'
 import { EditMockPage } from '@/ui/components/editor/EditMockPage'
+import { toRelayInput } from '@/ui/components/editor/TestPanel'
 import { MockRowActions } from '@/ui/components/mocks/MockActions'
 import { RequestDrawer } from '@/ui/components/requests/RequestDrawer'
 import { ServerConfigProvider } from '@/ui/config'
@@ -210,13 +211,15 @@ describe('copy as curl', () => {
 
   it('the mock list row menu copies a curl, with the catalog example as the body', async () => {
     server.use(http.get(CATALOG, () => HttpResponse.json([{ ...endpoint, exampleRequest: '{"idNo": "0"}' }])))
-    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
     await renderApp(withConfig(<MockRowActions stub={stored()} />))
     const ue = userEvent.setup()
+    // The command still needs the catalog when the item is clicked: it goes to the clipboard as a ClipboardItem
+    // promise, written during the click (Safari only allows that).
+    expect(typeof window.ClipboardItem).toBe('function')
     await ue.click(screen.getByRole('button', { name: 'Actions for Fetch citizen — 42' }))
     await ue.click(await screen.findByRole('menuitem', { name: 'Copy as curl' }))
     expect(await screen.findByText('Copied curl command')).toBeTruthy()
-    expect(writeText.mock.calls[0]![0]).toContain(`--data-raw '{\n  "idNo": "42"\n}'`)
+    expect(await navigator.clipboard.readText()).toContain(`--data-raw '{\n  "idNo": "42"\n}'`)
   })
 })
 
@@ -282,5 +285,23 @@ describe('request log drawer', () => {
         body: '{"idNo":"42"}',
       },
     ])
+  })
+})
+
+describe('relay input', () => {
+  it('joins repeated headers with ", " but repeated Cookie headers with "; "', () => {
+    const input = toRelayInput({
+      method: 'GET',
+      path: '/x',
+      query: [],
+      headers: [
+        { name: 'Cookie', value: 'a=1' },
+        { name: 'cookie', value: 'b=2' },
+        { name: 'Accept', value: 'text/plain' },
+        { name: 'Accept', value: 'application/json' },
+      ],
+      body: '',
+    })
+    expect(input.headers).toEqual({ Cookie: 'a=1; b=2', Accept: 'text/plain, application/json' })
   })
 })

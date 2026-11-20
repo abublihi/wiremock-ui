@@ -58,6 +58,10 @@ export function HeaderTable({ headers }: { headers: Headers }) {
               </th>
               <td dir="ltr" className="px-2.5 py-1.5 font-mono break-all">
                 {headerValue(value)}
+                {/* WireMock sends the mock name as Latin-1: anything else (an em dash, Arabic…) arrives as "?". */}
+                {name.toLowerCase() === 'matched-stub-name' && (
+                  <span className="mt-0.5 block font-sans text-[10.5px] text-muted-foreground">{t('request.stubNameHeaderNote')}</span>
+                )}
               </td>
             </tr>
           ))}

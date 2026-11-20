@@ -16,7 +16,7 @@ import { Spinner } from '@/ui/components/ui/spinner'
 import { Textarea } from '@/ui/components/ui/textarea'
 import { useWiremockPublicUrl } from '@/ui/config'
 import { useT } from '@/ui/i18n'
-import { copyText } from '@/ui/lib/clipboard'
+import { copyText, copyTextLater } from '@/ui/lib/clipboard'
 import { curlFromDraft } from '@/ui/lib/curl'
 import type { Pair, RequestDraft } from '@/ui/lib/test-request'
 
@@ -28,7 +28,7 @@ let nextRow = 0
 const toRows = (pairs: Pair[]): Row[] => pairs.map((p) => ({ ...p, id: nextRow++ }))
 const toPairs = (rows: Row[]): Pair[] => rows.filter((r) => r.name.trim() !== '').map(({ name, value }) => ({ name: name.trim(), value }))
 
-/** The relay's body: repeated query names become lists, repeated headers are joined with ", ". */
+/** The relay's body: repeated query names become lists, repeated headers are joined with ", " (Cookie with "; "). */
 export function toRelayInput(draft: RequestDraft): TestRequestInput {
   const query: Record<string, string | string[]> = {}
   for (const { name, value } of draft.query) {
@@ -38,7 +38,8 @@ export function toRelayInput(draft: RequestDraft): TestRequestInput {
   const headers: Record<string, string> = {}
   for (const { name, value } of draft.headers) {
     const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase()) ?? name
-    headers[key] = headers[key] === undefined ? value : `${headers[key]}, ${value}`
+    const separator = key.toLowerCase() === 'cookie' ? '; ' : ', '
+    headers[key] = headers[key] === undefined ? value : `${headers[key]}${separator}${value}`
   }
   const method = (METHODS as readonly string[]).includes(draft.method) ? draft.method : 'GET'
   return {
@@ -50,14 +51,17 @@ export function toRelayInput(draft: RequestDraft): TestRequestInput {
   }
 }
 
-/** Copies a curl command and says so; `command` may be undefined while the WireMock URL is still loading. */
-export async function copyCurl(command: string | undefined, t: ReturnType<typeof useT>) {
+/**
+ * Copies a curl command and says so; `command` may be undefined while the WireMock URL is still loading, or a promise
+ * when it needs a fetch first (written to the clipboard during the click, for Safari).
+ */
+export async function copyCurl(command: string | undefined | Promise<string>, t: ReturnType<typeof useT>) {
   if (command === undefined) {
     toast.error(t('curl.copyFailed'), { description: t('curl.noPublicUrl') })
     return
   }
   try {
-    await copyText(command)
+    await (typeof command === 'string' ? copyText(command) : copyTextLater(command))
     toast.success(t('curl.copied'))
   } catch (error) {
     toast.error(t('curl.copyFailed'), { description: error instanceof Error ? error.message : undefined })
@@ -184,7 +188,11 @@ function PanelBody({ initial, mockId, pathIsPattern = false, variant = 'mock' }:
           </Part>
         </form>
 
-        <section aria-live="polite" aria-busy={send.isPending} className="flex flex-col gap-3">
+        <section aria-busy={send.isPending} className="flex flex-col gap-3">
+          {/* Only a short line is announced, not the whole response (headers and body). */}
+          <p aria-live="polite" className="sr-only">
+            {send.isPending ? t('test.sending') : send.isError ? t('test.failed') : send.data ? t('test.announce', { status: send.data.status }) : ''}
+          </p>
           {send.isError ? (
             <Alert variant="destructive">
               <AlertCircleIcon />

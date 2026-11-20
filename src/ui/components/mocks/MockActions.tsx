@@ -60,13 +60,17 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
   const publicUrl = useWiremockPublicUrl()
 
   // The catalog example request fills the body; without it (no link, catalog unreachable) the curl still works.
-  const onCopyCurl = async () => {
+  // The clipboard write starts during the click (Safari needs that), with the command still being worked out.
+  const onCopyCurl = () => {
+    if (publicUrl === undefined) return void copyCurl(undefined, t)
     const link = stub.metadata?.wiremockUi
-    const endpoints = link?.integration && link.endpoint
-      ? await queryClient.fetchQuery(endpointsQueryOptions(link.integration)).catch(() => undefined)
-      : undefined
-    const endpoint = endpoints?.find((e) => e.key === link?.endpoint)
-    await copyCurl(publicUrl === undefined ? undefined : curlFromStub(stub, endpoint, publicUrl), t)
+    const command = (async () => {
+      const endpoints = link?.integration && link.endpoint
+        ? await queryClient.fetchQuery(endpointsQueryOptions(link.integration)).catch(() => undefined)
+        : undefined
+      return curlFromStub(stub, endpoints?.find((e) => e.key === link?.endpoint), publicUrl)
+    })()
+    void copyCurl(command, t)
   }
 
   const onDelete = () => {
@@ -114,7 +118,7 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
           >
             {t('mocks.duplicate')}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void onCopyCurl()}>
+          <DropdownMenuItem onSelect={onCopyCurl}>
             <TerminalIcon />
             {t('curl.copy')}
           </DropdownMenuItem>
