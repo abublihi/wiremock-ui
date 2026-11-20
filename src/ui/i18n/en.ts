@@ -865,6 +865,10 @@ export const en = {
   'postman.noteUnresolved': '{name}: the variable {{{variable}}} in the path has no value; it matches any segment.',
   'postman.noteBadStatus': '{name}: the example {example} has no valid status code and is skipped.',
   'postman.run': 'Import {endpoints} endpoints and {mocks} mocks',
+  'postman.moreRows': '…and {count} more requests, imported with their defaults.',
+  'postman.catalogChanged': 'The catalog changed while you were reviewing. Check the rows marked Key exists, then import again.',
+  'postman.unserialisable':
+    "The import can't be prepared: the collection holds a value that can't be sent as JSON. Export it from Postman again and choose the new file.",
   'postman.nothing': 'Nothing to import: every request is skipped.',
   'curl.copy': 'Copy as curl',
   'curl.copied': 'Copied curl command',

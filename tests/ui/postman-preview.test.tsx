@@ -10,6 +10,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { ImportReport } from '@/server/bundle/importer'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import { ImportPage } from '@/routes/_app/import'
+import { PostmanPreview } from '@/ui/components/admin/PostmanPreview'
+import { parsePostman } from '@/ui/lib/postman'
 import { ServerConfigProvider } from '@/ui/config'
 import { renderApp } from './helpers'
 
@@ -173,6 +175,7 @@ describe('Postman preview on the Import page', () => {
     await ue.click(within(region).getByRole('button', { name: 'Import 5 endpoints and 8 mocks' }))
     await waitFor(() => expect(within(rowOf('Get order')).getByText('Key exists')).toBeTruthy())
     expect(calls).toHaveLength(0)
+    expect(await within(region).findByText('The catalog changed while you were reviewing. Check the rows marked Key exists, then import again.')).toBeTruthy()
     await within(region).findByText(/Adds to the existing integration Shop \(theirs\)/)
     // Looked at again, the user imports: the integration is not sent and get-order becomes get-order-2.
     await ue.click(within(region).getByRole('button', { name: 'Import 5 endpoints and 8 mocks' }))
@@ -199,9 +202,21 @@ describe('Postman preview on the Import page', () => {
     const ue = await pick(<ImportPage />, [file(big, 'big.json')])
     const region = await screen.findByRole('region', { name: /Postman collection: Big/ })
     expect(within(region).getAllByRole('row')).toHaveLength(501) // header + 500
+    expect(within(region).getByText('…and 20 more requests, imported with their defaults.')).toBeTruthy()
     await ue.click(within(region).getByRole('button', { name: 'Import 520 endpoints and 0 mocks' }))
     await screen.findByText('Import finished')
     expect(calls[0].body.catalog).toHaveLength(520)
+  })
+
+  it('explains a bundle that cannot be serialised instead of only disabling Import', async () => {
+    mockApi()
+    const collection = parsePostman(JSON.parse(shopText))
+    // A value JSON.stringify refuses (a BigInt) reaches the bundle through the integration description.
+    const odd = { ...collection, description: 10n as unknown as string }
+    await renderApp(<PostmanPreview collection={odd} fileName="odd.json" onImported={() => {}} onCancel={() => {}} />)
+    const region = await preview()
+    expect(await within(region).findByText(/The import can't be prepared: the collection holds a value that can't be sent as JSON/)).toBeTruthy()
+    expect((within(region).getByRole('button', { name: /^Import 5 endpoints/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('in WireMock-only mode, says the catalog is kept in memory', async () => {

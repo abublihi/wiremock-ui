@@ -57,6 +57,8 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
   const endpoints = useEndpoints(stored?.key)
   const common = commonFirstSegment(collection)
   const [submitting, setSubmitting] = useState(false)
+  // The submit-time re-check changed the plan: nothing was sent and the user looks at the rows again.
+  const [catalogChanged, setCatalogChanged] = useState(false)
 
   const planned = useMemo(
     () => safePlan(collection, fields, stored, endpoints.data, choices),
@@ -82,12 +84,19 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
   const exampleCount = collection.requests.reduce((n, r) => n + r.examples.length, 0)
   const shownRows = plan.rows.slice(0, MAX_ROWS)
 
-  const set = (patch: Partial<IntegrationFields>) => setFields((f) => ({ ...f, ...patch }))
-  const choose = (rowId: string, patch: RowChoice) => setChoices((c) => ({ ...c, [rowId]: { ...c[rowId], ...patch } }))
+  const set = (patch: Partial<IntegrationFields>) => {
+    setCatalogChanged(false)
+    setFields((f) => ({ ...f, ...patch }))
+  }
+  const choose = (rowId: string, patch: RowChoice) => {
+    setCatalogChanged(false)
+    setChoices((c) => ({ ...c, [rowId]: { ...c[rowId], ...patch } }))
+  }
 
   const submit = async () => {
     if (blocked || submitting) return
     setSubmitting(true)
+    setCatalogChanged(false)
     try {
       // Plan again from a fresh read of the catalog: someone may have added the integration or an endpoint since.
       const freshIntegrations = await queryClient.fetchQuery({ ...integrationsQueryOptions(), staleTime: 0 })
@@ -95,7 +104,10 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
       const freshEndpoints = freshStored ? await queryClient.fetchQuery({ ...endpointsQueryOptions(freshStored.key), staleTime: 0 }) : undefined
       const fresh = safePlan(collection, fields, freshStored, freshEndpoints, choices)
       // What the page shows is what gets sent: when the fresh plan differs, the table re-renders and the user looks again.
-      if (fresh.error || bundleText(fresh.plan.bundle) !== bundleText(plan.bundle)) return
+      if (fresh.error || bundleText(fresh.plan.bundle) !== bundleText(plan.bundle)) {
+        setCatalogChanged(true)
+        return
+      }
       const size = bundleBytes(fresh.plan.bundle)
       if (size === undefined || size > MAX_IMPORT_BYTES) return
       const report = await run.mutateAsync({ bundle: fresh.plan.bundle, prune: false })
@@ -221,6 +233,9 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
             </TableBody>
           </Table>
         </div>
+        {plan.rows.length > MAX_ROWS && (
+          <p className="text-xs text-muted-foreground">{t('postman.moreRows', { count: plan.rows.length - MAX_ROWS })}</p>
+        )}
       </div>
 
       {skipped.length > 0 && (
@@ -255,6 +270,18 @@ export function PostmanPreview({ collection, fileName, onImported, onCancel }: P
         <Alert variant="destructive" role="alert">
           <AlertCircleIcon />
           <AlertDescription>{t('import.mergedTooLarge', { size: megabytes(bytes ?? 0) })}</AlertDescription>
+        </Alert>
+      )}
+      {deferredBundle === plan.bundle && bytes === undefined && (
+        <Alert variant="destructive" role="alert">
+          <AlertCircleIcon />
+          <AlertDescription>{t('postman.unserialisable')}</AlertDescription>
+        </Alert>
+      )}
+      {catalogChanged && (
+        <Alert className="border-hazard/40" role="alert">
+          <TriangleAlertIcon className="text-hazard-fg" />
+          <AlertDescription>{t('postman.catalogChanged')}</AlertDescription>
         </Alert>
       )}
       {loadError && (
