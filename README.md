@@ -34,6 +34,7 @@ docker compose -f compose.sqlite.yaml up -d --build
 ```sh
 npm ci --ignore-scripts
 npm run dev                 # needs WireMock reachable per .env; Redis only if REDIS_URL is set
+                            # on Node 22.12 run it as NODE_OPTIONS=--experimental-sqlite npm run dev (see docs/INSTALL.md)
 npm test                    # needs Docker: store tests run against Redis and SQLite
 npm run test:e2e            # builds, then runs the Playwright specs (needs Docker; npx playwright install chromium once)
 ./scripts/e2e-restart.sh    # Compose check that stubs survive a WireMock restart (with Redis)

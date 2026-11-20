@@ -49,42 +49,47 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   await assertPortFree(E2E_UI_PORT)
 
   const wiremock = await startWireMock()
-  const dataDir = mkdtempSync(join(tmpdir(), 'wiremock-ui-e2e-'))
+  // From here on, anything that throws still stops WireMock (and the app, if it started).
+  let app: ChildProcess | undefined
+  let dataDir: string | undefined
   let log = ''
-  const app = spawn(process.execPath, ['--experimental-sqlite', '--disable-warning=ExperimentalWarning', 'server.mjs'], {
-    cwd: root,
-    env: {
-      PATH: process.env.PATH,
-      PORT: String(E2E_UI_PORT),
-      LOG_LEVEL: 'warn',
-      WIREMOCK_URL: wiremock.url,
-      WIREMOCK_ADMIN_USER: wiremock.user,
-      WIREMOCK_ADMIN_PASSWORD: wiremock.password,
-      STORE_DRIVER: 'sqlite',
-      SQLITE_PATH: join(dataDir, 'wiremock-ui.db'),
-      ADMIN_USER: ADMIN.username,
-      ADMIN_PASSWORD: ADMIN.password,
-      SESSION_SECRET: 'e2e-session-secret-that-is-long-enough-123',
-      SEED_PATH: join(root, 'tests/fixtures/e2e-seed'),
-      SYNC_INTERVAL_SECONDS: '2',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  app.stdout?.on('data', (d) => (log += d))
-  app.stderr?.on('data', (d) => (log += d))
 
   const teardown = async () => {
-    if (app.exitCode === null) {
-      const exited = new Promise((r) => app.once('exit', r))
-      app.kill('SIGTERM')
+    if (app && app.exitCode === null) {
+      const running = app
+      const exited = new Promise((r) => running.once('exit', r))
+      running.kill('SIGTERM')
       await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))])
-      if (app.exitCode === null) app.kill('SIGKILL')
+      if (running.exitCode === null) running.kill('SIGKILL')
     }
     await wiremock.stop()
-    rmSync(dataDir, { recursive: true, force: true })
+    if (dataDir) rmSync(dataDir, { recursive: true, force: true })
   }
 
   try {
+    dataDir = mkdtempSync(join(tmpdir(), 'wiremock-ui-e2e-'))
+    app = spawn(process.execPath, ['--experimental-sqlite', '--disable-warning=ExperimentalWarning', 'server.mjs'], {
+      cwd: root,
+      env: {
+        PATH: process.env.PATH,
+        PORT: String(E2E_UI_PORT),
+        LOG_LEVEL: 'warn',
+        WIREMOCK_URL: wiremock.url,
+        WIREMOCK_ADMIN_USER: wiremock.user,
+        WIREMOCK_ADMIN_PASSWORD: wiremock.password,
+        STORE_DRIVER: 'sqlite',
+        SQLITE_PATH: join(dataDir, 'wiremock-ui.db'),
+        ADMIN_USER: ADMIN.username,
+        ADMIN_PASSWORD: ADMIN.password,
+        SESSION_SECRET: 'e2e-session-secret-that-is-long-enough-123',
+        SEED_PATH: join(root, 'tests/fixtures/e2e-seed'),
+        SYNC_INTERVAL_SECONDS: '2',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    app.stdout?.on('data', (d) => (log += d))
+    app.stderr?.on('data', (d) => (log += d))
+
     await waitForHealth(app, () => log)
     await addUser(USER_A, 'Alice (QA)')
     await addUser(USER_B, 'Bob (QA)')
