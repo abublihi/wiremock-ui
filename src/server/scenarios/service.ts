@@ -6,7 +6,10 @@ import type { StubMapping } from '../wiremock/types'
 
 export const STARTED = 'Started'
 
-export type ScenarioMock = { id: string; name?: string; requiredState?: string; newState?: string }
+/** One mock of a scenario: its label (name, method, URL as matched) and the transition it makes. */
+export type ScenarioMock = { id: string; name?: string; method?: string; url?: string; requiredState?: string; newState?: string }
+
+const URL_FIELDS = ['url', 'urlPath', 'urlPathTemplate', 'urlPattern', 'urlPathPattern'] as const
 
 export type Scenario = {
   name: string
@@ -67,9 +70,14 @@ export class ScenarioService {
       for (const state of [requiredState, newState]) {
         if (state && !scenario.possibleStates.includes(state)) scenario.possibleStates.push(state)
       }
+      const request = (stub.request ?? {}) as Record<string, unknown>
+      const method = str(request.method)
+      const url = URL_FIELDS.map((f) => str(request[f])).find(Boolean)
       scenario.mocks.push({
         id: stub.id,
         ...(stub.name ? { name: stub.name } : {}),
+        ...(method ? { method } : {}),
+        ...(url ? { url } : {}),
         ...(requiredState ? { requiredState } : {}),
         ...(newState ? { newState } : {}),
       })

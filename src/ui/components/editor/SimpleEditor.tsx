@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
 import { ApiError } from '@/ui/api/client'
-import { type BuiltStub, useCreateCatalogMock, usePreviewMock, useUpdateMock } from '@/ui/api/queries'
+import { type BuiltStub, useCreateCatalogMock, usePreviewMock, useScenarios, useUpdateMock } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/ui/components/ui/field'
@@ -19,6 +19,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useT } from '@/ui/i18n'
 import {
   type ProxyForm,
+  type ScenarioForm,
   type SimpleForm,
   type WebhookForm,
   emptyForm,
@@ -43,6 +44,7 @@ import { Eyebrow } from './EditorShell'
 import { keyLabel } from './EndpointPicker'
 import { hasUnnamedRow } from './HeaderRows'
 import { ProxySection } from './ProxySection'
+import { ScenarioSection } from './ScenarioSection'
 import { WebhookSection } from './WebhookSection'
 
 type FieldName =
@@ -60,6 +62,9 @@ type FieldName =
   | 'webhookHeaders'
   | 'webhookBody'
   | 'webhookDelay'
+  | 'scenarioName'
+  | 'scenarioRequiredState'
+  | 'scenarioNewState'
 type Errors = Partial<Record<FieldName, string>>
 
 const SERVER_FIELD = new Map<string, FieldName>([
@@ -78,6 +83,9 @@ const SERVER_FIELD = new Map<string, FieldName>([
   ['webhook.headers', 'webhookHeaders'],
   ['webhook.body', 'webhookBody'],
   ['webhook.delay', 'webhookDelay'],
+  ['scenario.name', 'scenarioName'],
+  ['scenario.requiredState', 'scenarioRequiredState'],
+  ['scenario.newState', 'scenarioNewState'],
 ])
 
 /**
@@ -137,6 +145,7 @@ export function SimpleEditor({
   // Required URLs are only flagged once the user tries to preview or save.
   const [attempted, setAttempted] = useState(false)
 
+  const scenarios = useScenarios({ enabled: form.scenario.enabled, live: true })
   const previewMock = usePreviewMock()
   const createMock = useCreateCatalogMock()
   const updateMock = useUpdateMock()
@@ -184,6 +193,7 @@ export function SimpleEditor({
       else if (lower > upper) clientErrors.webhookDelay = t('editor.webhook.delayOrder')
     }
   }
+  if (form.scenario.enabled && attempted && form.scenario.name.trim() === '') clientErrors.scenarioName = t('editor.scenario.nameRequired')
   const errors: Errors = { ...serverErrors, ...clientErrors }
 
   const update = (patch: Partial<SimpleForm>, clears: FieldName[] = []) => {
@@ -200,6 +210,10 @@ export function SimpleEditor({
   const updateWebhook = (patch: Partial<WebhookForm>) => {
     setForm((f) => ({ ...f, webhook: { ...f.webhook, ...patch } }))
     clear(['webhookMethod', 'webhookUrl', 'webhookHeaders', 'webhookBody', 'webhookDelay'])
+  }
+  const updateScenario = (patch: Partial<ScenarioForm>) => {
+    setForm((f) => ({ ...f, scenario: { ...f.scenario, ...patch } }))
+    clear(['scenarioName', 'scenarioRequiredState', 'scenarioNewState'])
   }
   /** A preset always swaps in its example (or none); a typed custom status only when the catalog has one. */
   const setStatus = (preset: Preset, status: number, keepWithoutExample = false) => {
@@ -246,7 +260,8 @@ export function SimpleEditor({
     return !(
       blocked ||
       (proxied && !isHttpUrl(form.proxy.baseUrl)) ||
-      (form.webhook.enabled && !isHttpUrl(form.webhook.url, { templated: true }))
+      (form.webhook.enabled && !isHttpUrl(form.webhook.url, { templated: true })) ||
+      (form.scenario.enabled && form.scenario.name.trim() === '')
     )
   }
 
@@ -571,6 +586,16 @@ export function SimpleEditor({
             delay: errors.webhookDelay,
           }}
           onChange={updateWebhook}
+        />
+      </Section>
+
+      <Section title={t('editor.section.scenario')}>
+        <ScenarioSection
+          scenario={form.scenario}
+          existing={scenarios.data ?? []}
+          selfId={mock?.id}
+          errors={{ name: errors.scenarioName, requiredState: errors.scenarioRequiredState, newState: errors.scenarioNewState }}
+          onChange={updateScenario}
         />
       </Section>
 

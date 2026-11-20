@@ -98,3 +98,28 @@ test('webhook mock: WireMock calls back after responding, with the templated bod
   // body), so the editor's hint uses originalRequest.
   expect(callback?.request.body).toBe('{"paid":"abc","same":""}')
 })
+
+test('scenario mocks from the Simple form: pending, then approved; set and reset move it', async () => {
+  const e = endpoint({ key: 'loan', method: 'GET', path: '/loan/status', lookup: { location: 'query', expression: 'id' } })
+  const scenario = (requiredState: string | undefined, newState?: string) => ({ name: 'loan-approval', requiredState, newState })
+  await env.rt.mocks.create(buildStub(integration, e, { keyValue: '7', status: 200, body: '{"status":"pending"}', name: 'Pending', scenario: scenario(undefined, 'approved') }), actor)
+  await env.rt.mocks.create(buildStub(integration, e, { keyValue: '7', status: 200, body: '{"status":"approved"}', name: 'Approved', scenario: scenario('approved') }), actor)
+  const status = async () => JSON.parse((await call('/nic/loan/status?id=7')).body).status
+  const live = async () => (await env.rt.scenarios.list()).find((s) => s.name === 'loan-approval')!
+  expect((await live()).state).toBe('Started')
+  expect(await status()).toBe('pending')
+  expect((await live()).state).toBe('approved')
+  expect(await status()).toBe('approved')
+  expect(await status()).toBe('approved')
+  // Mocks are listed by id (random here), so compare as a set.
+  expect((await live()).mocks.map((m) => [m.name, m.method, m.url, m.requiredState, m.newState])).toEqual(
+    expect.arrayContaining([
+      ['Pending', 'GET', '/nic/loan/status', 'Started', 'approved'],
+      ['Approved', 'GET', '/nic/loan/status', 'approved', undefined],
+    ]),
+  )
+  await env.rt.scenarios.setState('loan-approval', 'Started', 'ui-admin')
+  expect(await status()).toBe('pending')
+  await env.rt.scenarios.resetAll('ui-admin')
+  expect((await live()).state).toBe('Started')
+})

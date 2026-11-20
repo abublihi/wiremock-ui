@@ -26,3 +26,21 @@ test('lists states in transition order from Started, unreachable states last; li
   ])
   expect(list[1].mocks.map((m) => m.id)).toEqual(['a', 'c', 'd', 'e'])
 })
+
+test('each mock carries its method and URL for the diagram labels', async () => {
+  const stubs = [
+    stub('a', { name: 'Pending', scenarioName: 's', requiredScenarioState: 'Started', newScenarioState: 'ok', request: { method: 'POST', urlPath: '/pay/1' } }),
+    stub('b', { scenarioName: 's', requiredScenarioState: 'ok', request: { method: 'GET', urlPathTemplate: '/pay/{id}' } }),
+    stub('c', { scenarioName: 's', request: { urlPattern: '/x.*' } }),
+    stub('d', { scenarioName: 's', request: {} }),
+  ]
+  const store = { listAll: async () => stubs } as unknown as MockStore
+  const wiremock = { listScenarios: async () => [] } as unknown as WireMockClient
+  const [s] = await new ScenarioService({ store, wiremock, audit }).list()
+  expect(s!.mocks).toEqual([
+    { id: 'a', name: 'Pending', method: 'POST', url: '/pay/1', requiredState: 'Started', newState: 'ok' },
+    { id: 'b', method: 'GET', url: '/pay/{id}', requiredState: 'ok' },
+    { id: 'c', url: '/x.*' },
+    { id: 'd' },
+  ])
+})

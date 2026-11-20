@@ -282,3 +282,32 @@ describe('webhook', () => {
     }
   })
 })
+
+describe('scenario', () => {
+  test('maps to scenarioName / requiredScenarioState / newScenarioState; required state defaults to Started', () => {
+    expect(build({}, { scenario: { name: 'checkout', newState: 'approved' } })).toMatchObject({
+      scenarioName: 'checkout',
+      requiredScenarioState: 'Started',
+      newScenarioState: 'approved',
+    })
+    const pending = build({}, { scenario: { name: ' checkout ', requiredState: ' approved ' } })
+    expect(pending).toMatchObject({ scenarioName: 'checkout', requiredScenarioState: 'approved' })
+    expect(pending).not.toHaveProperty('newScenarioState')
+    expect(build()).not.toHaveProperty('scenarioName')
+    expect(build()).not.toHaveProperty('requiredScenarioState')
+  })
+  test('blank states fall back: required to Started, new state left out', () => {
+    const s = build({}, { scenario: { name: 'checkout', requiredState: '  ', newState: '' } })
+    expect(s.requiredScenarioState).toBe('Started')
+    expect(s).not.toHaveProperty('newScenarioState')
+  })
+  test('validation names the field', () => {
+    expect(failure(() => build({}, { scenario: { name: '  ' } }))).toEqual({ status: 400, message: 'scenario.name must not be empty' })
+  })
+  test('schema', () => {
+    expect(simpleMockSchema.safeParse({ isDefault: true, scenario: { name: 'a', requiredState: 'b', newState: 'c' } }).success).toBe(true)
+    for (const bad of [{}, { name: 1 }, { name: 'a', extra: 1 }, { name: 'a', newState: 2 }]) {
+      expect(simpleMockSchema.safeParse({ isDefault: true, scenario: bad }).success).toBe(false)
+    }
+  })
+})

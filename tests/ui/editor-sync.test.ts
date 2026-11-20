@@ -351,3 +351,50 @@ describe('proxy and webhook', () => {
     expect(fromStub(s, integration, e)).toBeNull()
   })
 })
+
+describe('scenario', () => {
+  const e = endpoint()
+  const staged = (over: Partial<SimpleForm['scenario']> = {}, f: Partial<SimpleForm> = {}) =>
+    form(e, { keyValue: 'k', scenario: { ...emptyForm(e).scenario, enabled: true, name: 'loan', ...over }, ...f })
+
+  it('a new form is not stateful; its required state starts at Started', () => {
+    expect(emptyForm(e).scenario).toEqual({ enabled: false, name: '', requiredState: 'Started', newState: '' })
+    expect(toSimpleInput(form(e, { keyValue: 'k', scenario: { ...emptyForm(e).scenario, name: 'kept but off' } }))).not.toHaveProperty('scenario')
+  })
+
+  it('sends the trimmed name and states, leaving out blank ones', () => {
+    expect(toSimpleInput(staged({ name: ' loan ', newState: ' approved ' })).scenario).toEqual({ name: 'loan', requiredState: 'Started', newState: 'approved' })
+    expect(toSimpleInput(staged({ requiredState: ' ', newState: '' })).scenario).toEqual({ name: 'loan' })
+  })
+
+  it.each([
+    ['a first step', staged({ newState: 'approved' })],
+    ['a last step', staged({ requiredState: 'approved' })],
+    ['a step that stays', staged()],
+    ['a scenario on a proxy with a webhook', staged({ newState: 'b' }, { answer: 'proxy', proxy: { ...emptyForm(e).proxy, baseUrl: 'https://real.example' }, webhook: { ...emptyForm(e).webhook, enabled: true, url: 'http://h.example/cb' } })],
+  ])('round-trips %s', (_, f) => {
+    expect(fromStub(stored(e, f), integration, e)).toEqual(f)
+  })
+
+  const base = () => stored(e, staged({ newState: 'approved' }))
+  it.each<[string, (s: StubMapping) => void]>([
+    ['a scenario without a required state (answers in any state)', (s) => void delete s.requiredScenarioState],
+    ['a state without a scenario', (s) => void delete s.scenarioName],
+    ['a non-string name', (s) => void (s.scenarioName = 1)],
+    ['an empty new state', (s) => void (s.newScenarioState = '')],
+    ['a padded name', (s) => void (s.scenarioName = ' loan')],
+  ])('refuses %s', (_, mutate) => {
+    const s = base()
+    expect(fromStub(s, integration, e)).not.toBeNull()
+    mutate(s)
+    expect(fromStub(s, integration, e)).toBeNull()
+  })
+})
+
+describe('isScenarioNameSettable (kept in step with the server)', () => {
+  it('matches the server rule', async () => {
+    const { isScenarioNameSettable: server } = await import('@/server/wiremock/client')
+    const { isScenarioNameSettable: ui } = await import('@/ui/lib/editor-sync')
+    for (const name of ['loan', 'loan-approval_2.x', 'with space', '.hidden', 'a/b', 'a%20b', 'ok:@!', '']) expect(ui(name)).toBe(server(name))
+  })
+})

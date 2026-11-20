@@ -35,6 +35,7 @@ for (const theme of ['dark', 'light'] as const) {
         ['/mocks?owner=all', 'Mocks'],
         ['/mocks/new?integration=nic&endpoint=fetch-citizen', 'New mock'],
         ['/requests', 'Request log'],
+        ['/scenarios', 'Scenarios'],
         ['/catalog', 'Catalog'],
         ['/catalog/nic', 'NIC'],
         ['/users', 'Users'],

@@ -16,6 +16,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAuditRouteImport } from './routes/_app/audit'
 import { Route as AppImportRouteImport } from './routes/_app/import'
 import { Route as AppRequestsRouteImport } from './routes/_app/requests'
+import { Route as AppScenariosRouteImport } from './routes/_app/scenarios'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as ApiAuditRouteImport } from './routes/api/audit'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
@@ -82,6 +83,11 @@ const AppImportRoute = AppImportRouteImport.update({
 const AppRequestsRoute = AppRequestsRouteImport.update({
   id: '/requests',
   path: '/requests',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppScenariosRoute = AppScenariosRouteImport.update({
+  id: '/scenarios',
+  path: '/scenarios',
   getParentRoute: () => AppRoute,
 } as any)
 const AppUsersRoute = AppUsersRouteImport.update({
@@ -261,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AppAuditRoute
   '/import': typeof AppImportRoute
   '/requests': typeof AppRequestsRoute
+  '/scenarios': typeof AppScenariosRoute
   '/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/config': typeof ApiConfigRoute
@@ -301,6 +308,7 @@ export interface FileRoutesByTo {
   '/audit': typeof AppAuditRoute
   '/import': typeof AppImportRoute
   '/requests': typeof AppRequestsRoute
+  '/scenarios': typeof AppScenariosRoute
   '/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/config': typeof ApiConfigRoute
@@ -344,6 +352,7 @@ export interface FileRoutesById {
   '/_app/audit': typeof AppAuditRoute
   '/_app/import': typeof AppImportRoute
   '/_app/requests': typeof AppRequestsRoute
+  '/_app/scenarios': typeof AppScenariosRoute
   '/_app/users': typeof AppUsersRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/config': typeof ApiConfigRoute
@@ -388,6 +397,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/import'
     | '/requests'
+    | '/scenarios'
     | '/users'
     | '/api/audit'
     | '/api/config'
@@ -428,6 +438,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/import'
     | '/requests'
+    | '/scenarios'
     | '/users'
     | '/api/audit'
     | '/api/config'
@@ -470,6 +481,7 @@ export interface FileRouteTypes {
     | '/_app/audit'
     | '/_app/import'
     | '/_app/requests'
+    | '/_app/scenarios'
     | '/_app/users'
     | '/api/audit'
     | '/api/config'
@@ -571,6 +583,13 @@ declare module '@tanstack/react-router' {
       path: '/requests'
       fullPath: '/requests'
       preLoaderRoute: typeof AppRequestsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/scenarios': {
+      id: '/_app/scenarios'
+      path: '/scenarios'
+      fullPath: '/scenarios'
+      preLoaderRoute: typeof AppScenariosRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/users': {
@@ -811,6 +830,7 @@ interface AppRouteChildren {
   AppAuditRoute: typeof AppAuditRoute
   AppImportRoute: typeof AppImportRoute
   AppRequestsRoute: typeof AppRequestsRoute
+  AppScenariosRoute: typeof AppScenariosRoute
   AppUsersRoute: typeof AppUsersRoute
   AppIndexRoute: typeof AppIndexRoute
   AppCatalogKeyRoute: typeof AppCatalogKeyRoute
@@ -824,6 +844,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAuditRoute: AppAuditRoute,
   AppImportRoute: AppImportRoute,
   AppRequestsRoute: AppRequestsRoute,
+  AppScenariosRoute: AppScenariosRoute,
   AppUsersRoute: AppUsersRoute,
   AppIndexRoute: AppIndexRoute,
   AppCatalogKeyRoute: AppCatalogKeyRoute,

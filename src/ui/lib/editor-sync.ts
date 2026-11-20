@@ -43,6 +43,25 @@ export type WebhookForm = {
   upper: number
 }
 
+/** Make the mock stateful: answer only in one state of a named scenario, then optionally move it on. */
+export type ScenarioForm = {
+  enabled: boolean
+  name: string
+  /** Blank means `Started` (the builder's default). */
+  requiredState: string
+  /** Blank leaves the scenario where it is. */
+  newState: string
+}
+
+/** WireMock's first state of every scenario. */
+export const STARTED = 'Started'
+
+// Same rule as the server's isScenarioNameSettable (src/server/wiremock/client.ts; not imported: server module).
+const SETTABLE_SCENARIO_NAME = /^[A-Za-z0-9\-._~!$&'()*+,=:@]+$/
+
+/** Whether the Scenarios page can set this scenario's state (WireMock 3.13.1 cannot address names with spaces and the like). */
+export const isScenarioNameSettable = (name: string) => SETTABLE_SCENARIO_NAME.test(name) && !name.startsWith('.')
+
 export type SimpleForm = {
   integration: string
   endpoint: string
@@ -59,6 +78,7 @@ export type SimpleForm = {
   answer: 'mock' | 'proxy'
   proxy: ProxyForm
   webhook: WebhookForm
+  scenario: ScenarioForm
 }
 
 export const DEFAULT_SLOW_SECONDS = 3
@@ -94,6 +114,7 @@ export function emptyForm(endpoint: Endpoint): SimpleForm {
     answer: 'mock',
     proxy: { baseUrl: '', stripPrefix: '', addHeaders: [], removeHeaders: '' },
     webhook: { enabled: false, method: 'POST', url: '', headers: [], body: '', delay: 'none', delayMs: 1000, lower: 500, upper: 2000 },
+    scenario: { enabled: false, name: '', requiredState: STARTED, newState: '' },
   }
 }
 
@@ -146,8 +167,16 @@ export function toSimpleInput(form: SimpleForm): SimpleMockInput {
     else if (form.slow) input.delayMs = Math.round(form.delaySeconds * 1000)
   }
   if (form.webhook.enabled) input.webhook = webhookInput(form.webhook)
+  if (form.scenario.enabled) input.scenario = scenarioInput(form.scenario)
   if (form.name.trim() !== '') input.name = form.name
   return input
+}
+
+function scenarioInput(scenario: ScenarioForm): NonNullable<SimpleMockInput['scenario']> {
+  const out: NonNullable<SimpleMockInput['scenario']> = { name: scenario.name.trim() }
+  if (scenario.requiredState.trim() !== '') out.requiredState = scenario.requiredState.trim()
+  if (scenario.newState.trim() !== '') out.newState = scenario.newState.trim()
+  return out
 }
 
 function webhookInput(hook: WebhookForm): NonNullable<SimpleMockInput['webhook']> {
@@ -207,7 +236,7 @@ function readKey(request: Record<string, unknown>, lookup: NonNullable<Endpoint[
  * form cannot show (extra matchers, headers, transformers, another priority…): Simple mode never drops fields.
  */
 export function fromStub(stub: StubMapping, integration: Integration, endpoint: Endpoint): SimpleForm | null {
-  if (!onlyKeys(stub, ['id', 'uuid', 'name', 'priority', 'persistent', 'request', 'response', 'metadata', 'serveEventListeners'])) return null
+  if (!onlyKeys(stub, ['id', 'uuid', 'name', 'priority', 'persistent', 'request', 'response', 'metadata', 'serveEventListeners', ...SCENARIO_KEYS])) return null
   const meta = stub.metadata
   if (!isRecord(meta) || !onlyKeys(meta, ['wiremockUi'])) return null
   if (meta.wiremockUi?.integration !== endpoint.integration || meta.wiremockUi?.endpoint !== endpoint.key) return null
@@ -228,6 +257,11 @@ export function fromStub(stub: StubMapping, integration: Integration, endpoint: 
   const form = emptyForm(endpoint)
   form.isDefault = isDefault
   form.keyValue = keyValue
+  if (stub.scenarioName !== undefined || stub.requiredScenarioState !== undefined || stub.newScenarioState !== undefined) {
+    const scenario = readScenario(stub)
+    if (!scenario) return null
+    form.scenario = scenario
+  }
   if (stub.serveEventListeners !== undefined) {
     const webhook = readWebhook(stub.serveEventListeners, form.webhook)
     if (!webhook) return null
@@ -274,6 +308,18 @@ const isStringMap = (v: unknown): v is Record<string, string> =>
   isRecord(v) && Object.keys(v).length > 0 && Object.values(v).every((x) => typeof x === 'string')
 const rowsOf = (map: Record<string, string>): HeaderRow[] => Object.entries(map).map(([name, value]) => ({ name, value }))
 const isDelayMs = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0
+
+const SCENARIO_KEYS = ['scenarioName', 'requiredScenarioState', 'newScenarioState'] as const
+const isTrimmedText = (v: unknown): v is string => typeof v === 'string' && v !== '' && v === v.trim()
+
+/** A scenario as the builder writes it: a name and a required state, maybe a new state (all trimmed, none empty). */
+function readScenario(stub: StubMapping): ScenarioForm | null {
+  const { scenarioName: name, requiredScenarioState: required, newScenarioState: next } = stub
+  // Without a required state the mock answers in any state, which the form cannot say.
+  if (!isTrimmedText(name) || !isTrimmedText(required)) return null
+  if (next !== undefined && !isTrimmedText(next)) return null
+  return { enabled: true, name, requiredState: required, newState: next ?? '' }
+}
 
 /** The proxy fields the builder writes, or null for anything else. */
 function readProxy(response: Record<string, unknown>): ProxyForm | null {

@@ -41,7 +41,7 @@ async function createFlow(scenario: string, path: string): Promise<string[]> {
 const list = async () => {
   const res = await listScenarios(rt, req('/api/scenarios'))
   expect(res.status).toBe(200)
-  return (await res.json()) as { scenarios: { name: string; state: string; possibleStates: string[]; settable: boolean; mocks: { id: string; name?: string; requiredState?: string; newState?: string }[] }[] }
+  return (await res.json()) as { scenarios: { name: string; state: string; possibleStates: string[]; settable: boolean; mocks: { id: string; name?: string; method?: string; url?: string; requiredState?: string; newState?: string }[] }[] }
 }
 const setState = (name: string, state: unknown) =>
   setScenarioState(rt, req(`/api/scenarios/${encodeURIComponent(name)}/state`, 'PUT', { state }), { name })
@@ -75,8 +75,8 @@ test('a two-mock pending → approved scenario: listed with its graph and live s
   expect(sc).toMatchObject({ name: 'order-flow', state: 'Started', possibleStates: ['Started', 'approved'], settable: true })
   expect(sc.mocks).toEqual(
     expect.arrayContaining([
-      { id: ids[0], name: 'order-flow pending', requiredState: 'Started', newState: 'approved' },
-      { id: ids[1], name: 'order-flow approved', requiredState: 'approved' },
+      { id: ids[0], name: 'order-flow pending', method: 'GET', url: '/sc/order', requiredState: 'Started', newState: 'approved' },
+      { id: ids[1], name: 'order-flow approved', method: 'GET', url: '/sc/order', requiredState: 'approved' },
     ]),
   )
 

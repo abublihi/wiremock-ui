@@ -55,7 +55,7 @@ describe('HazardStrip', () => {
 describe('AppShell', () => {
   it('shows every nav item to a signed-in user', async () => {
     await renderShell(user())
-    expect(navLabels()).toEqual(['Mocks', 'Request log', 'Catalog', 'Users', 'Audit', 'Import'])
+    expect(navLabels()).toEqual(['Mocks', 'Request log', 'Scenarios', 'Catalog', 'Users', 'Audit', 'Import'])
   })
 
   it('shows the hazard strip, the user and labelled icon-only controls', async () => {

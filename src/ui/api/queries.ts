@@ -11,6 +11,7 @@ import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { PublicUser } from '@/server/users/types'
 import type { NearMissView, RequestSummary } from '@/server/requests/journal'
 import type { TestRequestInput, TestRequestResult } from '@/server/wiremock/relay'
+import type { Scenario } from '@/server/scenarios/service'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
 import { SESSION_KEY, apiFetch, type SessionData } from './client'
 
@@ -40,6 +41,7 @@ export const queryKeys = {
   nearMisses: (id: string) => ['requests', 'near-misses', id] as const,
   users: ['users'] as const,
   audit: ['audit'] as const,
+  scenarios: ['scenarios'] as const,
 } as const
 
 export const sessionQueryOptions = (fetchSession: () => Promise<SessionData> = defaultFetchSession) =>
@@ -358,6 +360,43 @@ export function useCountRequests() {
 export function useSendTestRequest() {
   return useMutation({
     mutationFn: (input: TestRequestInput) => apiFetch<TestRequestResult>('/api/test-request', { method: 'POST', body: input }),
+  })
+}
+
+// ── Scenarios ─────────────────────────────────────────────────────────────────
+
+/** How often the Scenarios page asks for the live states, while the tab is visible. */
+export const SCENARIO_POLL_MS = 2000
+
+/** Every scenario with its states, mocks and live state. `live` polls every SCENARIO_POLL_MS while the tab is visible. */
+export function useScenarios(options: { live?: boolean; enabled?: boolean } = {}) {
+  const visible = useDocumentVisible()
+  const polling = Boolean(options.live) && visible
+  return useQuery({
+    queryKey: queryKeys.scenarios,
+    queryFn: async () => (await apiFetch<{ scenarios: Scenario[] }>('/api/scenarios')).scenarios,
+    enabled: options.enabled ?? true,
+    refetchInterval: polling ? SCENARIO_POLL_MS : false,
+    refetchIntervalInBackground: false,
+  })
+}
+
+const scenarioPath = (name: string) => `/api/scenarios/${encodeURIComponent(name)}/state`
+
+export function useSetScenarioState() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, state }: { name: string; state: string }) => apiFetch<Scenario>(scenarioPath(name), { method: 'PUT', body: { state } }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
+  })
+}
+
+/** Resets one scenario (`name`) or, without a name, every scenario back to Started. */
+export function useResetScenarios() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (name?: string) => apiFetch<void>('/api/scenarios/reset', { method: 'POST', body: name === undefined ? {} : { name } }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
   })
 }
 

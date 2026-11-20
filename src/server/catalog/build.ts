@@ -49,6 +49,19 @@ const webhookSchema = z.strictObject(
   { error: (iss) => unknownKeys(iss, 'webhook must be an object') },
 )
 
+/** Make the mock stateful (WireMock scenarioName / requiredScenarioState / newScenarioState). */
+const scenarioSchema = z.strictObject(
+  {
+    name: z.string({ error: 'scenario.name must be a string' }),
+    requiredState: z.string({ error: 'scenario.requiredState must be a string' }).optional(),
+    newState: z.string({ error: 'scenario.newState must be a string' }).optional(),
+  },
+  { error: (iss) => unknownKeys(iss, 'scenario must be an object') },
+)
+
+/** WireMock's first state of every scenario. */
+export const SCENARIO_STARTED = 'Started'
+
 export const simpleMockSchema = z.strictObject(
   {
     keyValue: z.string({ error: 'keyValue must be a string' }).optional(),
@@ -75,6 +88,7 @@ export const simpleMockSchema = z.strictObject(
     name: z.string({ error: 'name must be a string' }).optional(),
     proxy: proxySchema.optional(),
     webhook: webhookSchema.optional(),
+    scenario: scenarioSchema.optional(),
   },
   { error: (iss) => (iss.code === 'unrecognized_keys' ? `unknown field: ${iss.keys.join(', ')}` : 'body must be an object') },
 )
@@ -143,6 +157,20 @@ export type WebhookListener = {
   }
 }
 
+export type ScenarioFields = { scenarioName: string; requiredScenarioState: string; newScenarioState?: string }
+
+/** A blank required state means `Started`; a blank new state means the mock leaves the state as it is. */
+function scenarioFields(scenario: NonNullable<SimpleMockInput['scenario']>): ScenarioFields {
+  const name = scenario.name.trim()
+  if (name === '') throw new ValidationError('scenario.name must not be empty')
+  const newState = scenario.newState?.trim()
+  return {
+    scenarioName: name,
+    requiredScenarioState: scenario.requiredState?.trim() || SCENARIO_STARTED,
+    ...(newState ? { newScenarioState: newState } : {}),
+  }
+}
+
 /** A status with the endpoint's content type, extra headers and an optional body. */
 function mockResponse(endpoint: Endpoint, input: SimpleMockInput): Record<string, unknown> {
   const response: Record<string, unknown> = { status: input.status }
@@ -173,7 +201,7 @@ export function buildStub(
   integration: Integration,
   endpoint: Endpoint,
   input: SimpleMockInput,
-): MockInput & { serveEventListeners?: WebhookListener[] } {
+): MockInput & { serveEventListeners?: WebhookListener[] } & Partial<ScenarioFields> {
   const isDefault = input.isDefault === true
   const keyValue = isDefault ? undefined : input.keyValue?.trim()
   const name = input.name?.trim()
@@ -198,6 +226,7 @@ export function buildStub(
     request: requestFor(integration, endpoint, keyValue),
     response: responseFor(endpoint, input),
     ...(input.webhook ? { serveEventListeners: [webhookListener(input.webhook)] } : {}),
+    ...(input.scenario ? scenarioFields(input.scenario) : {}),
     metadata: { wiremockUi: { integration: integration.key, endpoint: endpoint.key } },
   }
 }
