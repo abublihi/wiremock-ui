@@ -453,6 +453,11 @@ describe('endpoint page', () => {
     await ue.clear(path)
     await ue.type(path, '/orders/{{id}')
     expect(screen.getByRole('radio', { name: 'Template' }).getAttribute('data-state')).toBe('on')
+    await ue.clear(path)
+    await ue.type(path, '/nic/orders')
+    expect(screen.getByText(/already starts with \/nic/)).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Remove /nic' }))
+    expect((path as HTMLInputElement).value).toBe('/orders')
   })
 
   it('refuses to add an endpoint over an existing key, without sending the PUT', async () => {

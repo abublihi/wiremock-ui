@@ -814,6 +814,8 @@ export const en = {
   'catalog.endpoint.notFoundTitle': 'Endpoint not found',
   'catalog.endpoint.notFoundBody': '// {integration} has no endpoint with the key {key}',
   'catalog.endpoint.keyTaken': 'An endpoint with this ID already exists. Pick another ID.',
+  'catalog.endpoint.prefixRepeated': 'This path already starts with {prefix}, which the integration adds in front: requests would need {prefix}{path}.',
+  'catalog.endpoint.prefixRemove': 'Remove {prefix}',
   'catalog.endpoint.keyRequired': 'Enter an endpoint ID, for example get-post.',
   'catalog.endpoint.keyInvalid': 'Use lowercase letters, digits and dashes (up to 63), starting with a letter or digit, for example get-post.',
   'catalog.endpoint.nameRequired': 'Enter a name, for example Get post.',

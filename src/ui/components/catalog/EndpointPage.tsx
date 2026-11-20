@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
-import { AlertCircleIcon, ArrowLeftIcon, PlusIcon, SaveIcon, XIcon } from 'lucide-react'
+import { AlertCircleIcon, AlertTriangleIcon, ArrowLeftIcon, PlusIcon, SaveIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Endpoint, Integration, KeyLocation } from '@/server/catalog/types'
 import { ApiError } from '@/ui/api/client'
@@ -430,6 +430,15 @@ function EndpointEditor({
                 placeholder: form.pathType === 'template' ? '/posts/{id}' : form.pathType === 'regex' ? '/posts/[0-9]+' : '/posts',
               })}
             </div>
+            {prefix && (form.path.trim() === prefix || form.path.trim().startsWith(`${prefix}/`)) && (
+              <p role="note" className="flex flex-wrap items-center gap-2 text-xs text-hazard-fg">
+                <AlertTriangleIcon aria-hidden className="size-3.5 shrink-0" />
+                {t('catalog.endpoint.prefixRepeated', { prefix, path: form.path.trim() })}
+                <Button type="button" variant="outline" size="xs" onClick={() => update({ path: form.path.trim().slice(prefix.length) || '/' }, ['path'])}>
+                  {t('catalog.endpoint.prefixRemove', { prefix })}
+                </Button>
+              </p>
+            )}
             <FieldSet className="gap-2">
               <FieldLegend variant="label">{t('catalog.endpoint.pathType')}</FieldLegend>
               <ToggleGroup
