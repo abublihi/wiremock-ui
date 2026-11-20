@@ -98,6 +98,10 @@ export function MocksPage({
 
   const count = mocks.data?.totalMocks ?? 0
   const baseline = mocks.data?.baseline ?? 0
+  const mine = !wiremockOnly && owner === 'me'
+  // My mocks is empty: say how many shared mocks there are, so a newcomer knows where they went.
+  const everyone = useMockPage({}, { limit: 1, offset: 0 }, { enabled: mine && mocks.data !== undefined && count === 0 })
+  const shared = mine && count === 0 ? (everyone.data?.totalMocks ?? 0) : 0
   const clearFilters = () =>
     onSearchChange({ owner: undefined, integration: undefined, status: undefined, q: undefined, scenarios: undefined, page: undefined })
   // Past the last page (mocks deleted, an old link): go to the last page that has rows.
@@ -113,7 +117,7 @@ export function MocksPage({
         <div>
           <h1 className="glow-text font-display text-4xl font-bold tracking-tight uppercase">{t('mocks.title')}</h1>
           <p className="text-xs text-muted-foreground">
-            {mocks.data ? <WithTerm text={t(count === 1 ? 'mocks.captionOne' : 'mocks.caption', { count, baseline })} word="baseline" name="baseline" /> : '//'}
+            {!mocks.data ? '//' : mine ? t(count === 1 ? 'mocks.captionMineOne' : 'mocks.captionMine', { count }) : <WithTerm text={t(count === 1 ? 'mocks.captionOne' : 'mocks.caption', { count, baseline })} word="baseline" name="baseline" />}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -176,10 +180,21 @@ export function MocksPage({
             <EmptyMedia variant="icon">
               <InboxIcon />
             </EmptyMedia>
-            <EmptyTitle>{t(filtered ? 'mocks.noMatchTitle' : 'mocks.emptyTitle')}</EmptyTitle>
-            <EmptyDescription>{t(filtered ? 'mocks.noMatchBody' : 'mocks.emptyBody')}</EmptyDescription>
+            <EmptyTitle>{t(filtered ? 'mocks.noMatchTitle' : mine ? 'mocks.emptyMineTitle' : 'mocks.emptyTitle')}</EmptyTitle>
+            <EmptyDescription>
+              {filtered
+                ? t('mocks.noMatchBody')
+                : shared > 0
+                  ? t(shared === 1 ? 'mocks.emptyMineSharedOne' : 'mocks.emptyMineShared', { count: shared })
+                  : t('mocks.emptyBody')}
+            </EmptyDescription>
           </EmptyHeader>
-          <EmptyContent>
+          <EmptyContent className="flex-row flex-wrap justify-center">
+            {!filtered && shared > 0 && (
+              <Button variant="outline" onClick={() => onFilterChange({ owner: 'all' })}>
+                {t('mocks.ownerAll')}
+              </Button>
+            )}
             {filtered ? (
               <Button variant="outline" onClick={clearFilters}>
                 {t('mocks.clearFilters')}

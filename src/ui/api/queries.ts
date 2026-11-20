@@ -131,11 +131,12 @@ export function useMocks(filter: MockFilter, options: { enabled?: boolean } = {}
  * One page of mocks (`GET /api/mocks?limit=&offset=`) for the mocks list. Callers that need every matching mock (a
  * scenario's steps, Reset my mocks) use `useMocks`, which asks without `limit` and gets the whole list.
  */
-export function useMockPage(filter: MockFilter, page: MockPageArgs) {
+export function useMockPage(filter: MockFilter, page: MockPageArgs, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.mockPage(filter, page),
     queryFn: () => apiFetch<MockPage>('/api/mocks', { query: { ...filter, ...page } }),
     placeholderData: keepPreviousData,
+    enabled: options.enabled ?? true,
   })
 }
 

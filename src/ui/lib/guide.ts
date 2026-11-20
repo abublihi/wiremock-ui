@@ -172,3 +172,7 @@ export const GLOSSARY = glossaryFrom(GUIDE_SECTIONS)
 export const CHECKLIST_DISMISSED_KEY = 'wmui.gettingStarted.dismissed'
 /** Remembered in this browser: the request log was opened (the checklist's last step). */
 export const REQUEST_LOG_SEEN_KEY = 'wmui.gettingStarted.requestLogSeen'
+/** Set once WireMock has had a request: clearing the request log later does not untick the step. */
+export const REQUEST_SENT_KEY = 'wmui.gettingStarted.requestSent'
+/** Set when all five steps are done: the checklist hides itself and stops asking the server. */
+export const CHECKLIST_DONE_KEY = 'wmui.gettingStarted.done'

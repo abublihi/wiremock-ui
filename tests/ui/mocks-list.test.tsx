@@ -81,7 +81,7 @@ describe('mock list', () => {
     expect(screen.getByRole('radio', { name: 'My mocks' }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByText('Baseline')).toBeTruthy()
     expect(screen.getByText('404')).toBeTruthy()
-    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 2 mocks · 1 baseline')).toBeTruthy()
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 2 of your own mocks')).toBeTruthy()
   })
 
   it('marks proxy mocks with a PROXY badge instead of a status, and webhook mocks with an icon', async () => {
@@ -168,7 +168,7 @@ describe('mock list', () => {
     expect(seen[0]!.url.searchParams.get('offset')).toBe('0')
     expect(screen.getByText('Mock m49')).toBeTruthy()
     expect(screen.queryByText('Mock m50')).toBeNull()
-    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 120 mocks · 0 baseline')).toBeTruthy()
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 120 of your own mocks')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Previous' }) as HTMLButtonElement).disabled).toBe(true)
     const ue = userEvent.setup()
     await ue.click(screen.getByRole('button', { name: 'Next' }))
@@ -358,7 +358,7 @@ describe('mock list', () => {
   it('empty state for my mocks offers New mock', async () => {
     mockApi([])
     await renderApp(<Harness />)
-    await screen.findByText('No mocks yet')
+    await screen.findByText('No mocks of your own yet')
     expect(screen.getAllByRole('link', { name: 'New mock' }).length).toBeGreaterThan(0)
   })
 

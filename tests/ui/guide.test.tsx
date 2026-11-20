@@ -15,6 +15,8 @@ import { HelpPanel, useGuideShortcut } from '@/ui/components/guide/HelpPanel'
 import { Term } from '@/ui/components/guide/Term'
 import {
   CHECKLIST_DISMISSED_KEY,
+  CHECKLIST_DONE_KEY,
+  REQUEST_SENT_KEY,
   GLOSSARY,
   GUIDE_SECTIONS,
   guideHref,
@@ -320,13 +322,24 @@ describe('contextual help', () => {
 })
 
 describe('Getting started checklist', () => {
-  function api(opts: { integrations?: number; endpoints?: number; mocks?: number; requests?: number }) {
+  const mockQueries: URLSearchParams[] = []
+  const endpointCalls: string[] = []
+  function api(opts: { integrations?: number; endpoints?: number; mocks?: number; requests?: number; endpointsOn?: string }) {
+    mockQueries.length = 0
+    endpointCalls.length = 0
     server.use(
       http.get(`${BASE}/api/integrations`, () =>
         HttpResponse.json(Array.from({ length: opts.integrations ?? 0 }, (_, i) => ({ key: `i${i}`, name: `I${i}`, prefix: `/i${i}` }))),
       ),
-      http.get(`${BASE}/api/integrations/:key/endpoints`, () => HttpResponse.json(Array.from({ length: opts.endpoints ?? 0 }, (_, i) => ({ key: `e${i}` })))),
-      http.get(`${BASE}/api/mocks`, () => HttpResponse.json({ items: [], total: 0, totalMocks: opts.mocks ?? 0, baseline: 0, offset: 0, limit: 1 })),
+      http.get(`${BASE}/api/integrations/:key/endpoints`, ({ params }) => {
+        endpointCalls.push(String(params.key))
+        const count = opts.endpointsOn === undefined || opts.endpointsOn === params.key ? (opts.endpoints ?? 0) : 0
+        return HttpResponse.json(Array.from({ length: count }, (_, i) => ({ key: `e${i}` })))
+      }),
+      http.get(`${BASE}/api/mocks`, ({ request }) => {
+        mockQueries.push(new URL(request.url).searchParams)
+        return HttpResponse.json({ items: [], total: 0, totalMocks: opts.mocks ?? 0, baseline: 0, offset: 0, limit: 1 })
+      }),
       http.get(`${BASE}/api/requests`, () => HttpResponse.json(Array.from({ length: opts.requests ?? 0 }, (_, i) => ({ id: `r${i}` })))),
     )
   }
@@ -349,9 +362,20 @@ describe('Getting started checklist', () => {
     await renderApp(<GettingStartedChecklist />)
     await waitFor(() => expect(done()).toEqual(['1. Add an integration', '2. Add an endpoint', '3. Create a mock', '4. Send a test request']))
     expect(screen.getByRole('link', { name: /Open the request log/ })).toBeTruthy()
+    // The mock step counts the signed-in user's own mocks.
+    expect(mockQueries.at(-1)?.get('owner')).toBe('sara')
     act(() => markRequestLogSeen())
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'You are set up' })).toBeTruthy())
-    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('5')
+    // All five done: it hides itself for good (until the Guide shows it again).
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Getting started' })).toBeNull())
+    expect(window.localStorage.getItem(CHECKLIST_DONE_KEY)).toBe('1')
+  })
+
+  it('looks past the first ten integrations for an endpoint, and keeps the request step once WireMock had a request', async () => {
+    api({ integrations: 14, endpoints: 1, endpointsOn: 'i12', requests: 1 })
+    await renderApp(<GettingStartedChecklist />)
+    await waitFor(() => expect(done()).toEqual(['1. Add an integration', '2. Add an endpoint', '4. Send a test request']))
+    expect(endpointCalls).toContain('i12')
+    expect(window.localStorage.getItem(REQUEST_SENT_KEY)).toBe('1')
   })
 
   it('is dismissed per browser and comes back from the guide', async () => {

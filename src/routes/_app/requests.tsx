@@ -68,8 +68,6 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
   const t = useT()
   const [live, setLive] = useState(true)
   const visible = useDocumentVisible()
-  // The Getting started checklist's last step: the request log was opened.
-  useEffect(() => markRequestLogSeen(), [])
   const filter = useMemo<RequestFilter>(
     () => ({
       matched: search.matched,
@@ -90,6 +88,11 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
   const rows = older.rows
   const fresh = useFreshIds(live1, requests.isSuccess && !requests.isPlaceholderData, JSON.stringify(filter))
   const unmatched = rows.filter((r) => !r.matched).length
+  // The Getting started checklist's last step: the request log showed a request.
+  const shown = rows.length > 0
+  useEffect(() => {
+    if (shown) markRequestLogSeen()
+  }, [shown])
   const clearFilters = () =>
     onSearchChange({ matched: undefined, integration: undefined, status: undefined, q: undefined, range: undefined })
   const open = useCallback((id: string) => onSearchChange({ open: id }), [onSearchChange])

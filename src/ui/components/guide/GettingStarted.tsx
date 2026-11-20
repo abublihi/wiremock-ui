@@ -1,12 +1,13 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { ArrowRightIcon, CheckIcon, CircleIcon, XIcon } from 'lucide-react'
 import { apiFetch } from '@/ui/api/client'
-import { endpointsQueryOptions, queryKeys, useIntegrations } from '@/ui/api/queries'
+import { endpointsQueryOptions, queryKeys, useIntegrations, useSession } from '@/ui/api/queries'
 import { Button } from '@/ui/components/ui/button'
+import { useWireMockOnly } from '@/ui/config'
 import { useT, type MessageKey } from '@/ui/i18n'
-import { CHECKLIST_DISMISSED_KEY, REQUEST_LOG_SEEN_KEY } from '@/ui/lib/guide'
+import { CHECKLIST_DISMISSED_KEY, CHECKLIST_DONE_KEY, REQUEST_LOG_SEEN_KEY, REQUEST_SENT_KEY } from '@/ui/lib/guide'
 import { cn } from '@/ui/lib/utils'
 
 // ── Per-browser flags (localStorage), safe when storage is blocked and on the server ─────────────────────────────
@@ -51,10 +52,11 @@ export function useFlag(key: string, serverValue: boolean): boolean {
 
 /** Shows the checklist on the Mocks page again (the Guide's "Show the Getting started checklist"). */
 export function reopenChecklist(): void {
+  setFlag(CHECKLIST_DONE_KEY, false)
   setFlag(CHECKLIST_DISMISSED_KEY, false)
 }
 
-/** The request log calls this when it opens: the checklist's last step. */
+/** The request log calls this once it has shown a request: the checklist's last step. */
 export function markRequestLogSeen(): void {
   if (!readFlag(REQUEST_LOG_SEEN_KEY)) setFlag(REQUEST_LOG_SEEN_KEY, true)
 }
@@ -63,7 +65,7 @@ export function markRequestLogSeen(): void {
 
 type Step = { id: string; label: MessageKey; hint: MessageKey; done: boolean; to: string; search?: Record<string, string>; action: MessageKey }
 
-/** How many integrations' endpoint lists the checklist looks at (it only needs one that has an endpoint). */
+/** How many integrations' endpoint lists the checklist looks at per round (it only needs one that has an endpoint). */
 const ENDPOINT_PROBE = 10
 
 /**
@@ -74,30 +76,53 @@ const ENDPOINT_PROBE = 10
 export function GettingStartedChecklist() {
   const t = useT()
   // Server render and first paint: hidden, so a dismissed checklist never flashes.
+  // Hidden (and asking the server nothing) once dismissed or once every step is done.
   const dismissed = useFlag(CHECKLIST_DISMISSED_KEY, true)
+  const finished = useFlag(CHECKLIST_DONE_KEY, true)
+  const hidden = dismissed || finished
   const seenLog = useFlag(REQUEST_LOG_SEEN_KEY, false)
+  const sent = useFlag(REQUEST_SENT_KEY, false)
+  // WireMock-only mode has no owners: every mock counts.
+  const wiremockOnly = useWireMockOnly()
+  const user = useSession().data?.user.username
+  const me = wiremockOnly ? undefined : user
   const integrations = useIntegrations()
-  const probe = (integrations.data ?? []).slice(0, ENDPOINT_PROBE)
+  const all = integrations.data ?? []
+  // Endpoint lists, ten integrations at a time, until one has an endpoint.
+  const [rounds, setRounds] = useState(1)
+  const probe = all.slice(0, ENDPOINT_PROBE * rounds)
   const endpoints = useQueries({
-    queries: probe.map((i) => ({ ...endpointsQueryOptions(i.key), enabled: !dismissed })),
+    queries: probe.map((i) => ({ ...endpointsQueryOptions(i.key), enabled: !hidden })),
   })
+  const hasEndpoint = endpoints.some((q) => (q.data?.length ?? 0) > 0)
+  const probed = endpoints.length > 0 && endpoints.every((q) => q.isSuccess)
+  useEffect(() => {
+    if (!hidden && probed && !hasEndpoint && probe.length < all.length) setRounds((r) => r + 1)
+  }, [hidden, probed, hasEndpoint, probe.length, all.length])
+  // The mock step counts the user's own mocks: someone new on a busy install still has that step to do.
   const mocks = useQuery({
-    queryKey: [...queryKeys.mocks, 'any'],
-    queryFn: async () => (await apiFetch<{ totalMocks: number }>('/api/mocks', { query: { limit: 1, offset: 0 } })).totalMocks,
-    enabled: !dismissed,
+    queryKey: [...queryKeys.mocks, 'any', me],
+    queryFn: async () => (await apiFetch<{ totalMocks: number }>('/api/mocks', { query: { limit: 1, offset: 0, owner: me } })).totalMocks,
+    enabled: !hidden && (wiremockOnly || me !== undefined),
   })
   const requests = useQuery({
     queryKey: [...queryKeys.requests, 'any'],
     queryFn: async () => (await apiFetch<unknown[]>('/api/requests', { query: { limit: 1 } })).length,
-    enabled: !dismissed,
-    // Until the first request arrives; after that the step stays ticked.
-    refetchInterval: (q) => (q.state.data ? false : 15_000),
+    enabled: !hidden && !sent,
+    refetchInterval: 15_000,
     refetchIntervalInBackground: false,
   })
-  if (dismissed) return null
+  const hasRequest = sent || (requests.data ?? 0) > 0
+  useEffect(() => {
+    if (hasRequest && !sent) setFlag(REQUEST_SENT_KEY, true)
+  }, [hasRequest, sent])
+  const doneNow = all.length > 0 && hasEndpoint && (mocks.data ?? 0) > 0 && hasRequest && seenLog
+  useEffect(() => {
+    if (doneNow && !hidden) setFlag(CHECKLIST_DONE_KEY, true)
+  }, [doneNow, hidden])
+  if (hidden) return null
 
   const firstIntegration = integrations.data?.[0]?.key
-  const hasRequest = (requests.data ?? 0) > 0
   const steps: Step[] = [
     {
       id: 'integration',
@@ -111,7 +136,7 @@ export function GettingStartedChecklist() {
       id: 'endpoint',
       label: 'checklist.endpoint',
       hint: 'checklist.endpointHint',
-      done: endpoints.some((q) => (q.data?.length ?? 0) > 0),
+      done: hasEndpoint,
       to: firstIntegration ? `/integrations/${encodeURIComponent(firstIntegration)}` : '/integrations',
       action: 'checklist.endpointAction',
     },
