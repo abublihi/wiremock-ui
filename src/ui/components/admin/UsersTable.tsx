@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertCircleIcon, KeyRoundIcon, MoreHorizontalIcon, Trash2Icon, UserCheckIcon, UserXIcon } from 'lucide-react'
+import { AlertCircleIcon, KeyRoundIcon, MoreHorizontalIcon, Trash2Icon, TriangleAlertIcon, UserCheckIcon, UserXIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PublicUser } from '@/server/users/types'
 import { useDeleteUser, useSession, useUpdateUser } from '@/ui/api/queries'
@@ -104,7 +104,7 @@ export function UsersTable({ users }: { users: PublicUser[] }) {
               {isValidDate(user.createdAt) ? <time dateTime={user.createdAt}>{new Date(user.createdAt).toLocaleDateString('en', { dateStyle: 'medium' })}</time> : '—'}
             </TableCell>
             <TableCell className="text-end">
-              <UserRowActions user={user} />
+              <UserRowActions user={user} self={user.id === me} />
             </TableCell>
           </TableRow>
         ))}
@@ -113,18 +113,20 @@ export function UsersTable({ users }: { users: PublicUser[] }) {
   )
 }
 
-function UserRowActions({ user }: { user: PublicUser }) {
+function UserRowActions({ user, self }: { user: PublicUser; self: boolean }) {
   const t = useT()
   const [resetting, setResetting] = useState(false)
+  const [disabling, setDisabling] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const update = useUpdateUser()
+  const remove = useDeleteUser()
 
-  const toggle = () =>
+  // Enabling is harmless and immediate; disabling signs the user out, so it is confirmed first.
+  const enable = () =>
     update.mutate(
-      { id: user.id, disabled: !user.disabled },
+      { id: user.id, disabled: false },
       {
-        onSuccess: () => toast.success(t(user.disabled ? 'users.enabledToast' : 'users.disabledToast', { name: user.username })),
-        // The server's own words, e.g. "At least one active user is required".
+        onSuccess: () => toast.success(t('users.enabledToast', { name: user.username })),
         onError: (error) => toast.error(t('users.updateFailed'), { description: error.message || t('error.generic') }),
       },
     )
@@ -142,10 +144,17 @@ function UserRowActions({ user }: { user: PublicUser }) {
             <KeyRoundIcon />
             {t('users.resetPassword')}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={toggle}>
-            {user.disabled ? <UserCheckIcon /> : <UserXIcon />}
-            {t(user.disabled ? 'users.enable' : 'users.disable')}
-          </DropdownMenuItem>
+          {user.disabled ? (
+            <DropdownMenuItem onSelect={enable}>
+              <UserCheckIcon />
+              {t('users.enable')}
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onSelect={() => setDisabling(true)}>
+              <UserXIcon />
+              {t('users.disable')}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(true)}>
             <Trash2Icon />
@@ -154,23 +163,75 @@ function UserRowActions({ user }: { user: PublicUser }) {
         </DropdownMenuContent>
       </DropdownMenu>
       <UserDialog user={user} open={resetting} onOpenChange={setResetting} />
-      <DeleteUserDialog user={user} open={deleting} onOpenChange={setDeleting} />
+      <ConfirmUserDialog
+        open={disabling}
+        onOpenChange={setDisabling}
+        title={t('users.disableTitle', { name: user.username })}
+        body={t('users.disableBody')}
+        warning={self ? t('users.disableSelfWarning') : undefined}
+        failedTitle={t('users.updateFailed')}
+        action={t('users.disable')}
+        icon={<UserXIcon data-icon="inline-start" />}
+        pending={update.isPending}
+        run={async () => {
+          await update.mutateAsync({ id: user.id, disabled: true })
+          toast.success(t('users.disabledToast', { name: user.username }))
+        }}
+      />
+      <ConfirmUserDialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={t('users.deleteTitle', { name: user.username })}
+        body={t('users.deleteBody')}
+        warning={self ? t('users.deleteSelfWarning') : undefined}
+        failedTitle={t('users.deleteFailed')}
+        action={t('users.delete')}
+        icon={<Trash2Icon data-icon="inline-start" />}
+        pending={remove.isPending}
+        run={async () => {
+          await remove.mutateAsync(user.id)
+          toast.success(t('users.deleted', { name: user.username }))
+        }}
+      />
     </>
   )
 }
 
-/** Confirms a delete; a refusal (409 "At least one active user is required") stays in the dialog, verbatim. */
-function DeleteUserDialog({ user, open, onOpenChange }: { user: PublicUser; open: boolean; onOpenChange: (open: boolean) => void }) {
+/**
+ * Confirms a disable or delete. A refusal (409 "At least one active user is required") stays in the dialog, verbatim.
+ * `warning` is shown when the action targets the signed-in user.
+ */
+function ConfirmUserDialog({
+  open,
+  onOpenChange,
+  title,
+  body,
+  warning,
+  failedTitle,
+  action,
+  icon,
+  pending,
+  run,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title: string
+  body: string
+  warning?: string
+  failedTitle: string
+  action: string
+  icon: React.ReactNode
+  pending: boolean
+  run: () => Promise<void>
+}) {
   const t = useT()
-  const remove = useDeleteUser()
   const [error, setError] = useState<string | null>(null)
 
   const confirm = async (event: React.MouseEvent) => {
     event.preventDefault() // closes only on success
     setError(null)
     try {
-      await remove.mutateAsync(user.id)
-      toast.success(t('users.deleted', { name: user.username }))
+      await run()
       onOpenChange(false)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('error.generic'))
@@ -187,21 +248,28 @@ function DeleteUserDialog({ user, open, onOpenChange }: { user: PublicUser; open
     >
       <AlertDialogContent className="glass-panel">
         <AlertDialogHeader>
-          <AlertDialogTitle>{t('users.deleteTitle', { name: user.username })}</AlertDialogTitle>
-          <AlertDialogDescription>{t('users.deleteBody')}</AlertDialogDescription>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{body}</AlertDialogDescription>
         </AlertDialogHeader>
+        {warning && (
+          <Alert variant="destructive">
+            <TriangleAlertIcon />
+            <AlertTitle>{t('users.selfWarningTitle')}</AlertTitle>
+            <AlertDescription>{warning}</AlertDescription>
+          </Alert>
+        )}
         {error && (
           <Alert variant="destructive" role="alert">
             <AlertCircleIcon />
-            <AlertTitle>{t('users.deleteFailed')}</AlertTitle>
+            <AlertTitle>{failedTitle}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
         <AlertDialogFooter>
           <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" disabled={remove.isPending} onClick={(e) => void confirm(e)}>
-            <Trash2Icon data-icon="inline-start" />
-            {t('users.delete')}
+          <AlertDialogAction variant="destructive" disabled={pending} onClick={(e) => void confirm(e)}>
+            {icon}
+            {action}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
