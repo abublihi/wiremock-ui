@@ -57,9 +57,10 @@ export function EndpointList({
                   }
                   title={t('catalog.endpoints.deleteTitle', { name: endpoint.name })}
                   body={t('catalog.endpoints.deleteBody')}
+                  failedTitle={t('catalog.endpoint.deleteFailed')}
                   onConfirm={async () => {
                     await remove.mutateAsync({ integration: integration.key, key: endpoint.key })
-                    toast.success(t('catalog.deleted', { name: endpoint.name }))
+                    toast.success(t('catalog.endpoint.deleted', { name: endpoint.name }))
                   }}
                 />
               </div>

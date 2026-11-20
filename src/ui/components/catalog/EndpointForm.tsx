@@ -122,7 +122,7 @@ function Body({ integration, endpoint, onClose }: { integration: string; endpoin
   const t = useT()
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
-  const upsert = useUpsertEndpoint()
+  const upsert = useUpsertEndpoint({ createOnly: !endpoint })
   const existing = useEndpoints(integration)
   const [form, setForm] = useState<Form>(() => initialForm(endpoint))
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -156,7 +156,7 @@ function Body({ integration, endpoint, onClose }: { integration: string; endpoin
     event.preventDefault()
     setErrors({})
     setFormError(null)
-    // A PUT is an upsert: adding over an existing key would silently replace it.
+    // Fast path; the server refuses (409) an add over an existing key either way, even before the list loads.
     if (!endpoint && existing.data?.some((e) => e.key === form.key.trim())) {
       setErrors({ key: t('catalog.endpoint.keyTaken') })
       return
@@ -179,10 +179,14 @@ function Body({ integration, endpoint, onClose }: { integration: string; endpoin
         ...(form.description.trim() ? { description: form.description.trim() } : {}),
         ...(links.length > 0 ? { links } : {}),
       })
-      toast.success(t('catalog.saved'))
+      toast.success(t('catalog.endpoint.saved'))
       onClose()
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : t('error.generic')
+      if (!endpoint && error instanceof ApiError && error.status === 409) {
+        setErrors({ key: t('catalog.endpoint.keyTaken') })
+        return
+      }
       const field = error instanceof ApiError && error.status === 400 ? endpointFieldOf(message) : undefined
       if (field) setErrors({ [field]: message })
       else setFormError(message)
@@ -216,7 +220,7 @@ function Body({ integration, endpoint, onClose }: { integration: string; endpoin
         {formError && (
           <Alert variant="destructive">
             <AlertCircleIcon />
-            <AlertTitle>{t('catalog.saveFailed')}</AlertTitle>
+            <AlertTitle>{t('catalog.endpoint.saveFailed')}</AlertTitle>
             <AlertDescription>{formError}</AlertDescription>
           </Alert>
         )}

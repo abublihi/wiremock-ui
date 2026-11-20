@@ -35,12 +35,12 @@ const endpoint = (over: Partial<Endpoint> = {}): Endpoint => ({
   ...over,
 })
 
-type Call = { method: string; path: string; body?: unknown; csrf?: string | null }
+type Call = { method: string; path: string; body?: unknown; csrf?: string | null; ifNoneMatch?: string | null }
 function mockApi(opts: { integrations?: Integration[]; endpoints?: Endpoint[]; put?: () => Response | Promise<Response> } = {}) {
   const calls: Call[] = []
   const record = async (request: Request): Promise<Call> => {
     const text = await request.text()
-    const call = { method: request.method, path: new URL(request.url).pathname, body: text ? JSON.parse(text) : undefined, csrf: request.headers.get('x-csrf-token') }
+    const call = { method: request.method, path: new URL(request.url).pathname, body: text ? JSON.parse(text) : undefined, csrf: request.headers.get('x-csrf-token'), ifNoneMatch: request.headers.get('if-none-match') }
     calls.push(call)
     return call
   }
@@ -84,9 +84,10 @@ describe('catalog index', () => {
     await ue.type(within(dialog).getByLabelText('URL prefix'), '/bill')
     await ue.click(within(dialog).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(calls).toHaveLength(1))
-    expect(calls[0]).toMatchObject({ method: 'PUT', path: '/api/integrations/billing', csrf: 'csrf-1' })
+    expect(calls[0]).toMatchObject({ method: 'PUT', path: '/api/integrations/billing', csrf: 'csrf-1', ifNoneMatch: '*' })
     expect(calls[0]!.body).toEqual({ name: 'Billing', prefix: '/bill' })
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await screen.findByText('Integration saved')
   })
 
   it('puts a 400 message on the field it names and keeps the dialog open', async () => {
@@ -118,6 +119,28 @@ describe('catalog index', () => {
     await within(dialog).findByText('An integration with this key already exists')
     expect(within(dialog).getByLabelText('Key').getAttribute('aria-invalid')).toBe('true')
     expect(calls).toHaveLength(0)
+  })
+
+  it('puts a 409 from the create-only PUT on the key field even while the list is still loading', async () => {
+    const calls = mockApi({ put: () => HttpResponse.json({ error: 'An integration with this key already exists' }, { status: 409 }) })
+    let release = () => {}
+    const pending = new Promise<void>((resolve) => (release = resolve))
+    server.use(http.get(`${BASE}/api/integrations`, async () => (await pending, HttpResponse.json([integration]))))
+    await renderApp(<CatalogPage />)
+    const ue = userEvent.setup()
+    await ue.click(await screen.findByRole('button', { name: 'Add integration' }))
+    const dialog = await screen.findByRole('dialog')
+    await ue.type(within(dialog).getByLabelText('Key'), 'nic')
+    await ue.type(within(dialog).getByLabelText('Name'), 'Other')
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }))
+    const key = within(dialog).getByLabelText('Key')
+    await waitFor(() => expect(key.getAttribute('aria-invalid')).toBe('true'))
+    expect(within(dialog).getByText('An integration with this key already exists')).toBeTruthy()
+    expect(key.getAttribute('aria-describedby')).toContain('key-error')
+    expect(calls).toEqual([expect.objectContaining({ method: 'PUT', path: '/api/integrations/nic', ifNoneMatch: '*' })])
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    release()
+    await screen.findByRole('link', { name: /NIC/, hidden: true })
   })
 
   it('shows an empty state with an add button', async () => {
@@ -165,7 +188,8 @@ describe('integration page', () => {
     expect(within(sheet).getByText('404')).toBeTruthy()
     await ue.click(within(sheet).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(calls).toHaveLength(1))
-    expect(calls[0]).toMatchObject({ method: 'PUT', path: '/api/integrations/nic/endpoints/get-citizen' })
+    expect(calls[0]).toMatchObject({ method: 'PUT', path: '/api/integrations/nic/endpoints/get-citizen', ifNoneMatch: '*' })
+    await screen.findByText('Endpoint saved')
     expect(calls[0]!.body).toEqual({
       name: 'Fetch citizen',
       method: 'GET',
@@ -206,6 +230,7 @@ describe('integration page', () => {
     await waitFor(() => expect(calls).toHaveLength(1))
     const body = calls[0]!.body as Record<string, unknown>
     expect(body.name).toBe('Fetch citizen v2')
+    expect(calls[0]!.ifNoneMatch).toBeNull()
     expect(body.exampleResponses).toEqual({ '200': '{"name":"Sara"}' })
     for (const field of ['updatedAt', 'updatedBy', 'integration', 'key']) expect(body).not.toHaveProperty(field)
   })
@@ -256,6 +281,22 @@ describe('integration page', () => {
     expect(calls).toHaveLength(0)
   })
 
+  it('puts a 409 from the create-only PUT on the key field when the cached list is stale', async () => {
+    const calls = mockApi({ endpoints: [], put: () => HttpResponse.json({ error: 'An endpoint with this key already exists' }, { status: 409 }) })
+    await renderApp(<IntegrationPage integrationKey="nic" />)
+    const ue = userEvent.setup()
+    await screen.findByText('No endpoints yet')
+    await ue.click(screen.getByRole('button', { name: 'Add endpoint' }))
+    const sheet = await screen.findByRole('dialog')
+    await ue.type(within(sheet).getByLabelText('Key'), 'get-citizen')
+    await ue.type(within(sheet).getByLabelText('Name'), 'Dup')
+    await ue.click(within(sheet).getByRole('button', { name: 'Save' }))
+    const key = within(sheet).getByLabelText('Key')
+    await waitFor(() => expect(key.getAttribute('aria-invalid')).toBe('true'))
+    expect(within(sheet).getByText('An endpoint with this key already exists')).toBeTruthy()
+    expect(calls).toEqual([expect.objectContaining({ method: 'PUT', ifNoneMatch: '*' })])
+  })
+
   it('shows the server message when deleting an integration that still has mocks', async () => {
     server.use(http.delete(`${BASE}/api/integrations/nic`, () => HttpResponse.json({ error: 'Integration still has mocks' }, { status: 409 })))
     mockApi()
@@ -282,7 +323,7 @@ describe('integration page', () => {
     await ue.type(within(dialog).getByLabelText('Name'), ' v2')
     await ue.click(within(dialog).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(calls).toHaveLength(1))
-    expect(calls[0]).toMatchObject({ method: 'PUT', path: '/api/integrations/nic' })
+    expect(calls[0]).toMatchObject({ method: 'PUT', path: '/api/integrations/nic', ifNoneMatch: null })
     expect(calls[0]!.body).toEqual({ name: 'NIC v2', prefix: '/nic', description: 'Civil registry' })
   })
 

@@ -53,7 +53,7 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
   const t = useT()
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
-  const upsert = useUpsertIntegration()
+  const upsert = useUpsertIntegration({ createOnly: !integration })
   const existing = useIntegrations()
   const [form, setForm] = useState({
     key: integration?.key ?? '',
@@ -73,7 +73,7 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
     event.preventDefault()
     setErrors({})
     setFormError(null)
-    // A PUT is an upsert: adding over an existing key would silently replace it.
+    // Fast path; the server refuses (409) an add over an existing key either way, even before the list loads.
     if (!integration && existing.data?.some((i) => i.key === form.key.trim())) {
       setErrors({ key: t('catalog.integration.keyTaken') })
       return
@@ -85,11 +85,15 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
         prefix: form.prefix.trim(),
         ...(form.description.trim() ? { description: form.description.trim() } : {}),
       })
-      toast.success(t('catalog.saved'))
+      toast.success(t('catalog.integration.saved'))
       onSaved?.(saved)
       onClose()
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : t('error.generic')
+      if (!integration && error instanceof ApiError && error.status === 409) {
+        setErrors({ key: t('catalog.integration.keyTaken') })
+        return
+      }
       const field = error instanceof ApiError && error.status === 400 ? fieldOf(message) : undefined
       if (field) setErrors({ [field]: message })
       else setFormError(message)
@@ -122,7 +126,7 @@ function Body({ integration, onClose, onSaved }: { integration?: Integration; on
       {formError && (
         <Alert variant="destructive">
           <AlertCircleIcon />
-          <AlertTitle>{t('catalog.saveFailed')}</AlertTitle>
+          <AlertTitle>{t('catalog.integration.saveFailed')}</AlertTitle>
           <AlertDescription>{formError}</AlertDescription>
         </Alert>
       )}

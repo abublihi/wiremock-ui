@@ -22,11 +22,14 @@ export function DeleteConfirm({
   trigger,
   title,
   body,
+  failedTitle,
   onConfirm,
 }: {
   trigger: ReactNode
   title: string
   body: string
+  /** Title of the refusal alert, naming what could not be deleted. */
+  failedTitle: string
   onConfirm: () => Promise<void>
 }) {
   const t = useT()
@@ -65,7 +68,7 @@ export function DeleteConfirm({
         {error && (
           <Alert variant="destructive" role="alert">
             <AlertCircleIcon />
-            <AlertTitle>{t('catalog.deleteFailed')}</AlertTitle>
+            <AlertTitle>{failedTitle}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}

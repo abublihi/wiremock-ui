@@ -345,10 +345,14 @@ export type EndpointInput = Omit<Endpoint, 'updatedAt' | 'updatedBy'>
 
 const integrationPath = (key: string) => `/api/integrations/${encodeURIComponent(key)}`
 
-export function useUpsertIntegration() {
+/** `If-None-Match: *` makes the server refuse (409) instead of overwriting an existing key. */
+const createOnlyHeaders = (createOnly?: boolean) => (createOnly ? { 'If-None-Match': '*' } : undefined)
+
+export function useUpsertIntegration({ createOnly }: { createOnly?: boolean } = {}) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ key, ...body }: IntegrationInput) => apiFetch<Integration>(integrationPath(key), { method: 'PUT', body }),
+    mutationFn: ({ key, ...body }: IntegrationInput) =>
+      apiFetch<Integration>(integrationPath(key), { method: 'PUT', body, headers: createOnlyHeaders(createOnly) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
   })
 }
@@ -366,11 +370,15 @@ export function forgetIntegration(queryClient: QueryClient, key: string) {
   return queryClient.invalidateQueries({ queryKey: queryKeys.integrations })
 }
 
-export function useUpsertEndpoint() {
+export function useUpsertEndpoint({ createOnly }: { createOnly?: boolean } = {}) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ integration, key, ...body }: EndpointInput) =>
-      apiFetch<Endpoint>(`${integrationPath(integration)}/endpoints/${encodeURIComponent(key)}`, { method: 'PUT', body }),
+      apiFetch<Endpoint>(`${integrationPath(integration)}/endpoints/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        body,
+        headers: createOnlyHeaders(createOnly),
+      }),
     onSuccess: (_endpoint, input) => queryClient.invalidateQueries({ queryKey: queryKeys.endpoints(input.integration) }),
   })
 }

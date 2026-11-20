@@ -103,9 +103,10 @@ export function IntegrationPage({ integrationKey }: { integrationKey: string }) 
             }
             title={t('catalog.integration.deleteTitle', { name: integration.name })}
             body={t('catalog.integration.deleteBody')}
+            failedTitle={t('catalog.integration.deleteFailed')}
             onConfirm={async () => {
               await removeIntegration.mutateAsync(integration.key)
-              toast.success(t('catalog.deleted', { name: integration.name }))
+              toast.success(t('catalog.integration.deleted', { name: integration.name }))
               await navigate({ to: '/catalog' })
               await forgetIntegration(queryClient, integration.key)
             }}

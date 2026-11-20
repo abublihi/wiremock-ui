@@ -41,6 +41,8 @@ export type ApiOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   query?: Record<string, string | number | boolean | undefined | null>
+  /** Extra request headers, merged over Accept (Content-Type and CSRF are always set by the client). */
+  headers?: Record<string, string>
   /** Set false for calls where a 401 is an expected answer (sign-in, the session probe). */
   redirectOnUnauthorized?: boolean
 }
@@ -58,7 +60,7 @@ function buildUrl(path: string, query: ApiOptions['query']): string {
 
 export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const method = options.method ?? 'GET'
-  const headers: Record<string, string> = { Accept: 'application/json' }
+  const headers: Record<string, string> = { Accept: 'application/json', ...options.headers }
   if (!SAFE_METHODS.has(method)) {
     headers['Content-Type'] = 'application/json'
     const token = queryClient?.getQueryData<SessionData>(SESSION_KEY)?.csrfToken
