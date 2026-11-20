@@ -42,7 +42,7 @@ test('every /api route method answers 401 JSON { error } without credentials, ex
   const routes = await apiRoutes()
   expect(routes.length).toBeGreaterThan(30)
   for (const { path, method, handler } of routes) {
-    if (PUBLIC.has(`${method} ${path}`)) continue
+    if (PUBLIC.has(`${method} ${path}`) || method === 'ANY') continue
     const url = `http://ui.test${path.replace(/\$(\w+)/g, 'x-$1')}`
     const body = ['GET', 'HEAD', 'DELETE'].includes(method) ? undefined : '{}'
     const res = await handler({
@@ -53,4 +53,18 @@ test('every /api route method answers 401 JSON { error } without credentials, ex
     expect(res.headers.get('content-type'), `${method} ${path}`).toContain('application/json')
     expect(await res.json(), `${method} ${path}`).toEqual({ error: 'Authentication required' })
   }
+})
+
+test('a method a route has no handler for, and an /api URL no route matches, answer JSON (never the page router)', async () => {
+  const routes = await apiRoutes()
+  const withoutAny = routes.filter((r) => !routes.some((o) => o.path === r.path && o.method === 'ANY'))
+  expect(withoutAny.map((r) => `${r.method} ${r.path}`)).toEqual([])
+  const any = routes.find((r) => r.path === '/api/integrations' && r.method === 'ANY')!
+  const res = await any.handler({ request: new Request('http://ui.test/api/integrations/', { method: 'PUT' }), params: {} })
+  expect(res.status).toBe(405)
+  expect(await res.json()).toEqual({ error: 'PUT /api/integrations/ is not supported. Part of the URL is empty: an ID may be missing.' })
+  const splat = routes.find((r) => r.path === '/api/$')!
+  const missing = await splat.handler({ request: new Request('http://ui.test/api/nope'), params: {} })
+  expect(missing.status).toBe(404)
+  expect(await missing.json()).toEqual({ error: 'No API route at /api/nope.' })
 })

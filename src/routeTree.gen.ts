@@ -19,6 +19,7 @@ import { Route as AppImportRouteImport } from './routes/_app/import'
 import { Route as AppRecordingRouteImport } from './routes/_app/recording'
 import { Route as AppRequestsRouteImport } from './routes/_app/requests'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
+import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as ApiAuditRouteImport } from './routes/api/audit'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
 import { Route as ApiExportRouteImport } from './routes/api/export'
@@ -118,6 +119,11 @@ const AppUsersRoute = AppUsersRouteImport.update({
   id: '/users',
   path: '/users',
   getParentRoute: () => AppRoute,
+} as any)
+const ApiSplatRoute = ApiSplatRouteImport.update({
+  id: '/api/$',
+  path: '/api/$',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuditRoute = ApiAuditRouteImport.update({
   id: '/api/audit',
@@ -387,6 +393,7 @@ export interface FileRoutesByFullPath {
   '/recording': typeof AppRecordingRoute
   '/requests': typeof AppRequestsRoute
   '/users': typeof AppUsersRoute
+  '/api/$': typeof ApiSplatRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/config': typeof ApiConfigRoute
   '/api/export': typeof ApiExportRoute
@@ -447,6 +454,7 @@ export interface FileRoutesByTo {
   '/recording': typeof AppRecordingRoute
   '/requests': typeof AppRequestsRoute
   '/users': typeof AppUsersRoute
+  '/api/$': typeof ApiSplatRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/config': typeof ApiConfigRoute
   '/api/export': typeof ApiExportRoute
@@ -510,6 +518,7 @@ export interface FileRoutesById {
   '/_app/recording': typeof AppRecordingRoute
   '/_app/requests': typeof AppRequestsRoute
   '/_app/users': typeof AppUsersRoute
+  '/api/$': typeof ApiSplatRoute
   '/api/audit': typeof ApiAuditRoute
   '/api/config': typeof ApiConfigRoute
   '/api/export': typeof ApiExportRoute
@@ -574,6 +583,7 @@ export interface FileRouteTypes {
     | '/recording'
     | '/requests'
     | '/users'
+    | '/api/$'
     | '/api/audit'
     | '/api/config'
     | '/api/export'
@@ -634,6 +644,7 @@ export interface FileRouteTypes {
     | '/recording'
     | '/requests'
     | '/users'
+    | '/api/$'
     | '/api/audit'
     | '/api/config'
     | '/api/export'
@@ -696,6 +707,7 @@ export interface FileRouteTypes {
     | '/_app/recording'
     | '/_app/requests'
     | '/_app/users'
+    | '/api/$'
     | '/api/audit'
     | '/api/config'
     | '/api/export'
@@ -753,6 +765,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   HealthzRoute: typeof HealthzRoute
   LoginRoute: typeof LoginRoute
+  ApiSplatRoute: typeof ApiSplatRoute
   ApiAuditRoute: typeof ApiAuditRoute
   ApiConfigRoute: typeof ApiConfigRoute
   ApiExportRoute: typeof ApiExportRoute
@@ -840,6 +853,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/users'
       preLoaderRoute: typeof AppUsersRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/api/$': {
+      id: '/api/$'
+      path: '/api/$'
+      fullPath: '/api/$'
+      preLoaderRoute: typeof ApiSplatRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/audit': {
       id: '/api/audit'
@@ -1430,6 +1450,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   HealthzRoute: HealthzRoute,
   LoginRoute: LoginRoute,
+  ApiSplatRoute: ApiSplatRoute,
   ApiAuditRoute: ApiAuditRoute,
   ApiConfigRoute: ApiConfigRoute,
   ApiExportRoute: ApiExportRoute,
