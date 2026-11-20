@@ -1,6 +1,12 @@
 import { ValidationError } from '../../errors'
 import { acceptSchema, discardSchema, snapshotSchema, startSchema } from '../../recording/service'
-import { idOf, json, parse, readJson, requireJson, withAuth } from '../wrap'
+import { idOf, json, parse, readJsonCapped, requireJson, withAuth } from '../wrap'
+
+/** Start, snapshot and discard bodies are small (1000 request ids at most); accept carries up to 1000 rows. */
+const SMALL = 256 * 1024
+const ACCEPT = 1024 * 1024
+const TOO_LARGE = 'Request is too large for this route'
+const readJson = (request: Request, limit = SMALL) => readJsonCapped(request, limit, TOO_LARGE)
 
 // Spec A12. No roles (A8): every signed-in user may record; RECORDING_ALLOWED=false answers 403 everywhere here.
 
@@ -60,7 +66,7 @@ export const discardRecordingItems = withAuth(null, async ({ rt, request, params
 /** POST /api/recordings/:id/accept { items: [{ id, name?, integration?, endpoint?, newEndpoint? }], owner? } → { created, failed, recording }. */
 export const acceptRecording = withAuth(null, async ({ rt, request, params, principal }) => {
   requireJson(request)
-  const input = parse(acceptSchema, await readJson(request))
+  const input = parse(acceptSchema, await readJson(request, ACCEPT))
   if (new Set(input.items.map((i) => i.id)).size !== input.items.length) throw new ValidationError('items must not repeat an id')
   return json(await rt.recordings.accept(idOf(params), input, principal.user))
 })

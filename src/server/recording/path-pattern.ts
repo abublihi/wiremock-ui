@@ -64,10 +64,12 @@ export type RegexProblem = {
 export function regexProblem(pattern: string): RegexProblem | null {
   const p = pattern.trim()
   if (p === '') return null
-  const query = /\?[^=]*=/.test(p)
+  // A `?` with an `=` somewhere after it (indexOf, not a regex: linear on any input).
+  const q = p.indexOf('?')
+  const query = q !== -1 && p.indexOf('=', q) !== -1
   const start = /^[A-Za-z0-9_~%-]/.test(p)
   if (!query && !start) return null
-  let path = query ? p.slice(0, p.indexOf('?')) : p
+  let path = query ? p.slice(0, q) : p
   path = path.replace(/^\^/, '')
   if (!path.startsWith('/') && !path.startsWith('.')) path = `/${path}`
   const suggestion = /\.\*\$?$/.test(path) ? path : `${path.replace(/\$$/, '')}.*`

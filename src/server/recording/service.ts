@@ -50,7 +50,7 @@ const filterFields = {
    * `?query` is left out) or a regular expression over the whole path. `urlPathMode` says which; `auto` (the
    * default) reads it as a regex when it uses regex-only syntax (`.*`, `^`, `(`…), else as a wildcard.
    */
-  urlPathPattern: z.string({ error: 'urlPathPattern must be a string' }).optional(),
+  urlPathPattern: z.string({ error: 'urlPathPattern must be a string' }).max(1024, 'urlPathPattern must be at most 1024 characters').optional(),
   urlPathMode: z.enum(PATH_MODES, { error: `urlPathMode must be one of ${PATH_MODES.join(', ')}` }).optional(),
   /** Request headers to match on (exactly as sent), besides method, URL and body. */
   captureHeaders: z
@@ -64,7 +64,7 @@ const filterFields = {
 }
 
 export const startSchema = z.strictObject(
-  { targetUrl: z.string({ error: 'targetUrl must be a string' }), ...filterFields },
+  { targetUrl: z.string({ error: 'targetUrl must be a string' }).max(2048, 'targetUrl must be at most 2048 characters'), ...filterFields },
   { error: (iss) => (iss.code === 'unrecognized_keys' ? `unknown field: ${iss.keys.join(', ')}` : 'body must be an object') },
 )
 export const snapshotSchema = z.strictObject(

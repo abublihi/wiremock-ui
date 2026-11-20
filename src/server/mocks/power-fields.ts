@@ -1,4 +1,5 @@
 import { ValidationError } from '../errors'
+import { isHttpUrl } from '../url'
 
 /**
  * Field rules for proxying (response.proxyBaseUrl …), webhooks (serveEventListeners) and scenarios, in WireMock
@@ -18,12 +19,7 @@ export function assertHttpUrl(value: unknown, field: string, opts: { templated?:
   if (typeof value !== 'string' || !/^https?:\/\/\S/i.test(value)) throw new ValidationError(message)
   // A webhook URL may be a template ("http://{{request.headers.X-Host}}/cb"): only its scheme can be checked.
   if (opts.templated && value.includes('{{')) return
-  try {
-    const url = new URL(value)
-    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.host === '') throw new ValidationError(message)
-  } catch {
-    throw new ValidationError(message)
-  }
+  if (!isHttpUrl(value)) throw new ValidationError(message)
 }
 
 function stringMap(value: unknown, field: string): void {

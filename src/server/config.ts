@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ConfigError } from './errors'
+import { isHttpUrl, trimTrailingSlashes } from './url'
 
 export type Config = {
   wiremockUrl: string
@@ -66,15 +67,6 @@ const schema = z.object({
 /** Every environment variable loadConfig reads (the README's configuration table is checked against it). */
 export const CONFIG_ENV_VARS: readonly string[] = Object.keys(schema.shape)
 
-function isHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value)
-    return (url.protocol === 'http:' || url.protocol === 'https:') && url.host !== ''
-  } catch {
-    return false
-  }
-}
-
 export function loadConfig(env: Record<string, string | undefined>): Config {
   // Treat empty strings as unset so `FOO=` in an env file behaves like absent.
   const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ''))
@@ -105,7 +97,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
 
   return {
     wiremockUrl: data.WIREMOCK_URL,
-    wiremockPublicUrl: (data.WIREMOCK_PUBLIC_URL ?? data.WIREMOCK_URL).replace(/\/+$/, ''),
+    wiremockPublicUrl: trimTrailingSlashes(data.WIREMOCK_PUBLIC_URL ?? data.WIREMOCK_URL),
     wiremockAdminUser: data.WIREMOCK_ADMIN_USER,
     wiremockAdminPassword: data.WIREMOCK_ADMIN_PASSWORD,
     storeDriver: driver as Config['storeDriver'],

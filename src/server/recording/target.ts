@@ -1,4 +1,5 @@
 import { ValidationError } from '../errors'
+import { trimTrailingSlashes } from '../url'
 
 const DEFAULT_PORT: Record<string, string> = { 'http:': '80', 'https:': '443' }
 
@@ -62,5 +63,5 @@ export function validateTarget(raw: string, refused: { wiremock: string[]; app: 
     list.some((u) => portOf(u) === port && (loopback || (hostOf(u) === hostOf(url)) || (isLoopbackHost(u) && loopback)))
   if (hits(urls(refused.wiremock))) throw new ValidationError(LOOP)
   if (hits(urls(refused.app))) throw new ValidationError(APP)
-  return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`
+  return `${url.protocol}//${url.host}${trimTrailingSlashes(url.pathname)}`
 }

@@ -64,6 +64,39 @@ export async function readJson(request: Request): Promise<unknown> {
   }
 }
 
+/**
+ * Reads the request body as JSON, stopping at `limit` bytes whether or not a Content-Length was sent (chunked).
+ * Over the limit → 413 with `tooLarge`; a body that breaks off (client gone, bad chunking) → 400.
+ */
+export async function readJsonCapped(request: Request, limit: number, tooLarge: string): Promise<unknown> {
+  if (Number(request.headers.get('content-length') ?? 0) > limit) throw new AppError(tooLarge, 413)
+  const chunks: Uint8Array[] = []
+  let size = 0
+  if (request.body) {
+    const reader = request.body.getReader()
+    for (;;) {
+      let chunk: ReadableStreamReadResult<Uint8Array>
+      try {
+        chunk = await reader.read()
+      } catch {
+        throw new ValidationError('The request body could not be read (the connection broke off). Send it again.')
+      }
+      if (chunk.done) break
+      size += chunk.value.byteLength
+      if (size > limit) {
+        await reader.cancel().catch(() => {})
+        throw new AppError(tooLarge, 413)
+      }
+      chunks.push(chunk.value)
+    }
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks)))
+  } catch {
+    throw new ValidationError('Request body must be valid JSON')
+  }
+}
+
 export const idOf = (params?: Params) => {
   if (!params?.id) throw new ValidationError('id is required')
   return params.id

@@ -125,7 +125,7 @@ test('refuses an oversized chunked request (no Content-Length) with 413 before p
   const stream = new ReadableStream<Uint8Array>({
     pull(controller) {
       if (sent === 0) controller.enqueue(new TextEncoder().encode('{"method":"POST","path":"/x","body":"'))
-      if (sent > 3 * 1024 * 1024) return controller.close()
+      if (sent > 8 * 1024 * 1024) return controller.close()
       controller.enqueue(chunk)
       sent += chunk.byteLength
     },
@@ -136,7 +136,7 @@ test('refuses an oversized chunked request (no Content-Length) with 413 before p
   expect(request.headers.get('content-length')).toBeNull()
   const res = await sendTestRequest(rt, request)
   expect(res.status).toBe(413)
-  expect(sent).toBeLessThan(3 * 1024 * 1024)
+  expect(sent).toBeLessThan(8 * 1024 * 1024)
   expect(await journal()).toEqual([])
 })
 
@@ -180,4 +180,11 @@ test('a webhook mock created through the API really calls its target; a proxy mo
   expect(proxied).toMatchObject({ status: 200, body: 'upstream says hi' })
   const upstream = (await journal()).find((e) => e.request.url === '/relay/upstream/item')
   expect(upstream?.request.headers['X-Secret']).toBeUndefined()
+})
+
+test('a body under 1 MB that JSON escaping makes several times longer is still relayed (no misleading 413)', async () => {
+  const body = '\u0001'.repeat(900 * 1024)
+  expect(JSON.stringify(body).length).toBeGreaterThan(5 * 1024 * 1024)
+  const res = await sendTestRequest(rt, req({ method: 'POST', path: '/escaped', body }))
+  expect(res.status).toBe(200)
 })
