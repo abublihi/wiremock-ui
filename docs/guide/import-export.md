@@ -37,6 +37,8 @@ A file can be a bundle (`{ "integrations", "catalog", "mocks" }`), a WireMock ex
 
 **Export.** **Export** on the Mocks list downloads what the list shows (an integration, your mocks, or everything); the Import & export page exports everything. Formats: **Bundle (.json)**, ready to import here again, or **WireMock mappings (.zip)**.
 
+Before importing an export with **Remove baseline mocks that aren't in this import** ticked, check what it holds: an export of one integration or of your mocks only lists those, so every other baseline mock would be removed. Prune only with a full export (the Import & export page, or **Everything** on the Mocks list).
+
 ## Tips and limits
 
 - Imported mocks are **baseline** (owned by nobody) unless the file names an owner. Mocks owned by a person are never changed by an import.
