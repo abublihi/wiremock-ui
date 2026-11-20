@@ -72,7 +72,7 @@ test('endpoint CRUD over HTTP, body key mismatch → 400, validation → 400, un
 
   const bad = await putEndpoint(rt, req(path, 'PUT', endpointBody({ path: 'users' }), as(developer)), params)
   expect(bad.status).toBe(400)
-  expect(await bad.json()).toEqual({ error: 'path must start with /' })
+  expect(await bad.json()).toEqual({ error: 'path must start with /', field: 'path' })
 
   const created = await putEndpoint(rt, req(path, 'PUT', endpointBody(), as(developer)), params)
   expect(created.status).toBe(200)

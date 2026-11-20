@@ -83,7 +83,7 @@ test('PATCH rejects unknown fields and empty patches', async () => {
   expect((await unknown.json()).error).toContain('username')
   const empty = await updateUser(rt, req(`/api/users/${u.id}`, 'PATCH', {}, as(admin)), { id: u.id })
   expect(empty.status).toBe(400)
-  expect(await empty.json()).toEqual({ error: 'patch must change at least one field' })
+  expect(await empty.json()).toEqual({ error: 'patch must change at least one field', field: 'patch' })
 })
 
 test("admin resetting their own password keeps the current session and drops the others; another user's reset drops all", async () => {

@@ -84,14 +84,14 @@ test('bad limit or offset is a 400 naming the rule', async () => {
   for (const q of ['limit=0', 'limit=201', 'limit=abc', 'limit=1.5', 'limit=']) {
     const res = await get(`/api/mocks?${q}`)
     expect(res.status, q).toBe(400)
-    expect(res.body).toEqual({ error: 'limit must be an integer between 1 and 200' })
+    expect(res.body).toEqual({ error: 'limit must be an integer between 1 and 200', field: 'limit' })
   }
   for (const q of ['limit=5&offset=-1', 'limit=5&offset=x']) {
     const res = await get(`/api/mocks?${q}`)
     expect(res.status, q).toBe(400)
-    expect(res.body).toEqual({ error: 'offset must be a non-negative integer' })
+    expect(res.body).toEqual({ error: 'offset must be a non-negative integer', field: 'offset' })
   }
   const alone = await get('/api/mocks?offset=10')
   expect(alone.status).toBe(400)
-  expect(alone.body).toEqual({ error: 'offset needs limit' })
+  expect(alone.body).toEqual({ error: 'offset needs limit', field: 'offset' })
 })

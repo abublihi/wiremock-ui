@@ -70,7 +70,7 @@ test('a regex URL with a text body match is served too', async () => {
 test('bad input is a 400 naming the field', async () => {
   const res = await preview({ request: { method: 'GET', urlType: 'path', url: 'no-slash' }, status: 200 })
   expect(res.status).toBe(400)
-  expect(await res.json()).toEqual({ error: 'request.url must start with /' })
+  expect(await res.json()).toEqual({ error: 'request.url must start with /', field: 'request.url' })
   const unknown = await preview({ request: { method: 'GET', urlType: 'path', url: '/x' }, status: 200, keyValue: 'k' })
   expect(unknown.status).toBe(400)
   expect((await unknown.json()).error).toBe('unknown field: keyValue')

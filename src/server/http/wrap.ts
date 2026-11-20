@@ -17,6 +17,7 @@ export function withErrors(handler: Handler): Handler {
     try {
       return await handler(rt, request, params)
     } catch (err) {
+      if (err instanceof ValidationError && err.field) return json({ error: err.message, field: err.field }, err.status)
       if (err instanceof AppError) return json({ error: err.message }, err.status)
       logger.error({ err, url: request.url }, 'unhandled error')
       return json({ error: 'Internal error' }, 500)
@@ -41,7 +42,7 @@ export function parse<T>(schema: z.ZodType<T>, data: unknown, prefix = ''): T {
   const path = [...issue.path].map(String)
   // Zod reports a missing field with a generic message; name the field explicitly.
   const named = issue.message.includes(path[path.length - 1] ?? '\0') || path.length === 0 ? issue.message : `${path.join('.')}: ${issue.message}`
-  throw new ValidationError(`${prefix}${named}`)
+  throw new ValidationError(`${prefix}${named}`, path.length > 0 ? path.join('.') : undefined)
 }
 
 class UnsupportedMediaTypeError extends AppError {

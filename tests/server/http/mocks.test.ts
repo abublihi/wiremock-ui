@@ -136,7 +136,7 @@ test('WireMock rejects stub → 400 carrying WireMock reason', async () => {
   expect(error).toContain('bogusField')
   const file = await createMock(rt, req('/api/mocks', 'POST', input('/h/file', { response: { status: 200, bodyFileName: 'x.json' } })))
   expect(file.status).toBe(400)
-  expect(await file.json()).toEqual({ error: 'bodyFileName is not supported; put the body inline' })
+  expect(await file.json()).toEqual({ error: 'bodyFileName is not supported; put the body inline', field: 'bodyFileName' })
 })
 
 

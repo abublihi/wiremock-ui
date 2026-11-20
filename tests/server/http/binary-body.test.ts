@@ -58,7 +58,7 @@ test('Simple: base64Body with the file\'s Content-Type is served byte for byte',
 test('invalid base64 is 400 and nothing reaches WireMock; bodyFileName stays refused', async () => {
   const bad = await createMock(env.rt, req('/api/mocks', 'POST', { request: { method: 'GET', urlPath: '/raw/bad' }, response: { status: 200, base64Body: 'not base64!' } }, as()))
   expect(bad.status).toBe(400)
-  expect(await bad.json()).toEqual({ error: 'response.base64Body must be valid base64' })
+  expect(await bad.json()).toEqual({ error: 'response.base64Body must be valid base64', field: 'response.base64Body' })
   expect((await served('/raw/bad')).status).toBe(404)
   const file = await createMock(env.rt, req('/api/mocks', 'POST', { request: { method: 'GET', urlPath: '/raw/f' }, response: { status: 200, bodyFileName: 'a.png' } }, as()))
   expect(file.status).toBe(400)
