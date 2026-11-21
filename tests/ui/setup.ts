@@ -1,4 +1,5 @@
 import { cleanup } from '@testing-library/react'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, vi } from 'vitest'
 
 // happy-dom prints every non-2xx fetch ("POST http://… 401 (Unauthorized)") straight to the process
@@ -18,6 +19,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // Toasts live in a module-level store that outlives the unmounted Toaster: one test's toast must not show in the next.
+  toast.dismiss()
   cleanup()
   vi.restoreAllMocks()
 })
