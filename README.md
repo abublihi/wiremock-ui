@@ -12,6 +12,16 @@ A web console for [WireMock](https://wiremock.org), made for testers. Describe t
 
 You need Docker. Redis is not needed.
 
+**One container** (the UI and WireMock together, from a released version):
+
+```sh
+docker run -d --name wiremock-ui -p 3000:3000 -p 8080:8080 -v wiremock-ui:/data \
+  -e ADMIN_USER=admin -e ADMIN_PASSWORD=choose-a-password \
+  ghcr.io/abublihi/wiremock-ui:latest-standalone
+```
+
+**Or with Docker Compose**, from this repository (WireMock and the UI as two containers):
+
 ```sh
 git clone https://github.com/abublihi/wiremock-ui.git && cd wiremock-ui
 cp .env.example .env    # set the passwords and SESSION_SECRET
@@ -27,7 +37,9 @@ curl http://localhost:8080/blog/posts/42     # {"id":42,"userId":7,"title":"Hell
 curl http://localhost:8080/orders/1001       # pending, then shipped, then delivered
 ```
 
-Other ways to run it (with Redis, from source, Kubernetes, or against a WireMock you already have, storing nothing) are in [Installing](docs/INSTALL.md).
+With the one-container image, the seed is the same: add `-e SEED_PATH=/app/examples/seed.json` to `docker run`.
+
+Other ways to run it (the one-container image's settings, with Redis, from source, Kubernetes, or against a WireMock you already have, storing nothing) are in [Installing](docs/INSTALL.md).
 
 ## Features
 
@@ -217,7 +229,9 @@ A test (`tests/server/config-docs.test.ts`) checks this table against the variab
 
 | | |
 | --- | --- |
-| **Image** | `ghcr.io/abublihi/wiremock-ui`, published by CI for version tags: `1.2.3`, `1.2` and `sha-…`. Node 22 Alpine, runs as `node`, listens on 3000, `VOLUME /data`, `SQLITE_PATH=/data/wiremock-ui.db`. Or build it: `docker build -t wiremock-ui .` |
+| **Images** | `ghcr.io/abublihi/wiremock-ui`, published by CI for version tags, for `linux/amd64` and `linux/arm64`. Two variants from one `Dockerfile`: |
+| **UI only** | Tags `1.2.3`, `1.2`, `latest`, `sha-…`. Node 22 Alpine, runs as `node`, listens on `PORT` (3000), `VOLUME /data`, `SQLITE_PATH=/data/wiremock-ui.db`; point it at your WireMock with `WIREMOCK_URL`. Build: `docker build -t wiremock-ui .` |
+| **Standalone** (UI and WireMock) | Tags `1.2.3-standalone`, `1.2-standalone`, `latest-standalone`, `sha-…-standalone`. WireMock's image plus Node 22; runs as `wmui` (uid 10001); UI on `PORT` (3000), WireMock on `WIREMOCK_PORT` (8080); everything in `VOLUME /data` (SQLite, WireMock's files in `/data/wiremock`, the session secret). Settings: [Installing → One container](docs/INSTALL.md#1-one-container-ui-and-wiremock-together). Build: `docker build --target standalone -t wiremock-ui:standalone .` |
 | **`compose.sqlite.yaml`** | WireMock + UI, data on the `ui-data` volume (`/data`). No Redis. |
 | **`compose.yaml`** | WireMock + Redis (append-only, `redis-data` volume) + UI, which gets `REDIS_URL=redis://redis:6379`. |
 | **WireMock** | `wiremock/wiremock:3.13.1` with `--admin-api-basic-auth $WIREMOCK_ADMIN_USER:$WIREMOCK_ADMIN_PASSWORD` and `--max-request-journal-entries 5000`. |

@@ -6,13 +6,44 @@ wiremock-ui runs next to a WireMock 3 server. The UI keeps every mock in its own
 
 ## Requirements
 
-- **Docker** with Docker Compose v2 (`docker compose`). That is all you need for the two Compose setups below.
+- **Docker.** The one-container image needs nothing else; the two Compose setups need Docker Compose v2 (`docker compose`).
 - **To run from source:** Node.js 22.12 or later, plus Docker (or any other way) to run WireMock 3.13.
 - **Redis is optional.** Without `REDIS_URL` the UI stores everything in one SQLite file. Use Redis only if you want to run several UI instances against the same data.
 
 ## Ways to run it
 
-### 1. Docker Compose without Redis (recommended quick start)
+### 1. One container (UI and WireMock together)
+
+The quickest start: the `-standalone` image runs WireMock and the UI in one container, with everything (SQLite data, WireMock's own files, the session secret) in `/data`. Published for `linux/amd64` and `linux/arm64` with every release.
+
+```sh
+docker run -d --name wiremock-ui -p 3000:3000 -p 8080:8080 -v wiremock-ui:/data \
+  -e ADMIN_USER=admin -e ADMIN_PASSWORD=choose-a-password \
+  ghcr.io/abublihi/wiremock-ui:latest-standalone
+```
+
+Open http://localhost:3000 and sign in; WireMock answers your application on http://localhost:8080. Pin a version (`1.2.3-standalone`) for anything you keep. To build it yourself: `docker build --target standalone -t wiremock-ui:standalone .`
+
+Only `ADMIN_USER` and `ADMIN_PASSWORD` are required. Every other setting in the [Configuration reference](../README.md#environment-variables) works too, except `WIREMOCK_URL` (the UI always uses the WireMock inside the container). Settings for this image only:
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `PORT` | `3000` | Port the UI listens on inside the container. |
+| `WIREMOCK_PORT` | `8080` | Port WireMock listens on inside the container (stubs and `/__admin`). |
+| `WIREMOCK_PUBLIC_URL` | `http://localhost:<WIREMOCK_PORT>` | Where your applications and testers reach WireMock; used in the curl commands the UI shows. Set it when the host port or host name differs, for example `http://localhost:9090` with `-p 9090:8080`. |
+| `WIREMOCK_ADMIN_USER`, `WIREMOCK_ADMIN_PASSWORD` | `wiremock-ui` and a random password made at every start | Basic auth on WireMock's admin API. Only the UI needs it; set both to call `/__admin` from your own scripts. |
+| `SESSION_SECRET` | made once, kept in `/data/.session-secret` | Signs sign-in cookies. Set it only to share it between containers. |
+| `WIREMOCK_OPTIONS` | none | Extra WireMock options, for example `--global-response-templating` or `--verbose`. |
+| `WIREMOCK_JOURNAL_ENTRIES` | `5000` | How many requests WireMock keeps for the request log. |
+| `JAVA_OPTS` | none | Options for WireMock's Java, for example `-Xmx512m`. |
+
+**Ports.** To use other host ports, change only the left side of `-p` (`-p 9000:3000 -p 9090:8080`) and set `WIREMOCK_PUBLIC_URL=http://localhost:9090`. `PORT` and `WIREMOCK_PORT` change the ports inside the container, which matters with `--network host` or on platforms that pick the port.
+
+**Stopping.** `docker stop wiremock-ui` stops both processes cleanly. If either WireMock or the UI stops on its own, the container stops too, so a restart policy (`--restart unless-stopped`) brings both back.
+
+**Redis** still works: add `-e REDIS_URL=redis://…` to use it instead of SQLite.
+
+### 2. Docker Compose without Redis
 
 UI + WireMock; the UI keeps its data in a SQLite file on the `ui-data` volume.
 
@@ -35,7 +66,7 @@ curl http://localhost:3000/healthz
 
 Stop it with `docker compose -f compose.sqlite.yaml down` (add `-v` to also delete the data volume).
 
-### 2. Docker Compose with Redis
+### 3. Docker Compose with Redis
 
 The same, plus a Redis container with append-only persistence (`redis-data` volume):
 
@@ -46,7 +77,7 @@ docker compose up -d --build
 
 Compose sets `WIREMOCK_URL` and `REDIS_URL` for the UI; everything else comes from `.env`.
 
-### 3. From source
+### 4. From source
 
 Start WireMock with admin authentication (the UI refuses to start against an open admin API):
 
