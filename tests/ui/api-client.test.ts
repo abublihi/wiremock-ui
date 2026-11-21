@@ -5,6 +5,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { ApiError, SESSION_KEY, apiFetch, registerQueryClient, setOnUnauthorized } from '@/ui/api/client'
 import { testSession } from './helpers'
 
+// The real route tree pulls in the server routes (and node:sqlite), which this browser-like test environment
+// cannot bundle on every Node version; the router wiring under test only needs a root and the sign-in route.
+vi.mock('@/routeTree.gen', async () => {
+  const { createRootRoute, createRoute } = await import('@tanstack/react-router')
+  const rootRoute = createRootRoute()
+  const login = createRoute({ getParentRoute: () => rootRoute, path: '/login' })
+  return { routeTree: rootRoute.addChildren([login]) }
+})
+
 type Seen = { method: string; csrf: string | null; contentType: string | null; body: unknown }
 const seen: Seen[] = []
 const server = setupServer(
