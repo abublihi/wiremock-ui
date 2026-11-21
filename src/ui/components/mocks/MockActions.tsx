@@ -75,22 +75,21 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
 
   const onDelete = () => {
     const version = mockVersion(stub)
-    remove.mutate(
-      { id: stub.id, version },
-      {
-        onSuccess: () =>
-          toast(t('mocks.deleted'), wiremockOnly ? undefined : {
-            action: {
-              label: t('mocks.undo'),
-              onClick: () =>
-                restoreMock(queryClient, stub.id, version).then(
-                  () => toast.success(t('mocks.restored')),
-                  (error: unknown) => toast.error(errorMessage(error, t('error.generic'))),
-                ),
-            },
-          }),
-        onError: (error) => toast.error(errorMessage(error, t('error.generic'))),
-      },
+    // mutateAsync, not mutate() callbacks: the list reloads before they would run and this row (with this
+    // component) is gone by then, and TanStack Query skips mutate() callbacks of an unmounted component.
+    remove.mutateAsync({ id: stub.id, version }).then(
+      () =>
+        toast(t('mocks.deleted'), wiremockOnly ? undefined : {
+          action: {
+            label: t('mocks.undo'),
+            onClick: () =>
+              restoreMock(queryClient, stub.id, version).then(
+                () => toast.success(t('mocks.restored')),
+                (error: unknown) => toast.error(errorMessage(error, t('error.generic'))),
+              ),
+          },
+        }),
+      (error: unknown) => toast.error(errorMessage(error, t('error.generic'))),
     )
   }
 

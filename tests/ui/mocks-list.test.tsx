@@ -13,6 +13,7 @@ import { PrefsProvider } from '@/ui/i18n'
 import { MocksPage, MocksRoute, Route, type MocksSearch } from '@/routes/_app/mocks.index'
 import { pageMocks } from '@/server/mocks/paging'
 import type { StubMapping } from '@/server/wiremock/types'
+import { useMocks } from '@/ui/api/queries'
 import { renderApp } from './helpers'
 
 const server = setupServer()
@@ -297,6 +298,46 @@ describe('mock list', () => {
     expect(calls.url).toContain('version=7')
     await ue.click(screen.getByRole('button', { name: 'Undo' }))
     await waitFor(() => expect(calls.restore).toEqual({ version: 7 }))
+  })
+
+  it('says "Mock deleted" even when the row is gone before every reloaded mocks query has answered', async () => {
+    // The delete reloads every active mocks query and settles only when the slowest has answered. Here the
+    // list answers at once (without the row, so the row and its menu unmount) and another mocks query is slow:
+    // callbacks tied to the unmounted menu would never run.
+    const mocks = [stub('a'), stub('b')]
+    let deleted = false
+    server.use(
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/mocks`, async ({ request }) => {
+        const url = new URL(request.url)
+        if (!url.searchParams.has('scenario')) return listOrPage(url, mocks)
+        if (deleted) await new Promise((r) => setTimeout(r, 300))
+        return HttpResponse.json([])
+      }),
+      http.delete(`${BASE}/api/mocks/a`, () => {
+        mocks.splice(0, 1)
+        deleted = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    function OtherMocksQuery() {
+      useMocks({ scenario: 'checkout' })
+      return null
+    }
+    await renderApp(
+      <>
+        <Harness />
+        <OtherMocksQuery />
+      </>,
+    )
+    await screen.findByText('Mock a')
+    const ue = userEvent.setup()
+    await ue.click(screen.getByRole('button', { name: 'Actions for Mock a' }))
+    await ue.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+    await ue.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+    await screen.findByText('Mock deleted')
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy()
+    await waitFor(() => expect(screen.queryByText('Mock a')).toBeNull())
   })
 
   it('reset count request carries owner=me and a failure shows Retry', async () => {
