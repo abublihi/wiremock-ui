@@ -1,19 +1,45 @@
+# The image build needs only: package*.json, src/, vite.config.ts, tsconfig.json, server.mjs, examples/,
+# docker/ and docs/guide/. Everything else stays out of the build context.
+
+# Dependencies, build output, caches
 node_modules
 dist
 .output
 .tanstack
+*.tsbuildinfo
+
+# Version control, CI, editor and agent folders
 .git
+.gitignore
+.github
+.claude
 .superpowers
-# The in-app Guide is built from docs/guide/*.md (src/ui/lib/guide.ts); the rest of docs/ stays out of the image.
+
+# Docs: the in-app Guide is built from docs/guide/*.md (src/ui/lib/guide.ts); the rest of docs/ stays out.
 docs
 !docs/guide
 !docs/guide/**
+README.md
+LICENSE
+
+# Tests and test tooling
 tests
-.env
-.env.*
-!.env.example
-*.tsbuildinfo
-data
 e2e
 test-results
 playwright-report
+playwright.config.ts
+vitest.config.ts
+scripts
+
+# Docker and Compose files themselves
+Dockerfile
+.dockerignore
+compose*.yaml
+
+# shadcn CLI config (used only when adding components)
+components.json
+
+# Local data and secrets
+data
+.env
+.env.*
