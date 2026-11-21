@@ -1,8 +1,9 @@
 name: CI
 
 # Every push and pull request is type-checked, built and tested (unit, real-WireMock container tests on
-# Redis, SQLite and WireMock-only, and end-to-end in Chromium). The Docker image is built every time and
-# published to GitHub Container Registry only for version tags (v1.2.3) once every test job passed.
+# Redis, SQLite and WireMock-only, and end-to-end in Chromium). Both Docker images (UI only, and standalone with
+# WireMock inside) are built and smoke-tested every time, and published to GitHub Container Registry for
+# linux/amd64 and linux/arm64 only for version tags (v1.2.3) once every test job passed.
 
 on:
   push:
@@ -113,21 +114,35 @@ jobs:
       - run: scripts/e2e-none.sh
 
   docker:
-    name: Docker image
+    name: Docker images
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     needs: [check, test, e2e, e2e-none]
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v5
+      # arm64 images are built under emulation; the build stages run on the runner's own platform, so only the
+      # short final stages are emulated.
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      - name: Image tags
-        id: meta
+      - name: Image tags (UI only)
+        id: meta-ui
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      - name: Image tags (standalone, UI and WireMock)
+        id: meta-standalone
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: |
+            suffix=-standalone,onlatest=true
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -139,24 +154,49 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Build once into the local Docker engine; the smoke test runs that image, and version tags push the
-      # same build (every layer comes from the cache the first build just wrote).
-      - name: Build
+      # Every run builds both images for the runner (amd64) into the local engine and smoke-tests them; version tags
+      # then push amd64 + arm64 builds of the same Dockerfile (the amd64 layers come from the cache).
+      - name: Build (UI only)
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: ui
           load: true
           tags: wiremock-ui:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Smoke test the image against WireMock
+          cache-from: type=gha,scope=ui
+          cache-to: type=gha,mode=max,scope=ui
+      - name: Smoke test (UI only, against a WireMock container)
         run: scripts/docker-smoke.sh wiremock-ui:ci
-      - name: Push (version tags)
+      - name: Build (standalone)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: standalone
+          load: true
+          tags: wiremock-ui:ci-standalone
+          cache-from: type=gha,scope=standalone
+          cache-to: type=gha,mode=max,scope=standalone
+      - name: Smoke test (standalone)
+        run: scripts/docker-smoke-standalone.sh wiremock-ui:ci-standalone
+      - name: Push UI only (version tags)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: ui
+          platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          tags: ${{ steps.meta-ui.outputs.tags }}
+          labels: ${{ steps.meta-ui.outputs.labels }}
+          cache-from: type=gha,scope=ui
+      - name: Push standalone (version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: standalone
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-standalone.outputs.tags }}
+          labels: ${{ steps.meta-standalone.outputs.labels }}
+          cache-from: type=gha,scope=standalone
