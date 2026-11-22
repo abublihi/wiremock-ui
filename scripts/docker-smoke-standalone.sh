@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
-# Boots a built standalone image (UI and WireMock in one container) and checks that the UI answers, that a mock
-# saved through the UI is served on WireMock's port, that the Guide has its pages, and that `docker stop` exits 0.
+# Boots a built standalone image (UI and WireMock in one container) without ADMIN_USER / ADMIN_PASSWORD and checks
+# that the UI answers, that `wiremock-ui create-admin` makes the first account, that a mock saved through the UI is
+# served on WireMock's port, that the Guide has its pages, and that `docker stop` exits 0.
 #   scripts/docker-smoke-standalone.sh <image> [ui-host-port] [wiremock-host-port]
 set -eu
 IMAGE="${1:?usage: scripts/docker-smoke-standalone.sh <image> [ui-host-port] [wiremock-host-port]}"
@@ -14,9 +15,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Non-default ports inside the container too, to check PORT and WIREMOCK_PORT are honoured.
+# Non-default ports inside the container too, to check PORT and WIREMOCK_PORT are honoured. No ADMIN_USER /
+# ADMIN_PASSWORD: the first account is made with the wiremock-ui command below.
 docker run -d --name "$ID" -p "127.0.0.1:$UI_PORT:3100" -p "127.0.0.1:$WM_PORT:9100" \
-  -e PORT=3100 -e WIREMOCK_PORT=9100 -e ADMIN_USER=admin -e ADMIN_PASSWORD="$PASSWORD" "$IMAGE" >/dev/null
+  -e PORT=3100 -e WIREMOCK_PORT=9100 "$IMAGE" >/dev/null
 
 UI="http://127.0.0.1:$UI_PORT"
 i=0
@@ -30,6 +32,19 @@ until curl -fsS "$UI/healthz" >/dev/null 2>&1; do
   sleep 1
 done
 echo "ok: /healthz"
+
+SETUP="$(curl -fsS "$UI/api/setup")"
+case "$SETUP" in
+  *'"needsFirstAdmin":true'*) ;;
+  *) echo "/api/setup before create-admin: $SETUP" >&2; exit 1 ;;
+esac
+printf '%s\n' "$PASSWORD" | docker exec -i "$ID" wiremock-ui create-admin --username admin --password-stdin
+SETUP="$(curl -fsS "$UI/api/setup")"
+case "$SETUP" in
+  *'"needsFirstAdmin":false'*) ;;
+  *) echo "/api/setup after create-admin: $SETUP" >&2; exit 1 ;;
+esac
+echo "ok: wiremock-ui create-admin made the first account"
 
 curl -fsS -u "admin:$PASSWORD" -H 'Content-Type: application/json' \
   -d '{"request":{"method":"GET","urlPath":"/smoke/hello"},"response":{"status":200,"body":"hello from the standalone image"}}' \

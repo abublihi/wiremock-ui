@@ -7,7 +7,11 @@ import { LoginPage } from '@/routes/login'
 import { SESSION_KEY } from '@/ui/api/client'
 import { renderApp, testSession } from './helpers'
 
-const server = setupServer()
+const setupStatus = (needsFirstAdmin: boolean) =>
+  http.get('http://localhost:3000/api/setup', () => HttpResponse.json({ needsFirstAdmin, command: 'wiremock-ui create-admin' }))
+
+// The sign-in page asks whether the server has accounts yet; it has, unless a test says otherwise.
+const server = setupServer(setupStatus(false))
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
@@ -108,5 +112,30 @@ describe('login page', () => {
     expect(button).toHaveProperty('disabled', true)
     release()
     await screen.findByText('mocks page')
+  })
+
+  it('shows how to create the first admin when the server has no accounts yet', async () => {
+    server.use(setupStatus(true))
+    await renderApp(<LoginPage />, { session: null })
+    expect((await screen.findByText('No accounts yet')).textContent).toBe('No accounts yet')
+    expect(screen.getByText('wiremock-ui create-admin')).toBeTruthy()
+    expect(screen.getByText('docker exec -it <container> wiremock-ui create-admin')).toBeTruthy()
+    expect(screen.queryByText('wiremock-ui login --interactive')).toBeNull()
+  })
+
+  it('drops the hint once an account exists', async () => {
+    server.use(setupStatus(true))
+    const { queryClient } = await renderApp(<LoginPage />, { session: null })
+    await screen.findByText('No accounts yet')
+    server.use(setupStatus(false))
+    await queryClient.refetchQueries({ queryKey: ['setup'] })
+    await waitFor(() => expect(screen.queryByText('No accounts yet')).toBeNull())
+  })
+
+  it('shows no hint when the server has accounts', async () => {
+    await renderApp(<LoginPage />, { session: null })
+    await screen.findByLabelText('Username')
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByText('No accounts yet')).toBeNull()
   })
 })

@@ -1,0 +1,4 @@
+#!/bin/sh
+# The `wiremock-ui` command in the images: docker exec -it <container> wiremock-ui create-admin
+# node:sqlite needs --experimental-sqlite on Node 22.12; later versions accept it and only warn.
+exec node --experimental-sqlite --disable-warning=ExperimentalWarning /app/dist/cli/wiremock-ui.mjs "$@"

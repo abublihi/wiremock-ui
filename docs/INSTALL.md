@@ -24,7 +24,7 @@ docker run -d --name wiremock-ui -p 3000:3000 -p 8080:8080 -v wiremock-ui:/data 
 
 Open http://localhost:3000 and sign in; WireMock answers your application on http://localhost:8080. Pin a version (`1.2.3-standalone`) for anything you keep. To build it yourself: `docker build --target standalone -t wiremock-ui:standalone .`
 
-Only `ADMIN_USER` and `ADMIN_PASSWORD` are required. Every other setting in the [Configuration reference](../README.md#environment-variables) works too, except `WIREMOCK_URL` (the UI always uses the WireMock inside the container). Settings for this image only:
+Without `ADMIN_USER` / `ADMIN_PASSWORD`, create the first account from a terminal instead: `docker exec -it wiremock-ui wiremock-ui create-admin` (see [The wiremock-ui command](#the-wiremock-ui-command)). Every other setting in the [Configuration reference](../README.md#environment-variables) works too, except `WIREMOCK_URL` (the UI always uses the WireMock inside the container). Settings for this image only:
 
 | Variable | Default | What it does |
 | --- | --- | --- |
@@ -250,21 +250,22 @@ top of the script.
 
 - Anyone who can sign in can reset another person's password on the **Users** page (**Reset password**).
 - You can change your own from the account menu (**Change password**).
-- If nobody can sign in, delete the accounts; the next start creates the first account again from `ADMIN_USER` / `ADMIN_PASSWORD`. Mocks, integrations and the audit log stay.
+- If nobody can sign in, set a new password from a shell on the server with `wiremock-ui reset-password <username>` (below). Nothing else changes; the account is signed out everywhere.
 
-  SQLite (Compose):
+### The wiremock-ui command
 
-  ```sh
-  docker compose -f compose.sqlite.yaml exec ui node --experimental-sqlite --disable-warning=ExperimentalWarning \
-    -e "new (require('node:sqlite').DatabaseSync)(process.env.SQLITE_PATH).exec('DELETE FROM sessions; DELETE FROM users')"
-  docker compose -f compose.sqlite.yaml restart ui
-  ```
+Account commands run from a shell where the UI runs: both images have `wiremock-ui` on the `PATH`. It uses the server's own store settings (`STORE_DRIVER`, `REDIS_URL`, `SQLITE_PATH`), works while the server runs, and needs no restart. It is not available over HTTP: being able to run it on the server is the permission.
 
-  Redis (Compose):
+```sh
+docker exec -it wiremock-ui wiremock-ui create-admin            # asks for a username and a password (typed twice)
+docker exec -it wiremock-ui wiremock-ui reset-password admin    # asks for the new password; signs the account out
+docker exec wiremock-ui wiremock-ui list-users
+```
 
-  ```sh
-  docker compose exec redis sh -c "redis-cli --scan --pattern 'user:*' | xargs -r redis-cli del; \
-    redis-cli --scan --pattern 'users:*' | xargs -r redis-cli del; \
-    redis-cli --scan --pattern 'session:*' | xargs -r redis-cli del"
-  docker compose restart ui
-  ```
+- **`create-admin`** makes an account: the first one when `ADMIN_USER` / `ADMIN_PASSWORD` are not set, or another one. `--username <name>` skips that question.
+- **`reset-password <username>`** sets a new password and signs the account out everywhere. `--enable` also enables a disabled account.
+- **`list-users`** lists the accounts and whether each is active.
+- **Scripts:** `--password-stdin` reads the password from stdin instead of asking (use `docker exec -i`, without `-t`):
+  `printf '%s\n' "$PASSWORD" | docker exec -i wiremock-ui wiremock-ui create-admin --username admin --password-stdin`
+- With Compose: `docker compose exec ui wiremock-ui create-admin`. From a source checkout, after `npm run build`: `npm run cli -- create-admin` (reads `.env`).
+- Until the first account exists, the sign-in page and the log show the command. In WireMock-only mode (`STORE_DRIVER=none`) accounts live in memory, so the command cannot change them and `ADMIN_USER` / `ADMIN_PASSWORD` are required.

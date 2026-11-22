@@ -1,12 +1,30 @@
 import { expect, test } from 'vitest'
-import { loadConfig } from '../../src/server/config'
+import { loadConfig, loadStoreSettings } from '../../src/server/config'
 
 const base = { ADMIN_USER: 'admin', ADMIN_PASSWORD: 'pw', SESSION_SECRET: 's'.repeat(32), REDIS_URL: 'redis://r:6379' }
 test('applies defaults', () => {
   expect(loadConfig(base)).toMatchObject({ wiremockUrl: 'http://localhost:8080', storeDriver: 'redis', syncIntervalSeconds: 5 })
 })
 test('lists every missing required var', () => {
-  expect(() => loadConfig({})).toThrow(/ADMIN_USER.*ADMIN_PASSWORD.*SESSION_SECRET/s)
+  expect(() => loadConfig({})).toThrow(/SESSION_SECRET is required/)
+})
+test('ADMIN_USER / ADMIN_PASSWORD are optional with a store (create-admin makes the first account), but set together', () => {
+  const { ADMIN_USER, ADMIN_PASSWORD, ...rest } = base
+  expect(loadConfig(rest)).toMatchObject({ adminUser: undefined, adminPassword: undefined })
+  expect(loadConfig({ ...rest, ADMIN_USER: '', ADMIN_PASSWORD: '' })).toMatchObject({ adminUser: undefined })
+  expect(() => loadConfig({ ...rest, ADMIN_USER })).toThrow('ADMIN_USER and ADMIN_PASSWORD must be set together')
+  expect(() => loadConfig({ ...rest, ADMIN_PASSWORD })).toThrow('ADMIN_USER and ADMIN_PASSWORD must be set together')
+})
+test('WireMock-only mode still requires ADMIN_USER / ADMIN_PASSWORD: accounts live in memory', () => {
+  const { ADMIN_USER, ADMIN_PASSWORD, ...rest } = base
+  expect(() => loadConfig({ ...rest, STORE_DRIVER: 'none' })).toThrow(/ADMIN_USER is required in WireMock-only mode.*ADMIN_PASSWORD is required in WireMock-only mode/s)
+})
+test('loadStoreSettings reads only the store settings, with the same rules', () => {
+  expect(loadStoreSettings({})).toEqual({ storeDriver: 'sqlite', redisUrl: undefined, sqlitePath: './data/wiremock-ui.db' })
+  expect(loadStoreSettings({ REDIS_URL: 'redis://r:6379', SQLITE_PATH: '' })).toEqual({ storeDriver: 'redis', redisUrl: 'redis://r:6379', sqlitePath: './data/wiremock-ui.db' })
+  expect(loadStoreSettings({ STORE_DRIVER: 'sqlite', REDIS_URL: 'redis://r', SQLITE_PATH: '/data/x.db' })).toMatchObject({ storeDriver: 'sqlite', sqlitePath: '/data/x.db' })
+  expect(() => loadStoreSettings({ STORE_DRIVER: 'redis' })).toThrow('REDIS_URL is required when STORE_DRIVER=redis')
+  expect(() => loadStoreSettings({ STORE_DRIVER: 'mongo' })).toThrow(/STORE_DRIVER must be/)
 })
 test('requires REDIS_URL for redis driver', () => {
   const { REDIS_URL, ...rest } = base

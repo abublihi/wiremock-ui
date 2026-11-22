@@ -30,6 +30,12 @@ docker compose -f compose.sqlite.yaml up -d --build
 
 Open http://localhost:3000 and sign in with `ADMIN_USER` / `ADMIN_PASSWORD`. WireMock answers your application on http://localhost:8080.
 
+**Rather not put the password in an env var?** Leave out `ADMIN_USER` / `ADMIN_PASSWORD` and create the first account from a terminal; it asks for the username and the password:
+
+```sh
+docker exec -it wiremock-ui wiremock-ui create-admin
+```
+
 **Want something to click on right away?** Add `SEED_PATH=/app/examples/seed.json` to `.env` and run the `up` command again (from source: `SEED_PATH=examples/seed.json`). [`examples/seed.json`](examples/seed.json) loads a **Blog API** (`/blog/posts`) and an **Orders API** (`/orders/{orderId}`) with a few mocks and an order going pending → shipped → delivered:
 
 ```sh
@@ -187,6 +193,7 @@ For looking at and editing a WireMock's own stubs without storing anything. Wire
 | --- | --- |
 | `src/server/runtime.ts` | Boot: config, WireMock readiness, stores, services, seed, adoption, reconciler. |
 | `src/server/config.ts` | Every environment variable (see below). |
+| `src/cli/` | The `wiremock-ui` command (`create-admin`, `reset-password`, `list-users`), built to `dist/cli/` by `vite.cli.config.ts`. |
 | `src/server/mocks/service.ts` | The save path: validation, version check, WireMock first, rollback. |
 | `src/server/sync/reconciler.ts`, `sync/adopt.ts` | Marker check, full sync, precedence, adoption. |
 | `src/server/store/` | Store drivers: `sqlite/`, `redis.ts`, `wiremock.ts` (WireMock-only), `memory.ts`. |
@@ -203,8 +210,8 @@ Everything is set through environment variables. Empty values count as unset. Bo
 
 | Variable | Default | Allowed values | Required | Modes | Example | What it does |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ADMIN_USER` | none | 2–32 characters: a-z, 0-9, `.`, `_`, `-` (lower-cased); not `baseline`, `system` or `wiremock` | **required** | all | `admin` | Username of the first account, created on the first start when there are no accounts yet. Changing it later does nothing (except in `none` mode, where it is the only account). |
-| `ADMIN_PASSWORD` | none | at least 8 characters, at most 72 bytes (UTF-8) | **required** | all | `choose-a-password` | Password of that first account. Changing it later does nothing outside `none` mode; see [Resetting a password](docs/INSTALL.md#resetting-a-password). |
+| `ADMIN_USER` | none | 2–32 characters: a-z, 0-9, `.`, `_`, `-` (lower-cased); not `baseline`, `system` or `wiremock` | optional, set with the password; **required** in `none` mode | all | `admin` | Username of the first account, created on the first start when there are no accounts yet. Changing it later does nothing (except in `none` mode, where it is the only account). Left unset, make the first account with [`wiremock-ui create-admin`](docs/INSTALL.md#the-wiremock-ui-command) instead. |
+| `ADMIN_PASSWORD` | none | at least 8 characters, at most 72 bytes (UTF-8) | optional, set with the user; **required** in `none` mode | all | `choose-a-password` | Password of that first account. Changing it later does nothing outside `none` mode; see [Resetting a password](docs/INSTALL.md#resetting-a-password). |
 | `SESSION_SECRET` | none | any string; use 32+ random characters | **required** | all | `$(openssl rand -hex 32)` | Secret for browser sessions. |
 | `WIREMOCK_URL` | `http://localhost:8080` | URL | optional | all | `http://wiremock:8080` | Where the UI reaches WireMock (admin API and the test relay). Compose sets it. |
 | `WIREMOCK_PUBLIC_URL` | `WIREMOCK_URL` | `http://` or `https://` URL | optional | all | `http://localhost:8080` | Where applications and testers reach WireMock's stub port. Only used in curl commands and docs; the UI never calls it. |

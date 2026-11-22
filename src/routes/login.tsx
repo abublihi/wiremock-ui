@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { ApiError } from '@/ui/api/client'
-import { useLogin } from '@/ui/api/queries'
+import { useLogin, useSetupStatus } from '@/ui/api/queries'
 import { redirectIfSignedIn, safeNext } from '@/ui/auth/session'
 import { HazardStrip } from '@/ui/components/shell/HazardStrip'
 import { Brand } from '@/ui/components/shell/Brand'
-import { Alert, AlertDescription } from '@/ui/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@/ui/components/ui/field'
 import { Input } from '@/ui/components/ui/input'
@@ -27,10 +27,34 @@ function errorKey(error: Error): MessageKey | null {
   return null
 }
 
+/** No accounts yet and ADMIN_USER / ADMIN_PASSWORD not set: how to make the first one (only from a shell on the server). */
+function FirstAdminHint({ command }: { command: string }) {
+  const t = useT()
+  const line = (text: string) => (
+    <code className="block overflow-x-auto rounded-md bg-muted px-2.5 py-1.5 font-mono text-xs whitespace-nowrap text-foreground">
+      <span aria-hidden className="text-signal-fg">$ </span>
+      {text}
+    </code>
+  )
+  return (
+    <Alert>
+      <AlertTitle>{t('login.setupTitle')}</AlertTitle>
+      <AlertDescription className="flex flex-col gap-2">
+        <span>{t('login.setupBody')}</span>
+        {line(command)}
+        <span>{t('login.setupDocker')}</span>
+        {line(`docker exec -it <container> ${command}`)}
+        <span>{t('login.setupWaiting')}</span>
+      </AlertDescription>
+    </Alert>
+  )
+}
+
 export function LoginPage({ next }: { next?: string }) {
   const t = useT()
   const router = useRouter()
   const login = useLogin()
+  const setup = useSetupStatus()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
 
@@ -64,9 +88,13 @@ export function LoginPage({ next }: { next?: string }) {
               <h1 className="font-display text-2xl leading-none font-bold tracking-wide uppercase">{t('login.title')}</h1>
               <p className="text-xs text-muted-foreground">{t('login.subtitle')}</p>
             </div>
-            <p aria-hidden className="-mt-1 border-b border-line/60 pb-4 text-xs text-muted-foreground">
-              <span className="text-signal-fg">$</span> wiremock-ui login --interactive
-            </p>
+            {setup.data?.needsFirstAdmin ? (
+              <FirstAdminHint command={setup.data.command} />
+            ) : (
+              <p aria-hidden className="-mt-1 border-b border-line/60 pb-4 text-xs text-muted-foreground">
+                <span className="text-signal-fg">$</span> wiremock-ui login --interactive
+              </p>
+            )}
             <FieldGroup className="gap-4">
               {login.error && (
                 <Alert variant="destructive">

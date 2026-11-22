@@ -93,7 +93,7 @@ curl -u $AUTH -OJ "$UI/api/export?scope=integration&integration=blog&format=mapp
 ```
 ## Tips and limits
 
-A stale `version` on update or delete answers `409` (`changed by someone else`). Other useful endpoints: `GET /api/audit?limit=100` (paged with `cursor`; filter with `actor`, `action` — an action or its group, such as `mock` — and `from` / `to` days in UTC, `2026-11-20`), `GET|POST /api/users`, `GET /healthz` (no auth).
+A stale `version` on update or delete answers `409` (`changed by someone else`). Other useful endpoints: `GET /api/audit?limit=100` (paged with `cursor`; filter with `actor`, `action` — an action or its group, such as `mock` — and `from` / `to` days in UTC, `2026-11-20`), `GET|POST /api/users`, `GET /healthz` (no auth), `GET /api/setup` (no auth: `{ needsFirstAdmin, command }`, true while there are no accounts; the account itself is only made on the server with `wiremock-ui create-admin`).
 
 **Browser sessions** (for tools that cannot use Basic auth): `POST /api/session` with `{"username","password"}` sets an HttpOnly `wmui_session` cookie and returns `{ user, csrfToken }`. Send the token as `X-CSRF-Token` on every `POST`, `PUT`, `PATCH` and `DELETE`; `DELETE /api/session` signs out.
 

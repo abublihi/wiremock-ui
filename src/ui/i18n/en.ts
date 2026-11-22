@@ -87,6 +87,10 @@ export const en = {
   'login.submit': 'Sign in',
   'login.submitting': 'Signing in…',
   'login.wrongCredentials': 'Wrong username or password',
+  'login.setupTitle': 'No accounts yet',
+  'login.setupBody': 'Create the first admin from a shell on the server:',
+  'login.setupDocker': 'In Docker:',
+  'login.setupWaiting': 'This page notices the new account by itself; then sign in with it.',
   'login.rateLimited': 'Too many sign-in attempts from this network. Try again in 15 minutes.',
 
   'error.generic': 'Something went wrong. Try again.',

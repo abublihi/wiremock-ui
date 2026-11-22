@@ -1,4 +1,4 @@
-# The image build needs only: package*.json, src/, vite.config.ts, tsconfig.json, server.mjs, examples/,
+# The image build needs only: package*.json, src/, vite.config.ts, vite.cli.config.ts, tsconfig.json, server.mjs, examples/,
 # docker/ and docs/guide/. Everything else stays out of the build context.
 
 # Dependencies, build output, caches

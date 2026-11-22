@@ -1,8 +1,9 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ConfigError } from '../../src/server/errors'
+import { logger } from '../../src/server/logger'
 import { bootRuntime } from '../../src/server/runtime'
 import type { Stores } from '../../src/server/store'
 
@@ -104,6 +105,22 @@ test('boots on SQLite with no Redis at all: first admin created, store reachable
     expect((await rt.stores.users.listUsers()).map((u) => u.username)).toEqual(['root'])
     await rt.stores.close()
   } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('boots without ADMIN_USER / ADMIN_PASSWORD: no account is made, and the log says how to make one', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wmui-boot-'))
+  const { REDIS_URL: _r, ADMIN_USER: _u, ADMIN_PASSWORD: _p, ...noAdmin } = env
+  const warn = vi.spyOn(logger, 'warn')
+  try {
+    const rt = await bootRuntime({ ...noAdmin, SQLITE_PATH: join(dir, 'ui.db') }, { fetch: wiremockFetch(0).fn })
+    rt.reconciler?.stop()
+    expect(await rt.stores.users.countUsers()).toBe(0)
+    expect(warn.mock.calls.some((c) => String(c[1]).includes('wiremock-ui create-admin'))).toBe(true)
+    await rt.stores.close()
+  } finally {
+    warn.mockRestore()
     rmSync(dir, { recursive: true, force: true })
   }
 })

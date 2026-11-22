@@ -16,6 +16,9 @@ import { Reconciler } from './sync/reconciler'
 import { WireMockClient } from './wiremock/client'
 import { assertWireMockReady } from './wiremock/startup'
 
+/** How to make the first account when ADMIN_USER / ADMIN_PASSWORD are not set (logged, and shown on the sign-in page). */
+export const FIRST_ADMIN_COMMAND = 'wiremock-ui create-admin'
+
 export type Runtime = {
   config: Config
   wiremock: WireMockClient
@@ -105,7 +108,13 @@ export async function bootRuntime(
     const audit = stores.audit
     const wiremockOnly = config.storeDriver === 'none'
     const users = new UserService({ users: stores.users, audit, fixedAccounts: wiremockOnly })
-    await users.ensureFirstAdmin(config.adminUser, config.adminPassword)
+    if (config.adminUser && config.adminPassword) await users.ensureFirstAdmin(config.adminUser, config.adminPassword)
+    else if ((await stores.users.countUsers()) === 0) {
+      logger.warn(
+        { command: FIRST_ADMIN_COMMAND },
+        'no accounts yet and ADMIN_USER / ADMIN_PASSWORD are not set: create the first admin with "wiremock-ui create-admin" (in Docker: docker exec -it <container> wiremock-ui create-admin)',
+      )
+    }
     const reserved = await users.reservedAccounts().catch(() => [])
     if (reserved.length > 0) {
       logger.warn(

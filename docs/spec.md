@@ -278,7 +278,7 @@ Two images are published to Docker Hub for amd64 and arm64 on every tag, built b
 | `STORE_DRIVER` | `redis` (`sqlite` in all-in-one) | Store driver: `redis`, `sqlite`, or `none` for WireMock-only mode (A10) |
 | `REDIS_URL` | none | Redis connection |
 | `SQLITE_PATH` | `/data/wiremock-ui.db` | SQLite file |
-| `ADMIN_USER`, `ADMIN_PASSWORD` | none, required | First admin account |
+| `ADMIN_USER`, `ADMIN_PASSWORD` | none, optional (required with `STORE_DRIVER=none`) | First admin account; without them it is made with `wiremock-ui create-admin` on the server |
 | `SESSION_SECRET` | none, required | Session signing |
 | `SEED_PATH`, `SEED_PRUNE` | unset, `false` | Baseline import at startup |
 | `RECORDING_ALLOWED` | `true` | Turn recording off per environment |

@@ -7,6 +7,7 @@ import type { QuickMockInput, SimpleMockInput } from '@/server/catalog/build'
 import type { AuditFilter, AuditViewPage } from '@/server/audit/view'
 import type { ImportReport } from '@/server/bundle/importer'
 import type { PublicConfig } from '@/server/http/handlers/config'
+import type { SetupStatus } from '@/server/http/handlers/setup'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { MockPage } from '@/server/mocks/paging'
 import type { PublicUser } from '@/server/users/types'
@@ -37,6 +38,7 @@ export type MockPageArgs = { limit: number; offset: number }
 export const queryKeys = {
   session: SESSION_KEY,
   config: ['config'] as const,
+  setup: ['setup'] as const,
   mocks: ['mocks'] as const,
   mockList: (filter: MockFilter) => ['mocks', 'list', filter] as const,
   mockPage: (filter: MockFilter, page: MockPageArgs) => ['mocks', 'page', filter, page] as const,
@@ -82,6 +84,19 @@ export const serverConfigQueryOptions = (fetchConfig: () => Promise<ServerConfig
 
 export function useSession() {
   return useQuery(sessionQueryOptions())
+}
+
+/**
+ * Whether the server still needs its first account (sign-in page). While it does, it asks again every 5 s, so the
+ * hint goes away by itself once `wiremock-ui create-admin` has made one.
+ */
+export function useSetupStatus() {
+  return useQuery({
+    queryKey: queryKeys.setup,
+    queryFn: () => apiFetch<SetupStatus>('/api/setup', { redirectOnUnauthorized: false }),
+    retry: false,
+    refetchInterval: (query) => (query.state.data?.needsFirstAdmin ? 5000 : false),
+  })
 }
 
 export function useLogin() {

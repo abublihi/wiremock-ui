@@ -30,6 +30,7 @@ import { Route as ApiRecordingsRouteImport } from './routes/api/recordings'
 import { Route as ApiRequestsRouteImport } from './routes/api/requests'
 import { Route as ApiScenariosRouteImport } from './routes/api/scenarios'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
+import { Route as ApiSetupRouteImport } from './routes/api/setup'
 import { Route as ApiTestRequestRouteImport } from './routes/api/test-request'
 import { Route as ApiUsersRouteImport } from './routes/api/users'
 import { Route as CatalogIndexRouteImport } from './routes/catalog.index'
@@ -173,6 +174,11 @@ const ApiScenariosRoute = ApiScenariosRouteImport.update({
 const ApiSessionRoute = ApiSessionRouteImport.update({
   id: '/api/session',
   path: '/api/session',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSetupRoute = ApiSetupRouteImport.update({
+  id: '/api/setup',
+  path: '/api/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiTestRequestRoute = ApiTestRequestRouteImport.update({
@@ -404,6 +410,7 @@ export interface FileRoutesByFullPath {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
+  '/api/setup': typeof ApiSetupRoute
   '/api/test-request': typeof ApiTestRequestRoute
   '/api/users': typeof ApiUsersRouteWithChildren
   '/catalog/$': typeof CatalogSplatRoute
@@ -465,6 +472,7 @@ export interface FileRoutesByTo {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
+  '/api/setup': typeof ApiSetupRoute
   '/api/test-request': typeof ApiTestRequestRoute
   '/api/users': typeof ApiUsersRouteWithChildren
   '/catalog/$': typeof CatalogSplatRoute
@@ -529,6 +537,7 @@ export interface FileRoutesById {
   '/api/requests': typeof ApiRequestsRouteWithChildren
   '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
+  '/api/setup': typeof ApiSetupRoute
   '/api/test-request': typeof ApiTestRequestRoute
   '/api/users': typeof ApiUsersRouteWithChildren
   '/catalog/$': typeof CatalogSplatRoute
@@ -594,6 +603,7 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/scenarios'
     | '/api/session'
+    | '/api/setup'
     | '/api/test-request'
     | '/api/users'
     | '/catalog/$'
@@ -655,6 +665,7 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/scenarios'
     | '/api/session'
+    | '/api/setup'
     | '/api/test-request'
     | '/api/users'
     | '/catalog/$'
@@ -718,6 +729,7 @@ export interface FileRouteTypes {
     | '/api/requests'
     | '/api/scenarios'
     | '/api/session'
+    | '/api/setup'
     | '/api/test-request'
     | '/api/users'
     | '/catalog/$'
@@ -776,6 +788,7 @@ export interface RootRouteChildren {
   ApiRequestsRoute: typeof ApiRequestsRouteWithChildren
   ApiScenariosRoute: typeof ApiScenariosRouteWithChildren
   ApiSessionRoute: typeof ApiSessionRouteWithChildren
+  ApiSetupRoute: typeof ApiSetupRoute
   ApiTestRequestRoute: typeof ApiTestRequestRoute
   ApiUsersRoute: typeof ApiUsersRouteWithChildren
   CatalogSplatRoute: typeof CatalogSplatRoute
@@ -929,6 +942,13 @@ declare module '@tanstack/react-router' {
       path: '/api/session'
       fullPath: '/api/session'
       preLoaderRoute: typeof ApiSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/setup': {
+      id: '/api/setup'
+      path: '/api/setup'
+      fullPath: '/api/setup'
+      preLoaderRoute: typeof ApiSetupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/test-request': {
@@ -1461,6 +1481,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiRequestsRoute: ApiRequestsRouteWithChildren,
   ApiScenariosRoute: ApiScenariosRouteWithChildren,
   ApiSessionRoute: ApiSessionRouteWithChildren,
+  ApiSetupRoute: ApiSetupRoute,
   ApiTestRequestRoute: ApiTestRequestRoute,
   ApiUsersRoute: ApiUsersRouteWithChildren,
   CatalogSplatRoute: CatalogSplatRoute,

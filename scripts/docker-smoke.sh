@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
-# Boots a built wiremock-ui image next to a WireMock container and checks it serves /healthz and a Guide with
-# its pages in it (the Guide is built from docs/guide/*.md; an image built without them has an empty Guide).
+# Boots a built wiremock-ui image next to a WireMock container and checks it serves /healthz, a Guide with its pages
+# in it (the Guide is built from docs/guide/*.md; an image built without them has an empty Guide) and the
+# wiremock-ui account command (list-users, reset-password).
 #   scripts/docker-smoke.sh <image> [host-port]
 set -eu
 IMAGE="${1:?usage: scripts/docker-smoke.sh <image> [host-port]}"
@@ -51,3 +52,9 @@ for title in 'Getting started' 'Scenarios and the builder'; do
   esac
 done
 echo "ok: /guide lists its pages"
+
+docker exec "$ID-ui" wiremock-ui list-users | grep -q '^admin ' || { echo "wiremock-ui list-users does not list admin" >&2; exit 1; }
+printf '%s\n' "$PASSWORD-2" | docker exec -i "$ID-ui" wiremock-ui reset-password admin --password-stdin >/dev/null
+curl -fsS -o /dev/null -H 'Content-Type: application/json' \
+  -d "{\"username\":\"admin\",\"password\":\"$PASSWORD-2\"}" "$BASE/api/session"
+echo "ok: wiremock-ui list-users and reset-password"

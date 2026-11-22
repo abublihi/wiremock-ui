@@ -1,4 +1,4 @@
-import type { Config } from '../config'
+import type { StoreSettings } from '../config'
 import { type AuditLog, RedisAuditLog } from '../audit/log'
 import { RedisCatalogStore } from '../catalog/store'
 import type { CatalogStore } from '../catalog/types'
@@ -37,7 +37,7 @@ export type Stores = {
  * Builds every store on the configured driver (spec A9); `close()` releases the shared connection once.
  * `none` (spec A10) needs `wiremock`: its mock store is WireMock itself.
  */
-export function createStores(config: Config, opts: { wiremock?: WireMockClient } = {}): Stores {
+export function createStores(config: StoreSettings, opts: { wiremock?: WireMockClient } = {}): Stores {
   if (config.storeDriver === 'none') {
     if (!opts.wiremock) throw new ConfigError('STORE_DRIVER=none needs a WireMock client')
     return createWireMockOnlyStores(opts.wiremock)

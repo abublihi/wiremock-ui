@@ -23,7 +23,7 @@ afterAll(async () => {
 })
 
 type ServerHandler = (ctx: { request: Request; params: Record<string, string> }) => Promise<Response>
-const PUBLIC = new Set(['POST /api/session'])
+const PUBLIC = new Set(['POST /api/session', 'GET /api/setup'])
 
 async function apiRoutes() {
   const { routeTree } = await import('../../../src/routeTree.gen')
@@ -38,7 +38,7 @@ test('the route table covers every file under src/routes/api', async () => {
   expect(paths.size).toBe(readdirSync('src/routes/api').filter((f) => f.endsWith('.ts')).length)
 })
 
-test('every /api route method answers 401 JSON { error } without credentials, except POST /api/session', async () => {
+test('every /api route method answers 401 JSON { error } without credentials, except POST /api/session and GET /api/setup', async () => {
   const routes = await apiRoutes()
   expect(routes.length).toBeGreaterThan(30)
   for (const { path, method, handler } of routes) {

@@ -39,7 +39,9 @@ COPY package.json server.mjs ./
 COPY examples ./examples
 COPY --from=build /app/dist ./dist
 COPY docker/standalone-entrypoint.sh /usr/local/bin/wiremock-ui-standalone
-RUN chmod 755 /usr/local/bin/wiremock-ui-standalone \
+# The account command: docker exec -it <container> wiremock-ui create-admin
+COPY docker/wiremock-ui /usr/local/bin/wiremock-ui
+RUN chmod 755 /usr/local/bin/wiremock-ui-standalone /usr/local/bin/wiremock-ui \
   && useradd --system --uid 10001 --home-dir /data --shell /usr/sbin/nologin wmui \
   && mkdir -p /data && chown wmui:wmui /data && chmod 700 /data
 VOLUME /data
@@ -60,7 +62,10 @@ COPY package.json server.mjs ./
 # The example integrations and mocks: SEED_PATH=/app/examples/seed.json to try the app with something in it.
 COPY examples ./examples
 COPY --from=build /app/dist ./dist
-RUN mkdir -p /data && chown node:node /data && chmod 700 /data
+# The account command: docker exec -it <container> wiremock-ui create-admin
+COPY docker/wiremock-ui /usr/local/bin/wiremock-ui
+RUN chmod 755 /usr/local/bin/wiremock-ui \
+  && mkdir -p /data && chown node:node /data && chmod 700 /data
 VOLUME /data
 USER node
 EXPOSE 3000
