@@ -6,7 +6,7 @@ import { GettingStartedChecklist } from '@/ui/components/guide/GettingStarted'
 import { WithTerm } from '@/ui/components/guide/Term'
 import { ExportMenu } from '@/ui/components/mocks/ExportMenu'
 import { NewMockButton, ResetMineButton } from '@/ui/components/mocks/MockActions'
-import { MockFilters, type MocksSearch } from '@/ui/components/mocks/MockFilters'
+import { DEFAULT_OWNER, MockFilters, type MocksSearch } from '@/ui/components/mocks/MockFilters'
 import { MockPager, usePageSize } from '@/ui/components/mocks/MockPager'
 import { MockTable, MockTableSkeleton } from '@/ui/components/mocks/MockTable'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
@@ -74,7 +74,7 @@ export function MocksPage({
   const t = useT()
   const wiremockOnly = useWireMockOnly()
   // WireMock-only mode lists everything WireMock serves (no owner filter, no "Reset my mocks").
-  const owner = wiremockOnly ? 'all' : (search.owner ?? 'me')
+  const owner = wiremockOnly ? 'all' : (search.owner ?? DEFAULT_OWNER)
   // 'all' is the UI's word for no owner filter; the API treats an owner value literally.
   const page = search.page ?? 1
   const [size, setSize] = usePageSize()
@@ -94,7 +94,7 @@ export function MocksPage({
   const integrations = useIntegrations()
   // Nothing to build mocks from yet: the first step is the catalog, not New mock.
   const noCatalog = integrations.data?.length === 0
-  const filtered = Boolean(search.integration || search.status || search.q || search.scenarios || (!wiremockOnly && owner !== 'me'))
+  const filtered = Boolean(search.integration || search.status || search.q || search.scenarios || (!wiremockOnly && owner !== 'me' && owner !== 'all'))
 
   const count = mocks.data?.totalMocks ?? 0
   const baseline = mocks.data?.baseline ?? 0

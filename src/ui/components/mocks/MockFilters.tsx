@@ -11,6 +11,9 @@ import { useT } from '@/ui/i18n'
 /** `scenarios: 'only'`: only mocks that belong to a scenario (the "Scenario mocks" chip). `page`: the list page, from 1. */
 export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string; scenarios?: 'only'; page?: number }
 
+/** The owner filter when the URL names none: everyone's mocks ('me' narrows to your own). */
+export const DEFAULT_OWNER = 'all'
+
 const ANY = '__any__'
 const STATUSES = ['200', '201', '204', '400', '401', '403', '404', '409', '422', '500', '502', '503']
 const DEBOUNCE_MS = 250
@@ -28,7 +31,7 @@ export function MockFilters({
   const t = useT()
   // WireMock-only mode has one account and WireMock's own stubs: there is no "mine" to filter by.
   const wiremockOnly = useWireMockOnly()
-  const owner = search.owner ?? 'me'
+  const owner = search.owner ?? DEFAULT_OWNER
   const [text, setText] = useState(search.q ?? '')
   const pushed = useRef(search.q ?? '')
 
@@ -59,8 +62,8 @@ export function MockFilters({
           value={owner === 'me' || owner === 'all' ? owner : ''}
           onValueChange={(value) => value && onChange({ owner: value })}
         >
-          <ToggleGroupItem value="me" className={ON}>{t('mocks.ownerMe')}</ToggleGroupItem>
           <ToggleGroupItem value="all" className={ON}>{t('mocks.ownerAll')}</ToggleGroupItem>
+          <ToggleGroupItem value="me" className={ON}>{t('mocks.ownerMe')}</ToggleGroupItem>
         </ToggleGroup>
       )}
 

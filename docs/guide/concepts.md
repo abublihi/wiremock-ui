@@ -54,6 +54,6 @@ Read the rest of the guide in this order: [Integrations and endpoints](integrati
 1. the lowest **priority** number first. Key mocks get priority **5**, default mocks **10**, so a key mock always beats the default. Quick URL mocks and Advanced stubs use WireMock's default unless you set `priority`;
 2. among equal priorities, a person's mock beats a **baseline** mock, and the most recently saved one wins.
 
-**My mocks, all mocks, baseline.** Every mock records its owner: the person who made it, or **baseline** for mocks that came from an import or a seed file and belong to nobody. Every signed-in user can still edit and delete any mock (there are no roles). The Mocks page shows **My mocks** by default; **All mocks** shows everyone's, baseline included. **Reset my mocks** deletes only yours.
+**My mocks, all mocks, baseline.** Every mock records its owner: the person who made it, or **baseline** for mocks that came from an import or a seed file and belong to nobody. Every signed-in user can still edit and delete any mock (there are no roles). The Mocks page shows **All mocks** by default (everyone's, baseline included); **My mocks** narrows it to yours. **Reset my mocks** deletes only yours.
 
 **Endpoint ID vs key.** The endpoint ID (`get-post`) is just the endpoint's name in URLs and the API; it is not the key.

@@ -74,15 +74,25 @@ function Harness({ initial = {} }: { initial?: MocksSearch }) {
 }
 
 describe('mock list', () => {
-  it('defaults to my mocks and renders the rows', async () => {
+  it('defaults to all mocks and renders the rows', async () => {
     const seen = mockApi([stub('a'), stub('b', { owner: 'baseline', method: 'POST', status: 404 })])
     await renderApp(<Harness />)
     await screen.findByText('Mock a')
-    expect(seen[0]!.url.searchParams.get('owner')).toBe('me')
-    expect(screen.getByRole('radio', { name: 'My mocks' }).getAttribute('aria-checked')).toBe('true')
+    expect(seen[0]!.url.searchParams.has('owner')).toBe(false)
+    expect(screen.getByRole('radio', { name: 'All mocks' }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByText('Baseline')).toBeTruthy()
     expect(screen.getByText('404')).toBeTruthy()
-    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '// 2 of your own mocks')).toBeTruthy()
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent?.startsWith('// 2 mocks') === true)).toBeTruthy()
+  })
+
+  it('My mocks narrows the list to your own', async () => {
+    const seen = mockApi([stub('a')])
+    await renderApp(<Harness />)
+    await screen.findByText('Mock a')
+    await userEvent.setup().click(screen.getByRole('radio', { name: 'My mocks' }))
+    await waitFor(() => expect(seen.at(-1)!.url.searchParams.get('owner')).toBe('me'))
+    expect(lastSearch.owner).toBe('me')
+    await screen.findByText((_, el) => el?.tagName === 'P' && el.textContent === '// 1 of your own mocks')
   })
 
   it('marks proxy mocks with a PROXY badge instead of a status, and webhook mocks with an icon', async () => {
@@ -115,14 +125,14 @@ describe('mock list', () => {
 
   it('switching to All mocks updates the search and refetches', async () => {
     const seen = mockApi([stub('a')])
-    await renderApp(<Harness />)
+    await renderApp(<Harness initial={{ owner: 'me' }} />)
     await screen.findByText('Mock a')
     await userEvent.setup().click(screen.getByRole('radio', { name: 'All mocks' }))
     await waitFor(() => expect(seen.some((s) => !s.url.searchParams.has('owner'))).toBe(true))
     expect(lastSearch.owner).toBe('all')
   })
 
-  it('Export takes its scope from the filter: my mocks, all mocks, or one integration', async () => {
+  it('Export takes its scope from the filter: all mocks, my mocks, or one integration', async () => {
     mockApi([stub('a')])
     const ue = userEvent.setup()
     const hrefs = async () => {
@@ -133,9 +143,9 @@ describe('mock list', () => {
     }
     await renderApp(<Harness />)
     await screen.findByText('Mock a')
-    expect(await hrefs()).toEqual(['/api/export?scope=mine&format=bundle', '/api/export?scope=mine&format=mappings'])
-    await ue.click(screen.getByRole('radio', { name: 'All mocks' }))
     expect(await hrefs()).toEqual(['/api/export?scope=all&format=bundle', '/api/export?scope=all&format=mappings'])
+    await ue.click(screen.getByRole('radio', { name: 'My mocks' }))
+    expect(await hrefs()).toEqual(['/api/export?scope=mine&format=bundle', '/api/export?scope=mine&format=mappings'])
   })
 
   it('Export with an integration filter exports that integration', async () => {
@@ -163,7 +173,7 @@ describe('mock list', () => {
   it('pages 50 rows at a time: Showing 1–50 of 120, Next asks for the next offset', async () => {
     const many = Array.from({ length: 120 }, (_, i) => stub(`m${i}`))
     const seen = mockApi(many)
-    await renderApp(<Harness />)
+    await renderApp(<Harness initial={{ owner: 'me' }} />)
     await screen.findByText('Showing 1–50 of 120')
     expect(seen[0]!.url.searchParams.get('limit')).toBe('50')
     expect(seen[0]!.url.searchParams.get('offset')).toBe('0')
@@ -193,8 +203,8 @@ describe('mock list', () => {
     mockApi(Array.from({ length: 120 }, (_, i) => stub(`m${i}`)))
     await renderApp(<Harness initial={{ page: 3 }} />)
     await screen.findByText('Showing 101–120 of 120')
-    await userEvent.setup().click(screen.getByRole('radio', { name: 'All mocks' }))
-    expect(lastSearch).toMatchObject({ owner: 'all', page: undefined })
+    await userEvent.setup().click(screen.getByRole('radio', { name: 'My mocks' }))
+    expect(lastSearch).toMatchObject({ owner: 'me', page: undefined })
     await screen.findByText('Showing 1–50 of 120')
   })
 
@@ -398,7 +408,7 @@ describe('mock list', () => {
 
   it('empty state for my mocks offers New mock', async () => {
     mockApi([])
-    await renderApp(<Harness />)
+    await renderApp(<Harness initial={{ owner: 'me' }} />)
     await screen.findByText('No mocks of your own yet')
     expect(screen.getAllByRole('link', { name: 'New mock' }).length).toBeGreaterThan(0)
   })
@@ -472,15 +482,15 @@ describe('mocks route search', () => {
     return router
   }
 
-  it('?status=404 from the URL filters the request; switching to All updates the URL', async () => {
+  it('?status=404 from the URL filters the request; switching to My mocks updates the URL', async () => {
     const seen = mockApi([stub('a')])
     const router = await renderRoute('/mocks?status=404')
     await screen.findByText('Mock a')
     expect(seen[0]!.url.searchParams.get('status')).toBe('404')
-    expect(seen[0]!.url.searchParams.get('owner')).toBe('me')
-    await userEvent.setup().click(screen.getByRole('radio', { name: 'All mocks' }))
-    await waitFor(() => expect(router.state.location.search).toMatchObject({ owner: 'all', status: '404' }))
-    await waitFor(() => expect(seen.some((s) => !s.url.searchParams.has('owner'))).toBe(true))
+    expect(seen[0]!.url.searchParams.has('owner')).toBe(false)
+    await userEvent.setup().click(screen.getByRole('radio', { name: 'My mocks' }))
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ owner: 'me', status: '404' }))
+    await waitFor(() => expect(seen.at(-1)!.url.searchParams.get('owner')).toBe('me'))
   })
 
   it('?page=2 asks for the second page; Next pushes a history entry so Back returns', async () => {

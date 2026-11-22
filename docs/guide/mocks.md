@@ -54,7 +54,7 @@ Saving a mock checks it, pushes it into WireMock, then stores it; WireMock refus
 
 **History and conflicts.** **History** on an open mock lists its last 20 versions; pick one, then **Restore this version**. If someone saved the mock while you were editing, your save is refused ("Someone changed this mock since you opened it"): **Copy my JSON** keeps your draft, **Reload** shows theirs.
 
-**The list.** **My mocks / All mocks** switches between yours and everyone's (baseline included). The row menu (**…**) has **Open**, **Duplicate to my mocks** and **Delete** (undo from the toast). **Reset my mocks** deletes every mock you own, for a clean start. A scenario's mocks fold into one row, **Scenario: name · N mocks**.
+**The list.** **All mocks / My mocks** switches between everyone's (baseline included, the default) and yours. The row menu (**…**) has **Open**, **Duplicate to my mocks** and **Delete** (undo from the toast). **Reset my mocks** deletes every mock you own, for a clean start. A scenario's mocks fold into one row, **Scenario: name · N mocks**.
 
 ## Tips and limits
 
