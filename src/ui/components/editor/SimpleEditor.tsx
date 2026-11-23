@@ -63,6 +63,7 @@ type FieldName =
   | 'keyValue'
   | 'url'
   | 'query'
+  | 'priority'
   | 'headers'
   | 'status'
   | 'body'
@@ -87,6 +88,7 @@ const SERVER_FIELD = new Map<string, FieldName>([
   ['request.url', 'url'],
   ['request.urlType', 'url'],
   ['request.query', 'query'],
+  ['priority', 'priority'],
   ['headers', 'headers'],
   ['isDefault', 'keyValue'],
   ['status', 'status'],
@@ -396,7 +398,7 @@ export function SimpleEditor({
         {quick ? (
           <QuickRequestFields
             quick={quick}
-            errors={{ url: errors.url, query: errors.query }}
+            errors={{ url: errors.url, query: errors.query, priority: errors.priority }}
             onChange={updateQuick}
           />
         ) : (

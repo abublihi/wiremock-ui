@@ -108,6 +108,8 @@ export type QuickRequest = {
   query: HeaderRow[]
   /** Request body to match: JSON matches as JSON (extra fields allowed), any other text must be contained. */
   body: string
+  /** WireMock's priority as typed: '' leaves it to WireMock (5); otherwise a whole number, 1 the highest. */
+  priority: string
   responseHeaders: HeaderRow[]
 }
 
@@ -551,6 +553,7 @@ export function emptyQuickForm(seed?: ScenarioSeed): SimpleForm {
     url: '/',
     query: [],
     body: '',
+    priority: '',
     responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
   }
   const form: SimpleForm = { ...emptyForm(quickEndpoint(quick)), integration: '', endpoint: '', isDefault: true, body: '', quick }
@@ -566,6 +569,7 @@ export function toQuickInput(form: SimpleForm): QuickMockInput {
   if (query) request.query = query
   if (quick.body.trim() !== '') request.body = quick.body
   const input: QuickMockInput = { request, ...rest }
+  if (quick.priority.trim() !== '') input.priority = Number(quick.priority.trim())
   if (form.answer !== 'proxy' && !form.fault) {
     // A binary body brings its own Content-Type; any typed one gives way to it.
     const rows = form.binary ? quick.responseHeaders.filter((r) => r.name.trim().toLowerCase() !== 'content-type') : quick.responseHeaders
@@ -586,6 +590,9 @@ const isJsonDocument = (text: string) => {
   }
 }
 
+/** A WireMock priority the quick form can show and write back: a whole number of 1 or more. */
+export const isPriority = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 1
+
 /** Whether JavaScript can parse the pattern (the server's check for regex URLs). */
 export function isRegex(pattern: string): boolean {
   try {
@@ -597,7 +604,7 @@ export function isRegex(pattern: string): boolean {
 }
 
 /** The quick request the builder writes, or null for anything else. */
-function readQuickRequest(request: Record<string, unknown>): Omit<QuickRequest, 'responseHeaders'> | null {
+function readQuickRequest(request: Record<string, unknown>): Omit<QuickRequest, 'responseHeaders' | 'priority'> | null {
   const method = request.method
   if (!QUICK_METHODS.includes(method as QuickMethod)) return null
   const types = QUICK_URL_TYPES.filter((type) => QUICK_URL_FIELD[type] in request)
@@ -635,11 +642,12 @@ function readQuickRequest(request: Record<string, unknown>): Omit<QuickRequest, 
 
 /**
  * Turns a free-form stub back into the quick form, or null when it holds anything the form cannot show
- * (a catalog link, a priority, other matchers or response fields…): like fromStub, the form never drops fields.
+ * (a catalog link, other matchers or response fields…): like fromStub, the form never drops fields.
  */
 export function fromQuickStub(stub: StubMapping): SimpleForm | null {
-  if (!onlyKeys(stub, ['id', 'uuid', 'name', 'persistent', 'request', 'response', 'metadata', 'serveEventListeners', ...SCENARIO_KEYS])) return null
+  if (!onlyKeys(stub, ['id', 'uuid', 'name', 'priority', 'persistent', 'request', 'response', 'metadata', 'serveEventListeners', ...SCENARIO_KEYS])) return null
   if (stub.name !== undefined && !isText(stub.name)) return null
+  if (stub.priority !== undefined && !isPriority(stub.priority)) return null
   const meta = stub.metadata
   if (meta !== undefined) {
     if (!isRecord(meta) || !onlyKeys(meta, ['wiremockUi'])) return null
@@ -652,7 +660,7 @@ export function fromQuickStub(stub: StubMapping): SimpleForm | null {
 
   const form = emptyQuickForm()
   // A proxy or a fault sends no headers of ours: the form keeps its default ones (unused until it answers itself).
-  const quick: QuickRequest = { ...read, responseHeaders: form.quick!.responseHeaders }
+  const quick: QuickRequest = { ...read, priority: stub.priority === undefined ? '' : String(stub.priority), responseHeaders: form.quick!.responseHeaders }
   form.quick = quick
   if (stub.scenarioName !== undefined || stub.requiredScenarioState !== undefined || stub.newScenarioState !== undefined) {
     const scenario = readScenario(stub)

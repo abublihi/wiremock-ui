@@ -266,7 +266,15 @@ const quickRequestSchema = z.strictObject(
 )
 
 /** The Simple form's response fields with a method and URL of its own instead of a catalog endpoint and key. */
-export const quickMockSchema = simpleMockSchema.omit({ keyValue: true, isDefault: true }).extend({ request: quickRequestSchema })
+export const quickMockSchema = simpleMockSchema.omit({ keyValue: true, isDefault: true }).extend({
+  request: quickRequestSchema,
+  /** WireMock's priority when several mocks match: 1 wins over 2, and so on. Left out: WireMock's default (5). */
+  priority: z
+    .number({ error: 'priority must be a whole number of 1 or more' })
+    .int({ error: 'priority must be a whole number of 1 or more' })
+    .min(1, { error: 'priority must be a whole number of 1 or more' })
+    .optional(),
+})
 
 export type QuickMockInput = z.infer<typeof quickMockSchema>
 
@@ -339,7 +347,7 @@ function quickResponse(input: QuickMockInput): Record<string, unknown> {
 }
 
 /**
- * Turns the quick form into a WireMock stub: a free-form mock (no catalog link, WireMock's default priority) that
+ * Turns the quick form into a WireMock stub: a free-form mock (no catalog link; WireMock's default priority unless set) that
  * the editor reads back into the same form.
  */
 export function buildQuickStub(input: QuickMockInput): MockInput & { serveEventListeners?: WebhookListener[] } & Partial<ScenarioFields> {
@@ -354,6 +362,7 @@ export function buildQuickStub(input: QuickMockInput): MockInput & { serveEventL
   if (input.delayMs !== undefined) response.fixedDelayMilliseconds = input.delayMs
   return {
     name: name ?? quickMockName(input.request),
+    ...(input.priority !== undefined ? { priority: input.priority } : {}),
     request,
     response,
     ...(input.webhook ? { serveEventListeners: [webhookListener(input.webhook)] } : {}),

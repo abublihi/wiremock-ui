@@ -22,6 +22,15 @@ describe('quick URL mocks: request', () => {
     const stub = buildQuickStub(input())
     expect(stub).toEqual({ name: 'GET /health', request: { method: 'GET', urlPath: '/health' }, response: { status: 200 } })
   })
+  test('a priority is written as given; the schema takes whole numbers of 1 or more only', () => {
+    expect(buildQuickStub(input({ priority: 10 }, { method: 'ANY', urlType: 'regex', url: '/a/.*' })).priority).toBe(10)
+    expect(quickMockSchema.safeParse(input({ priority: 1 })).success).toBe(true)
+    for (const priority of [0, -1, 1.5, '3']) {
+      const parsed = quickMockSchema.safeParse({ ...input(), priority })
+      expect(parsed.success).toBe(false)
+      expect(parsed.error!.issues[0]!.message).toBe('priority must be a whole number of 1 or more')
+    }
+  })
   test('template and regex URLs use urlPathTemplate and urlPathPattern', () => {
     expect(buildQuickStub(input({}, { urlType: 'template', url: '/users/{id}' })).request).toEqual({ method: 'GET', urlPathTemplate: '/users/{id}' })
     expect(buildQuickStub(input({}, { urlType: 'regex', url: '/users/[0-9]+' })).request).toEqual({ method: 'GET', urlPathPattern: '/users/[0-9]+' })

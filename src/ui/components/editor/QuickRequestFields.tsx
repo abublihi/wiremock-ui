@@ -5,10 +5,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/ui/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useT } from '@/ui/i18n'
-import { QUICK_METHODS, QUICK_URL_TYPES, isRegex, type QuickMethod, type QuickRequest, type QuickUrlType } from '@/ui/lib/editor-sync'
+import { QUICK_METHODS, QUICK_URL_TYPES, isPriority, isRegex, type QuickMethod, type QuickRequest, type QuickUrlType } from '@/ui/lib/editor-sync'
 import { HeaderRows, hasUnnamedRow } from './HeaderRows'
 
-export type QuickErrors = Partial<Record<'url' | 'query', string>>
+export type QuickErrors = Partial<Record<'url' | 'query' | 'priority', string>>
 
 /**
  * A full URL typed or pasted where a path goes (https://api.example.com/blog/posts?page=2): its path, and its query as
@@ -29,8 +29,8 @@ export function splitFullUrl(text: string): { path: string; query: { name: strin
 const ON = 'data-[state=on]:border-signal/50 data-[state=on]:bg-signal/10 data-[state=on]:text-signal-fg'
 
 /** The quick form's own checks (the server's builder has the same rules); required ones wait for a save attempt. */
-export function quickRequestErrors(t: ReturnType<typeof useT>, quick: QuickRequest, attempted: boolean): { url?: string; query?: string } {
-  const out: { url?: string; query?: string } = {}
+export function quickRequestErrors(t: ReturnType<typeof useT>, quick: QuickRequest, attempted: boolean): QuickErrors {
+  const out: QuickErrors = {}
   const url = quick.url.trim()
   if (url === '') {
     if (attempted) out.url = t('editor.quick.urlRequired')
@@ -39,6 +39,8 @@ export function quickRequestErrors(t: ReturnType<typeof useT>, quick: QuickReque
   else if (quick.urlType !== 'regex' && url.includes('?')) out.url = t('editor.quick.urlQuery')
   else if (quick.urlType === 'regex' && !isRegex(url)) out.url = t('editor.quick.urlRegex')
   if (hasUnnamedRow(quick.query)) out.query = t('editor.quick.queryUnnamed')
+  const priority = quick.priority.trim()
+  if (priority !== '' && !(/^\d+$/.test(priority) && isPriority(Number(priority)))) out.priority = t('editor.quick.priorityInvalid')
   return out
 }
 
@@ -50,7 +52,7 @@ export function QuickRequestFields({
 }: {
   quick: QuickRequest
   errors: QuickErrors
-  onChange: (patch: Partial<QuickRequest>, clears: ('url' | 'query')[]) => void
+  onChange: (patch: Partial<QuickRequest>, clears: ('url' | 'query' | 'priority')[]) => void
 }) {
   const t = useT()
   const ids = useId()
@@ -176,6 +178,28 @@ export function QuickRequestFields({
         <FieldDescription id={id('body-hint')} className="text-xs">
           {t('editor.quick.bodyMatchHint')}
         </FieldDescription>
+      </Field>
+
+      <Field data-invalid={Boolean(errors.priority)}>
+        <FieldLabel htmlFor={id('priority')}>
+          {t('editor.quick.priority')} <span className="font-normal text-muted-foreground">({t('editor.nameOptional')})</span>
+        </FieldLabel>
+        <Input
+          id={id('priority')}
+          dir="ltr"
+          inputMode="numeric"
+          autoComplete="off"
+          className="font-mono sm:max-w-32"
+          placeholder="5"
+          value={quick.priority}
+          aria-invalid={Boolean(errors.priority)}
+          aria-describedby={described('priority', id('priority-hint'))}
+          onChange={(e) => onChange({ priority: e.target.value }, ['priority'])}
+        />
+        <FieldDescription id={id('priority-hint')} className="text-xs">
+          {t('editor.quick.priorityHint')}
+        </FieldDescription>
+        {error('priority')}
       </Field>
     </>
   )

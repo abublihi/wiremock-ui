@@ -133,6 +133,26 @@ describe('new mock with no integrations', () => {
     expect(await screen.findByText('Enter the URL path to mock, for example /health.')).toBeTruthy()
     expect(calls).toHaveLength(0)
   })
+
+  it('the quick form saves a priority, and flags one that is not a whole number of 1 or more', async () => {
+    const calls = mockEmptyCatalog()
+    const { router } = await renderApp(<NewHarness initial={{ mode: 'url' }} />)
+    const ue = userEvent.setup()
+    const url = await screen.findByRole('textbox', { name: 'URL' })
+    await ue.clear(url)
+    await ue.type(url, '/health')
+    const priority = screen.getByRole('textbox', { name: /^Priority/ })
+    await ue.type(priority, '0')
+    expect(await screen.findByText('Use a whole number of 1 or more, or leave it empty.')).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    expect(calls).toHaveLength(0)
+    await ue.clear(priority)
+    await ue.type(priority, '10')
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/mocks/q-1'))
+    expect(calls[0]!.body).toMatchObject({ priority: 10 })
+    expect(calls[1]!.body).toMatchObject({ name: 'GET /health', priority: 10 })
+  })
 })
 
 describe('new mock with integrations', () => {
@@ -172,6 +192,26 @@ describe('a saved quick mock opens in the same quick form', () => {
     expect(screen.getByRole('combobox', { name: 'Method' }).textContent).toContain('POST')
     expect((screen.getByRole('textbox', { name: 'Query parameters: lang' }) as HTMLInputElement).value).toBe('en')
     expect((screen.getByRole('textbox', { name: /^Request body must contain/ }) as HTMLTextAreaElement).value).toBe('{"active":true}')
+    expect(screen.getByRole('tab', { name: 'Simple' }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('a URL mock with a priority opens in Simple mode with the priority filled in', async () => {
+    const stub = {
+      id: 'q-2',
+      name: 'Mulesoft monitor (any)',
+      request: { method: 'ANY', urlPathPattern: '/ajeer-app/api/.*' },
+      response: { status: 200, headers: { 'Content-Type': 'application/json' }, jsonBody: { status: 'ok' } },
+      priority: 10,
+      metadata: { wiremockUi: { owner: 'sara', version: 1, updatedAt: '', updatedBy: 'sara', source: 'ui' } },
+    }
+    server.use(
+      http.get(`${BASE}/api/mocks/q-2`, () => HttpResponse.json(stub)),
+      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/config`, () => HttpResponse.json({ wiremockPublicUrl: 'http://localhost:8080', storeDriver: 'sqlite' })),
+    )
+    await renderApp(<EditMockPage id="q-2" />)
+    expect(((await screen.findByRole('textbox', { name: 'URL' })) as HTMLInputElement).value).toBe('/ajeer-app/api/.*')
+    expect((screen.getByRole('textbox', { name: /^Priority/ }) as HTMLInputElement).value).toBe('10')
     expect(screen.getByRole('tab', { name: 'Simple' }).getAttribute('aria-selected')).toBe('true')
   })
 })

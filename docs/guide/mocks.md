@@ -46,7 +46,7 @@ Saving a mock checks it, pushes it into WireMock, then stores it; WireMock refus
 
 **A default mock** answers every request no key mock matches: turn on **Default answer (when no key matches)**, pick for example **Not found**, save.
 
-**Mock a URL directly** (no integration needed): on **New mock**, choose **Mock a URL directly** and give a method, a URL (an exact path, a path template like `/orders/{orderId}`, or a regex), optional query parameters or body to match, and the response. Good for one-offs; it saves a normal mock that opens in the same quick form.
+**Mock a URL directly** (no integration needed): on **New mock**, choose **Mock a URL directly** and give a method, a URL (an exact path, a path template like `/orders/{orderId}`, or a regex), optional query parameters or body to match, an optional **Priority** (lowest wins; empty uses WireMock's default, 5), and the response. Good for one-offs, and for catch-alls such as `ANY` `/api/.*` with priority 10 so more specific mocks win; it saves a normal mock that opens in the same quick form.
 
 **Advanced.** Open a mock and switch to **Advanced**, or **New mock** → **Start from blank JSON**. The **Server fields** box shows what the UI manages for you (id, owner, version, who changed it last). When a mock uses options Simple mode cannot show, Simple mode says so and links to Advanced.
 

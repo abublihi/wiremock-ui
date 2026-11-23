@@ -50,6 +50,7 @@ describe('quick URL mocks: the form round-trips through the server builder (from
       ),
     ],
     ['a regex URL with a text body match and a text body', form({ body: 'pong' }, { method: 'ANY', urlType: 'regex', url: '/files/[0-9]+', body: 'hello', responseHeaders: [{ name: 'Content-Type', value: 'text/plain' }] })],
+    ['a priority (the ANY + regex catch-all)', form({ body: '{\n  "status": "ok"\n}' }, { method: 'ANY', urlType: 'regex', url: '/ajeer-app/api/.*', priority: '10' })],
     ['a JSON scalar body match (plain text to look for)', form({}, { method: 'POST', url: '/pay', body: '12345' })],
     ['no headers and no body', form({ status: 204, preset: 'custom' }, { method: 'DELETE', url: '/items/1', responseHeaders: [] })],
     ['a slow answer with a custom name', form({ slow: true, delaySeconds: 5, name: 'Slow health' })],
@@ -98,7 +99,9 @@ describe('quick URL mocks: what stays in Advanced', () => {
   const base = () => stored(form({ body: '{\n  "ok": true\n}' }))
   const variants: [string, (s: StubMapping) => StubMapping][] = [
     ['a catalog link', (s) => ({ ...s, metadata: { wiremockUi: { integration: 'nic', endpoint: 'x' } as never } })],
-    ['a priority', (s) => ({ ...s, priority: 1 })],
+    ['a priority of 0', (s) => ({ ...s, priority: 0 })],
+    ['a fractional priority', (s) => ({ ...s, priority: 1.5 })],
+    ['a priority given as text', (s) => ({ ...s, priority: '3' as never })],
     ['another request matcher', (s) => ({ ...s, request: { ...s.request, headers: { 'X-A': { equalTo: '1' } } } })],
     ['two URL fields', (s) => ({ ...s, request: { ...s.request, url: '/x' } })],
     ['a non-equalTo query matcher', (s) => ({ ...s, request: { ...s.request, queryParameters: { q: { matches: '.*' } } } })],
@@ -119,6 +122,27 @@ describe('quick URL mocks: what stays in Advanced', () => {
   it('the blank JSON stub reads back (its empty name becomes the generated one)', () => {
     const blank = { id: '', name: '', request: { method: 'GET', urlPath: '/' }, response: { status: 200, headers: { 'Content-Type': 'application/json' }, jsonBody: {} } }
     expect(fromQuickStub(blank as StubMapping)).toMatchObject({ name: '', body: '{}', quick: { method: 'GET', url: '/' } })
+  })
+})
+
+describe('quick URL mocks: priority', () => {
+  it('reads the pasted catch-all mock with its priority into Simple mode', () => {
+    const stub = {
+      id: 'm-1',
+      name: 'Mulesoft monitor (any)',
+      request: { method: 'ANY', urlPathPattern: '/ajeer-app/api/.*' },
+      response: { status: 200, headers: { 'Content-Type': 'application/json' }, jsonBody: { status: 'ok' } },
+      priority: 10,
+    } as StubMapping
+    const f = fromQuickStub(stub)
+    expect(f).toMatchObject({ name: 'Mulesoft monitor (any)', quick: { method: 'ANY', urlType: 'regex', url: '/ajeer-app/api/.*', priority: '10' } })
+    expect(buildQuickStub(toQuickInput(f!))).toEqual({ name: stub.name, request: stub.request, response: stub.response, priority: 10 })
+  })
+
+  it('an empty priority writes none (WireMock default); spaces around a number are fine', () => {
+    expect(toQuickInput(form()).priority).toBeUndefined()
+    expect(toQuickInput(form({}, { priority: ' 2 ' })).priority).toBe(2)
+    expect('priority' in buildQuickStub(toQuickInput(form()))).toBe(false)
   })
 })
 
