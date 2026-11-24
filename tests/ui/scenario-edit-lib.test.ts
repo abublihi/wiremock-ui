@@ -206,7 +206,7 @@ describe('grouping the mocks list by scenario', () => {
   it('puts a scenario where its first mock is, its steps in transition order, other mocks as they come', () => {
     const plain = stub('p1', { scenarioName: undefined })
     const rows = groupMocks([shipped, plain, other, pending, paid])
-    expect(rows.map((r) => (r.kind === 'mock' ? r.stub.id : `${r.name}:${r.mocks.map((m) => m.id).join(',')}`))).toEqual([
+    expect(rows.map((r) => (r.kind === 'mock' ? r.stub.id : r.kind === 'group' ? r.id : `${r.name}:${r.mocks.map((m) => m.id).join(',')}`))).toEqual([
       'order:m1,m2,m3',
       'p1',
       'other:x1',

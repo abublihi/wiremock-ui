@@ -614,7 +614,7 @@ export function isRegex(pattern: string): boolean {
 }
 
 /** The quick request the builder writes, or null for anything else. */
-function readQuickRequest(request: Record<string, unknown>): Omit<QuickRequest, 'responseHeaders' | 'priority'> | null {
+export function readQuickRequest(request: Record<string, unknown>): Omit<QuickRequest, 'responseHeaders' | 'priority'> | null {
   const method = request.method
   if (!QUICK_METHODS.includes(method as QuickMethod)) return null
   const types = QUICK_URL_TYPES.filter((type) => QUICK_URL_FIELD[type] in request)

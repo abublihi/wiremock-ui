@@ -8,6 +8,8 @@ import { ApiError } from '@/ui/api/client'
 import { useCreateMock, usePreviewMock, useTags, useUpdateMock } from '@/ui/api/queries'
 import { tagsOf } from '@/server/mocks/tags'
 import { TagsField } from '@/ui/components/mocks/TagsField'
+import { groupOf, type GroupMeta } from '@/server/mocks/groups'
+import { type GroupForm, groupFormFromSimple } from '@/ui/lib/groups'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import {
   AlertDialog,
@@ -58,6 +60,14 @@ const TAB =
   'px-3 text-xs data-active:border-signal/40 data-active:bg-signal/10 data-active:text-signal-fg dark:data-active:border-signal/40 dark:data-active:bg-signal/10 dark:data-active:text-signal-fg'
 const pretty = (value: unknown) => JSON.stringify(value, null, 2)
 const sameForm = (a: SimpleForm | null, b: SimpleForm | null) => JSON.stringify(a) === JSON.stringify(b)
+/** `stub` with `metadata.wiremockUi.group` set back (the JSON editor never shows the UI's metadata). */
+function withGroup<T extends { metadata?: Record<string, unknown> }>(stub: T, group: GroupMeta | undefined): T {
+  if (!group) return stub
+  const meta = stub.metadata ?? {}
+  const ui = (typeof meta.wiremockUi === 'object' && meta.wiremockUi !== null ? meta.wiremockUi : {}) as Record<string, unknown>
+  return { ...stub, metadata: { ...meta, wiremockUi: { ...ui, group } } }
+}
+
 const messageOf = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback)
 
 /**
@@ -78,6 +88,7 @@ export function MockEditor({
   onSaved,
   onReload,
   onRestored,
+  onAddResponse,
 }: {
   /** The saved version this draft starts from; undefined for a new mock. */
   mock?: StubMapping
@@ -102,6 +113,8 @@ export function MockEditor({
   onReload?: () => Promise<void>
   /** A version was restored from history; the page decides whether to load it. */
   onRestored?: (stub: StubMapping, dirty: boolean) => void
+  /** A URL mock grows into one with several responses: the page switches to that editor, seeded from this form. */
+  onAddResponse?: (seed: GroupForm) => void
 }) {
   const t = useT()
   const wiremockOnly = useWireMockOnly()
@@ -213,7 +226,9 @@ export function MockEditor({
     setFormError(null)
     setSaving(true)
     try {
-      const stub = withTags(fromEditable(value, link), tags)
+      // One response of a mock with several responses stays in its group.
+      const group = mock && groupOf(mock)
+      const stub = withGroup(withTags(fromEditable(value, link), tags), group)
       const version = mock?.metadata?.wiremockUi?.version ?? 0
       const saved = mock ? await updateMock.mutateAsync({ id: mock.id, stub, version }) : await createMock.mutateAsync(stub)
       setConflict(false)
@@ -307,6 +322,15 @@ export function MockEditor({
               }}
               onSaved={(saved) => finishSave(saved, 'simple')}
               onConflict={() => setConflict(true)}
+              growButton={
+                onAddResponse && quickable && !scenarioSeed
+                  ? () => {
+                      const seed = formRef.current && groupFormFromSimple(formRef.current, tags)
+                      if (seed) onAddResponse(seed)
+                      else toast.error(t('groups.cannotGrow'))
+                    }
+                  : undefined
+              }
             />
           ) : (
             <Alert>

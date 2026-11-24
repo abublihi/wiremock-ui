@@ -32,6 +32,7 @@ Imported stubs are WireMock stub mappings as they are (a WireMock `mappings/` fo
 - Tick **Remove baseline mocks that aren't in this import** to also prune baseline mocks missing from the files.
 - **Review** before importing. The mocks are grouped by a **suggested tag**: their integration (in a bundle exported from here), else the first part of their URL (`/ajeer-app/…` → `ajeer-app`). Mocks that already carry tags keep them. For each group, rename the tag or turn it off; untick mocks you don't want; **Add tag to selected** puts one more tag on every ticked mock. Each mock shows what the import will do (**New**, **Updates a mock**, **Unchanged**, or **Skipped** when a person owns it), and the line under the list sums it up. Nothing is written until **Import**.
 - With **Remove baseline mocks that aren't in this import** ticked, unticked mocks count as not in the import.
+- **Stubs that differ only by one part of the URL** (`/blog/posts/1`, `/blog/posts/2`, maybe a regex `/blog/posts/.*` for the rest) are offered as **one mock with several responses** (by `{posts}`; the regex becomes **Any other**). Pick **Keep N mocks** to import them as they are.
 
 A file can be a bundle (`{ "integrations", "catalog", "mocks" }`), a WireMock export (`{ "mappings": [...] }`), one stub, or an array of stubs.
 

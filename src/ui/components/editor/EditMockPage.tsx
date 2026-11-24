@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
-import { AlertCircleIcon, ArrowUpRightIcon, FlaskConicalIcon, TerminalIcon, WorkflowIcon } from 'lucide-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { AlertCircleIcon, ArrowUpRightIcon, FlaskConicalIcon, ListTreeIcon, TerminalIcon, WorkflowIcon } from 'lucide-react'
+import { groupOf } from '@/server/mocks/groups'
+import { type GroupForm, byLabel, groupFormFromStubs, groupInput } from '@/ui/lib/groups'
+import { GroupEditor } from './GroupEditor'
 import type { StubMapping } from '@/server/wiremock/types'
 import { ApiError } from '@/ui/api/client'
-import { useEndpoints, useIntegrations, useMock } from '@/ui/api/queries'
+import { useEndpoints, useIntegrations, useMock, useMockGroup, useSaveMockGroup } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Skeleton } from '@/ui/components/ui/skeleton'
@@ -28,11 +31,18 @@ export function EditMockPage({ id }: { id: string }) {
   const [mode, setMode] = useState<EditorMode>()
   const [testing, setTesting] = useState(false)
   const publicUrl = useWiremockPublicUrl()
+  const navigate = useNavigate()
   if (!opened && mock.data) setOpened(mock.data)
 
   const meta = opened?.metadata?.wiremockUi
   const integrations = useIntegrations()
   const endpoints = useEndpoints(meta?.endpoint ? meta.integration : undefined)
+  // A mock with several responses opens as one: every stub of its group.
+  const group = opened ? groupOf(opened) : undefined
+  const groupStubs = useMockGroup(group?.id)
+  const saveGroup = useSaveMockGroup()
+  /** A URL mock growing into one with several responses (not saved yet). */
+  const [growing, setGrowing] = useState<GroupForm | null>(null)
 
   if (!opened && mock.isError) {
     const missing = mock.error instanceof ApiError && mock.error.status === 404
@@ -46,7 +56,7 @@ export function EditMockPage({ id }: { id: string }) {
       </EditorShell>
     )
   }
-  if (!opened || (meta?.endpoint && (integrations.isPending || endpoints.isPending))) {
+  if (!opened || (meta?.endpoint && (integrations.isPending || endpoints.isPending)) || (group && groupStubs.isPending)) {
     return (
       <EditorShell title={opened?.name ?? '…'} caption="//">
         <Skeleton className="h-96 w-full" />
@@ -64,6 +74,56 @@ export function EditMockPage({ id }: { id: string }) {
     if (result.data) load(result.data)
   }
 
+  // After a group save: the page follows the group (its first response, which may be another stub now).
+  const afterGroupSave = async (stubs: StubMapping[]) => {
+    const first = stubs[0]!
+    if (first.id !== opened.id) await navigate({ to: '/mocks/$id', params: { id: first.id } })
+    else {
+      await groupStubs.refetch()
+      load(first)
+    }
+  }
+
+  if (growing) {
+    return (
+      <EditorShell valueTitle title={growing.name || opened.name || opened.id} caption={t('groups.editCaption', { count: growing.rows.length + (growing.fallback.on ? 1 : 0), by: byLabel(growing.by) })}>
+        <GroupEditor
+          initial={growing}
+          cancelLabel={t('groups.backToOne')}
+          onCancel={() => setGrowing(null)}
+          onSave={async (form) => {
+            const stubs = await saveGroup.mutateAsync({ input: groupInput(form), replaces: { id: opened.id, version: meta?.version ?? 0 } })
+            await afterGroupSave(stubs)
+            setGrowing(null)
+            return stubs
+          }}
+        />
+      </EditorShell>
+    )
+  }
+
+  const groupForm = group && groupStubs.data ? groupFormFromStubs(groupStubs.data) : null
+  if (group && groupStubs.data && groupForm) {
+    const versions = Object.fromEntries(groupStubs.data.map((s) => [s.id, s.metadata?.wiremockUi?.version ?? 0]))
+    return (
+      <EditorShell
+        valueTitle
+        title={opened.name || opened.id}
+        caption={t('groups.editCaption', { count: groupStubs.data.length, by: byLabel(group.by) })}
+      >
+        <GroupEditor
+          key={JSON.stringify(versions)}
+          initial={groupForm}
+          onSave={async (form) => {
+            const stubs = await saveGroup.mutateAsync({ id: group.id, input: groupInput(form), versions })
+            await afterGroupSave(stubs)
+            return stubs
+          }}
+        />
+      </EditorShell>
+    )
+  }
+
   const integration = integrations.data?.find((i) => i.key === meta?.integration)
   const endpoint = endpoints.data?.find((e) => e.key === meta?.endpoint)
   const catalog = integration && endpoint ? { integration, endpoint } : undefined
@@ -78,7 +138,7 @@ export function EditMockPage({ id }: { id: string }) {
       title={opened.name || opened.id}
       caption={t('editor.editCaption', { ref, version: meta?.version ?? 0 })}
       aside={catalog && <EndpointInfo integration={catalog.integration} endpoint={catalog.endpoint} />}
-      notice={scenario && <ScenarioLink name={scenario} />}
+      notice={scenario ? <ScenarioLink name={scenario} /> : group ? <GroupNotice /> : undefined}
       actions={
         // Both act on the saved version: that is what WireMock serves.
         <>
@@ -108,8 +168,20 @@ export function EditMockPage({ id }: { id: string }) {
         onReload={reload}
         // Restoring with no unsaved changes shows the restored version; a draft stays (its next save will conflict).
         onRestored={(stub, dirty) => !dirty && load(stub)}
+        onAddResponse={group ? undefined : setGrowing}
       />
     </EditorShell>
+  )
+}
+
+/** One response of a mock with several responses the editor can't show as a whole: edited here as JSON, on its own. */
+function GroupNotice() {
+  const t = useT()
+  return (
+    <p className="flex items-center gap-2 rounded-md border border-hazard/40 bg-hazard/5 px-3 py-2 text-xs">
+      <ListTreeIcon aria-hidden className="size-3.5 shrink-0 text-hazard-fg" />
+      {t('groups.cantShow')}
+    </p>
   )
 }
 

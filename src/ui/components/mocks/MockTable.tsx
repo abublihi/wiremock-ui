@@ -17,6 +17,10 @@ import { groupMocks } from '@/ui/lib/scenario-builder'
 import { relativeTime } from '@/ui/lib/time'
 import { cn } from '@/ui/lib/utils'
 import { MockRowActions, mockName } from './MockActions'
+import { GroupRowActions } from './GroupActions'
+import { groupOf } from '@/server/mocks/groups'
+import { byLabel } from '@/ui/lib/groups'
+import { ListTreeIcon } from 'lucide-react'
 
 const URL_FIELDS = ['url', 'urlPath', 'urlPattern', 'urlPathPattern', 'urlPathTemplate'] as const
 
@@ -121,6 +125,8 @@ export function MockTable({ mocks, expanded = false }: { mocks: StubMapping[]; e
         {groupMocks(mocks).map((row) =>
           row.kind === 'mock' ? (
             <MockRow key={row.stub.id} stub={row.stub} />
+          ) : row.kind === 'group' ? (
+            <GroupRows key={`group:${row.id}`} id={row.id} mocks={row.mocks} open={isOpen(`group:${row.id}`)} onToggle={() => toggle(`group:${row.id}`)} />
           ) : (
             <ScenarioRows key={`scenario:${row.name}`} name={row.name} mocks={row.mocks} open={isOpen(row.name)} onToggle={() => toggle(row.name)} />
           ),
@@ -276,6 +282,91 @@ function ScenarioRows({ name, mocks, open, onToggle }: { name: string; mocks: St
         </TableCell>
       </TableRow>
       {open && mocks.map((stub) => <MockRow key={stub.id} stub={stub} step={state(stub)} />)}
+    </>
+  )
+}
+
+/** A mock with several responses: one row ("Name · 3 responses (by seq)"), expandable to a row per response. */
+function GroupRows({ id, mocks, open, onToggle }: { id: string; mocks: StubMapping[]; open: boolean; onToggle: () => void }) {
+  const t = useT()
+  const first = mocks[0]!
+  const meta = groupOf(first)!
+  const method = typeof first.request.method === 'string' ? first.request.method : 'ANY'
+  const statuses = [...new Set(mocks.map((m) => (typeof m.response.status === 'number' ? m.response.status : 200)))]
+  const owners = [...new Set(mocks.map((m) => m.metadata?.wiremockUi?.owner ?? 'baseline'))]
+  const latest = mocks.map((m) => m.metadata?.wiremockUi?.updatedAt).filter((d): d is string => Boolean(d)).sort().at(-1)
+  const by = byLabel(meta.by)
+  const label = t(mocks.length === 1 ? 'groups.countOne' : 'groups.count', { count: mocks.length, by })
+  const tags = tagsOf(first)
+  const step = (stub: StubMapping) => {
+    const value = groupOf(stub)?.value
+    return value === undefined ? t('groups.anyOther', { by }) : t('groups.when', { by, value })
+  }
+  return (
+    <>
+      <TableRow data-group={id} className={cn('hover:bg-surface-2', ROW_CARD)}>
+        <TableCell className={NAME_CELL}>
+          <div className="flex items-start gap-1.5">
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-label={t('groups.toggle', { name: first.name || t('mocks.unnamed') })}
+              onClick={onToggle}
+              className="mt-0.5 rounded-sm outline-none hover:text-signal-fg focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronRightIcon aria-hidden className={cn('size-3.5 shrink-0 transition-transform motion-reduce:transition-none', open && 'rotate-90')} />
+            </button>
+            <div className="min-w-0">
+              <Link to="/mocks/$id" params={{ id: first.id }} className="font-medium hover:text-signal-fg hover:underline">
+                {first.name || t('mocks.unnamed')}
+              </Link>
+              <p className="flex items-center gap-1 text-xs text-hazard-fg">
+                <ListTreeIcon aria-hidden className="size-3.5 shrink-0" />
+                {label}
+              </p>
+              {tags.length > 0 && (
+                <ul aria-label={t('tags.label')} className="mt-1 flex flex-wrap gap-1">
+                  {tags.map((tag) => (
+                    <li key={tag}>
+                      <TagChip tag={tag} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </TableCell>
+        <TableCell className={REQUEST_CELL}>
+          <div className="flex items-center gap-2 max-sm:items-start">
+            <MethodBadge method={method} />
+            <span dir="ltr" className={PATH} title={requestUrl(first)}>
+              {requestUrl(first)}
+            </span>
+          </div>
+        </TableCell>
+        <TableCell className={STATUS_CELL}>
+          <div className="flex flex-wrap gap-1">
+            {statuses.slice(0, 3).map((status) => (
+              <StatusBadge key={status} status={status} />
+            ))}
+            {statuses.length > 3 && <span className="text-xs text-muted-foreground">+{statuses.length - 3}</span>}
+          </div>
+        </TableCell>
+        <TableCell className="hidden md:table-cell">
+          <div className="flex flex-wrap items-center gap-1">
+            {owners.map((owner) => (
+              <Owner key={owner} owner={owner} />
+            ))}
+          </div>
+        </TableCell>
+        <TableCell className="hidden text-xs md:table-cell">
+          <UpdatedAt iso={latest} />
+        </TableCell>
+        <TableCell className={ACTIONS_CELL}>
+          <GroupRowActions id={id} first={first} name={first.name || t('mocks.unnamed')} />
+        </TableCell>
+      </TableRow>
+      {open && mocks.map((stub) => <MockRow key={stub.id} stub={stub} step={step(stub)} />)}
     </>
   )
 }

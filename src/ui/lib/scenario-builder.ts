@@ -1,4 +1,5 @@
 import type { SimpleMockInput } from '@/server/catalog/build'
+import { byGroupOrder, groupOf } from '@/server/mocks/groups'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { Scenario, ScenarioMock } from '@/server/scenarios/service'
 import type { StubMapping } from '@/server/wiremock/types'
@@ -534,7 +535,11 @@ export function editChanges(loaded: LoadedScenario, draft: BuilderDraft): EditCh
 
 // ── The mocks list, grouped by scenario ───────────────────────────────────────
 
-export type MockRow = { kind: 'mock'; stub: StubMapping } | { kind: 'scenario'; name: string; mocks: StubMapping[] }
+export type MockRow =
+  | { kind: 'mock'; stub: StubMapping }
+  | { kind: 'scenario'; name: string; mocks: StubMapping[] }
+  /** A mock with several responses (one stub per value; the fallback last). */
+  | { kind: 'group'; id: string; mocks: StubMapping[] }
 
 /**
  * The rows of the mocks list: a scenario's mocks become one group, placed where its first mock is, its mocks in
@@ -543,7 +548,19 @@ export type MockRow = { kind: 'mock'; stub: StubMapping } | { kind: 'scenario'; 
 export function groupMocks(stubs: StubMapping[]): MockRow[] {
   const rows: MockRow[] = []
   const groups = new Map<string, StubMapping[]>()
+  const responseGroups = new Map<string, StubMapping[]>()
   for (const stub of stubs) {
+    const meta = groupOf(stub)
+    if (meta) {
+      let members = responseGroups.get(meta.id)
+      if (!members) {
+        members = []
+        responseGroups.set(meta.id, members)
+        rows.push({ kind: 'group', id: meta.id, mocks: members })
+      }
+      members.push(stub)
+      continue
+    }
     const name = typeof stub.scenarioName === 'string' && stub.scenarioName !== '' ? stub.scenarioName : undefined
     if (!name) {
       rows.push({ kind: 'mock', stub })
@@ -565,6 +582,7 @@ export function groupMocks(stubs: StubMapping[]): MockRow[] {
     }
     group.sort((a, b) => at(a) - at(b) || byId(a, b))
   }
+  for (const members of responseGroups.values()) members.sort(byGroupOrder)
   return rows
 }
 

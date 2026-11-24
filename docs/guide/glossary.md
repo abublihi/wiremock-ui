@@ -37,6 +37,7 @@ Short definitions of the words the UI and WireMock use. The same definitions app
 | **Default mock** | The answer for every key no other mock has (priority 10). |
 | **Baseline** | Mocks owned by nobody: they came from an import or a seed. A person's mock beats a baseline mock. |
 | **Owner** | Who made a mock ("My mocks"). Everyone can still edit everything. |
+| **Several responses** | One mock answering differently by a value in the request (`seq = 1`, `seq = 2`, any other). In WireMock: one stub per value, sharing `metadata.wiremockUi.group`. |
 | **Tag** | A free-form label on a mock (`qiwa`, `sprint-42`); a mock can have several. Filter the list by tag; import suggests them. |
 | **Review list** | Recorded requests waiting to be accepted as mocks (kept 24 hours). |
 | **Marker stub** | The hidden stub the UI uses to notice a WireMock restart. |

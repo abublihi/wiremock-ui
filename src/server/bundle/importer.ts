@@ -6,6 +6,7 @@ import { ValidationError } from '../errors'
 import { logger } from '../logger'
 import { assertValidStub, canonicalJson, type MockService } from '../mocks/service'
 import { normaliseTags } from '../mocks/tags'
+import { assertGroupMeta } from '../mocks/groups'
 import type { MockStore } from '../store/types'
 import type { StubMapping } from '../wiremock/types'
 import type { Bundle } from './parse'
@@ -110,6 +111,7 @@ export async function importBundle(
       throw new ValidationError(`${label}: metadata.wiremockUi.owner must be a non-empty string`)
     }
     invalid(label, () => normaliseTags((ui as { tags?: unknown } | undefined)?.tags))
+    invalid(label, () => assertGroupMeta((ui as { group?: unknown } | undefined)?.group))
     if (typeof ui?.integration !== 'string') {
       const guess = guessIntegration(stub, prefixList)
       if (guess) {

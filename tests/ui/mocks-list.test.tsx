@@ -196,7 +196,7 @@ describe('mock list', () => {
     const step = (id: string, state: string) => ({ ...stub(id), scenarioName: 'refund', requiredScenarioState: state })
     mockApi([step('s1', 'Started'), stub('plain'), step('s2', 'paid'), step('s3', 'done')] as ReturnType<typeof stub>[])
     await renderApp(<Harness />)
-    await screen.findByText('Showing 1–2 of 2 rows (4 mocks — a scenario is one row)')
+    await screen.findByText('Showing 1–2 of 2 rows (4 mocks — a scenario, or a mock with several responses, is one row)')
   })
 
   it('a filter change goes back to page 1', async () => {

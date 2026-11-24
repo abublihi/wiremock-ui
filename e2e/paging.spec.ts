@@ -52,19 +52,19 @@ test('the mocks list pages: Next, the page in the URL, Back, and a scenario kept
   await signIn(page, USER_A)
   await page.goto('/mocks?q=pg-e2e')
   const pager = page.getByRole('navigation', { name: 'Pages' })
-  await expect(pager.getByText('Showing 1–50 of 61 rows (63 mocks — a scenario is one row)')).toBeVisible()
+  await expect(pager.getByText('Showing 1–50 of 61 rows (63 mocks — a scenario, or a mock with several responses, is one row)')).toBeVisible()
   await expect(page.getByRole('link', { name: 'pg-e2e mock 59' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'pg-e2e mock 9', exact: true })).toHaveCount(0)
 
   await pager.getByRole('button', { name: 'Next page' }).click()
   await expect(page).toHaveURL(/[?&]page=2/)
-  await expect(pager.getByText('Showing 51–61 of 61 rows (63 mocks — a scenario is one row)')).toBeVisible()
+  await expect(pager.getByText('Showing 51–61 of 61 rows (63 mocks — a scenario, or a mock with several responses, is one row)')).toBeVisible()
   // A search is set, so the scenario group is open: all three steps on this page.
   await expect(page.getByRole('button', { name: 'Scenario: pg-e2e flow · 3 mocks' })).toHaveAttribute('aria-expanded', 'true')
   for (const n of [1, 2, 3]) await expect(page.getByRole('link', { name: `pg-e2e step ${n}` })).toBeVisible()
 
   await page.goBack()
-  await expect(pager.getByText('Showing 1–50 of 61 rows (63 mocks — a scenario is one row)')).toBeVisible()
+  await expect(pager.getByText('Showing 1–50 of 61 rows (63 mocks — a scenario, or a mock with several responses, is one row)')).toBeVisible()
 
   // Changing a filter starts again at page 1.
   await page.goto('/mocks?q=pg-e2e&page=2')

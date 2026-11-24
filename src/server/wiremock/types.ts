@@ -3,6 +3,13 @@ export type WireMockUiMeta = {
   endpoint?: string
   /** Free-form labels that group mocks (see src/server/mocks/tags.ts); absent when none. */
   tags?: string[]
+  /** Set on each stub of a mock with several responses (see src/server/mocks/groups.ts). */
+  group?: {
+    id: string
+    by: { location: 'jsonPath' | 'xPath' | 'query' | 'path' | 'header' | 'form'; expression: string }
+    value?: string
+    order: number
+  }
   owner: string
   version: number
   updatedAt: string

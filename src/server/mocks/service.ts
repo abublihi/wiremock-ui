@@ -4,13 +4,14 @@ import { logger } from '../logger'
 import { newestFirst, pageMocks, type MockPage } from './paging'
 import { assertPowerFields, normalisePowerFields } from './power-fields'
 import { normaliseTags, tagsOf } from './tags'
+import { assertGroupMeta, buildGroupStubs, byGroupOrder, groupOf, type GroupInput } from './groups'
 import type { MockStore } from '../store/types'
 import type { PublicUser } from '../users/types'
 import type { WireMockClient } from '../wiremock/client'
 import type { StubBase, StubMapping, WireMockUiMeta } from '../wiremock/types'
 
 export type MockInput = Omit<StubBase, 'id' | 'metadata'> & {
-  metadata?: { wiremockUi?: Partial<Pick<WireMockUiMeta, 'integration' | 'endpoint' | 'tags'>> } & Record<
+  metadata?: { wiremockUi?: Partial<Pick<WireMockUiMeta, 'integration' | 'endpoint' | 'tags' | 'group'>> } & Record<
     string,
     unknown
   >
@@ -86,9 +87,10 @@ function importedStub(stub: StubMapping, owner: string): StubMapping {
   const { uuid: _uuid, ...clean } = stub
   const ui = stub.metadata?.wiremockUi
   const tags = normaliseTags(ui?.tags)
+  const group = assertGroupMeta(ui?.group)
   return {
     ...clean,
-    metadata: { ...stub.metadata, wiremockUi: { integration: ui?.integration, endpoint: ui?.endpoint, ...(tags ? { tags } : {}), owner } },
+    metadata: { ...stub.metadata, wiremockUi: { integration: ui?.integration, endpoint: ui?.endpoint, ...(tags ? { tags } : {}), ...(group ? { group } : {}), owner } },
   } as StubMapping
 }
 
@@ -208,6 +210,11 @@ export class MockService {
     const source = await this.get(id)
     const { id: _id, ...rest } = source
     const input = { ...rest, name: source.name ? `${source.name} (copy)` : '(copy)' } as MockInput
+    // One response of a mock with several responses becomes a mock of its own.
+    if (groupOf(source)) {
+      const { group: _g, ...ui } = source.metadata!.wiremockUi!
+      input.metadata = { ...source.metadata, wiremockUi: ui }
+    }
     const stub = await this.save(this.newId(), input, 0, actor.username, null)
     await this.record({ actor: actor.username, action: 'mock.duplicate', target: stub.id, details: { from: id } })
     return stub
@@ -255,6 +262,74 @@ export class MockService {
     const previous = await this.store.get(stub.id)
     if (!previous) return 'created'
     return comparable(previous) === comparable(incoming) ? 'unchanged' : 'updated'
+  }
+
+  // ── A mock with several responses (src/server/mocks/groups.ts): one editor, several stubs ──────────────────────
+
+  /** The stubs of group `id` in editor order (the fallback last); NotFound when there are none. */
+  async getGroup(id: string): Promise<StubMapping[]> {
+    const stubs = (await this.store.listAll()).filter((s) => groupOf(s)?.id === id).sort(byGroupOrder)
+    if (stubs.length === 0) throw new NotFoundError()
+    return stubs
+  }
+
+  /**
+   * Writes a group as `input` describes it and returns its stubs. `id` undefined makes a new group. `versions` holds
+   * the version of every stub the editor loaded: a stub missing from it or at another version means someone changed
+   * the group meanwhile (409). A response keeps its stub (and its history) when its value is still there; new values
+   * get new stubs; values that are gone are deleted. `replaces`: a single mock the new group grows from (its first
+   * response keeps that mock's id).
+   */
+  async saveGroup(
+    id: string | undefined,
+    input: GroupInput,
+    versions: Record<string, number>,
+    actor: PublicUser,
+    replaces?: { id: string; version: number },
+  ): Promise<StubMapping[]> {
+    const groupId = id ?? this.newId()
+    const desired = buildGroupStubs(input, groupId)
+    for (const d of desired) this.validate(d)
+    const existing = id ? await this.getGroup(id) : []
+    for (const stub of existing) {
+      if (versions[stub.id] !== stub.metadata?.wiremockUi?.version) throw new ConflictError()
+    }
+    let adopted: StubMapping | undefined
+    if (replaces) {
+      adopted = await this.get(replaces.id)
+      if (adopted.metadata?.wiremockUi?.version !== replaces.version) throw new ConflictError()
+      if (groupOf(adopted)) throw new ValidationError('replaces must be a mock without several responses')
+    }
+    const keyOf = (value: string | undefined) => (value === undefined ? '\u0000fallback' : value)
+    const byKey = new Map(existing.map((s) => [keyOf(groupOf(s)?.value), s]))
+    const written: StubMapping[] = []
+    for (const [i, d] of desired.entries()) {
+      const key = keyOf(d.metadata.wiremockUi.group.value)
+      const previous = byKey.get(key) ?? (i === 0 ? adopted : undefined)
+      byKey.delete(key)
+      if (previous === adopted) adopted = undefined
+      written.push(
+        previous
+          ? await this.save(previous.id, d, previous.metadata?.wiremockUi?.version ?? 0, actor.username, previous)
+          : await this.save(this.newId(), d, 0, actor.username, null),
+      )
+    }
+    for (const gone of byKey.values()) await this.remove(gone, undefined)
+    // A replaced mock that no response took over is folded into the group: it goes.
+    if (adopted) await this.remove(adopted, undefined)
+    await this.record({
+      actor: actor.username,
+      action: id ? 'mock.update' : 'mock.create',
+      target: groupId,
+      details: { group: true, responses: desired.length },
+    })
+    return written
+  }
+
+  /** Deletes every stub of group `id`. */
+  async deleteGroup(id: string, actor: PublicUser): Promise<void> {
+    for (const stub of await this.getGroup(id)) await this.remove(stub, undefined)
+    await this.record({ actor: actor.username, action: 'mock.delete', target: id, details: { group: true } })
   }
 
   /** Import prune: removes a mock regardless of owner. */
@@ -306,10 +381,12 @@ export class MockService {
     this.validate(input)
     const prevMeta = previous?.metadata?.wiremockUi
     const tags = normaliseTags(input.metadata?.wiremockUi?.tags)
+    const group = assertGroupMeta(input.metadata?.wiremockUi?.group)
     const wiremockUi: WireMockUiMeta = {
       integration: input.metadata?.wiremockUi?.integration,
       endpoint: input.metadata?.wiremockUi?.endpoint,
       ...(tags ? { tags } : {}),
+      ...(group ? { group } : {}),
       owner: override?.owner ?? prevMeta?.owner ?? user,
       version: override?.version ?? expectedVersion + 1,
       updatedAt: this.now().toISOString(),

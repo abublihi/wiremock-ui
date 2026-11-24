@@ -57,6 +57,7 @@ Other ways to run it (the one-container image's settings, with Redis, from sourc
 - **Record real traffic**, then accept the recorded answers you want from a review list (or turn logged requests into mocks). `RECORDING_ALLOWED=false` turns it off.
 - **Import and export**: bundles, WireMock mappings, files, folders, zips and **Postman collections** (each request becomes an endpoint, each saved example a mock). A review step suggests **tags** per group of mocks (accept, rename or turn them off), lets you untick mocks and shows what each will do before anything is written. Baseline mocks can be seeded on every start.
 - **Tags**: free-form labels on mocks, edited above the editor and filterable in the list.
+- **Several responses by value**: one mock that answers differently by a URL variable, query parameter, header or body field, with an "any other value" row and a Try it box; import offers to fold stubs that differ only by one URL segment into one.
 - **History and restore** for every mock, conflict detection when two people edit the same one, and an **audit log**.
 - **Durable**: mocks live in the UI's store (one SQLite file, or Redis) and are put back into WireMock after it restarts. Or run **WireMock-only** and store nothing.
 - **A built-in guide** (Help → Guide, or press `?`) and a **How this works** button on every page.

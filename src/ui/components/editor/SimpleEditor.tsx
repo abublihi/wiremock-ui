@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertCircleIcon, EyeIcon, FileIcon, SaveIcon, Trash2Icon } from 'lucide-react'
+import { AlertCircleIcon, EyeIcon, FileIcon, ListTreeIcon, SaveIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
@@ -155,6 +155,7 @@ export function SimpleEditor({
   onChange,
   onSaved,
   onConflict,
+  growButton,
 }: {
   integration?: Integration
   endpoint?: Endpoint
@@ -169,6 +170,8 @@ export function SimpleEditor({
   onChange?: (form: SimpleForm) => void
   onSaved?: (stub: StubMapping) => void | Promise<void>
   onConflict?: () => void
+  /** Shown on a URL mock: "Add a response for another value" (the page opens the several-responses editor). */
+  growButton?: () => void
 }) {
   const t = useT()
   const navigate = useNavigate()
@@ -740,6 +743,16 @@ export function SimpleEditor({
           onChange={updateScenario}
         />
       </Section>
+
+      {growButton && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-dashed border-line px-3 py-2.5 text-xs">
+          <Button type="button" variant="outline" size="sm" onClick={growButton}>
+            <ListTreeIcon data-icon="inline-start" />
+            {t('groups.start')}
+          </Button>
+          <span className="text-muted-foreground">{t('groups.startHint')}</span>
+        </div>
+      )}
 
       <Section title={t('editor.section.label')}>
         <Field data-invalid={Boolean(errors.name)}>

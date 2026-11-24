@@ -1,4 +1,5 @@
 import type { StubMapping } from '../wiremock/types'
+import { groupOf } from './groups'
 
 /** The largest page `GET /api/mocks?limit=` accepts. */
 export const MAX_PAGE_LIMIT = 200
@@ -6,7 +7,7 @@ export const MAX_PAGE_LIMIT = 200
 export type MockPage = {
   /** The mocks of this page's rows, in list order (a scenario's mocks next to each other). */
   items: StubMapping[]
-  /** Rows matching the filter: a mock is one row, a scenario (all its matching mocks) is one row. */
+  /** Rows matching the filter: a mock is one row; a scenario, or a mock with several responses, is one row. */
   total: number
   /** Mocks matching the filter. */
   totalMocks: number
@@ -34,10 +35,15 @@ export function newestFirst(a: StubMapping, b: StubMapping): number {
   return tb.localeCompare(ta) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 }
 
-const scenarioOf = (s: StubMapping) => (typeof s.scenarioName === 'string' && s.scenarioName !== '' ? s.scenarioName : undefined)
+/** The row a stub folds into: its group (a mock with several responses), else its scenario; undefined: a row of its own. */
+const rowKeyOf = (s: StubMapping) => {
+  const group = groupOf(s)
+  if (group) return `g:${group.id}`
+  return typeof s.scenarioName === 'string' && s.scenarioName !== '' ? `s:${s.scenarioName}` : undefined
+}
 
 /**
- * One page of rows from a sorted list. A scenario's mocks form one row, placed where its first (newest) mock is, so
+ * One page of rows from a sorted list. A scenario's mocks (or a group's stubs) form one row, placed where its first (newest) mock is, so
  * paging never splits a scenario across pages; a page can hold more than `limit` mocks when it holds a scenario.
  */
 export function pageMocks(sorted: StubMapping[], page: { limit: number; offset: number }): MockPage {
@@ -46,7 +52,7 @@ export function pageMocks(sorted: StubMapping[], page: { limit: number; offset: 
   let baseline = 0
   for (const stub of sorted) {
     if ((stub.metadata?.wiremockUi?.owner ?? 'baseline') === 'baseline') baseline++
-    const name = scenarioOf(stub)
+    const name = rowKeyOf(stub)
     if (name === undefined) {
       rows.push([stub])
       continue

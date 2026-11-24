@@ -297,7 +297,7 @@ export function isJsonDocument(text: string): boolean {
   }
 }
 
-function quickRequest(r: QuickMockInput['request']): Record<string, unknown> {
+export function quickRequest(r: QuickMockInput['request']): Record<string, unknown> {
   const url = r.url.trim()
   if (url === '') throw new ValidationError('request.url is required')
   if (/\s/.test(url)) throw new ValidationError('request.url must not contain spaces')
@@ -324,7 +324,7 @@ function quickRequest(r: QuickMockInput['request']): Record<string, unknown> {
 }
 
 /** A status with the headers as given; under a JSON Content-Type the body must be JSON and is sent as jsonBody. */
-function quickResponse(input: QuickMockInput): Record<string, unknown> {
+export function quickResponse(input: QuickMockInput): Record<string, unknown> {
   if (input.proxy) return proxyResponse(input.proxy)
   if (input.fault) return { fault: input.fault }
   const response: Record<string, unknown> = { status: input.status }

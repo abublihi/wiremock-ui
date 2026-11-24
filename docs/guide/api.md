@@ -89,6 +89,14 @@ curl -u $AUTH -X POST $UI/api/recordings/snapshot -H "$JSON" -d '{"method":"GET"
 curl -u $AUTH -X POST $UI/api/mocks/reset-mine      # {"deleted":4}
 curl -u $AUTH -X DELETE $UI/api/requests            # clear the request log
 
+# A mock with several responses (one stub per value; see the Mocks guide)
+curl -u $AUTH -X POST $UI/api/mock-groups -H "$JSON" -d '{"input":{"name":"Est","request":{"method":"GET","urlType":"template","url":"/est/{seq}"},
+  "by":{"location":"path","expression":"seq"},"responses":[{"value":"1","response":{"status":200,"body":"one"}}],
+  "fallback":{"response":{"status":404}}}}'                # → its stubs; metadata.wiremockUi.group.id names the group
+curl -u $AUTH $UI/api/mock-groups/<group-id>               # its stubs, the fallback last
+curl -u $AUTH -X PUT $UI/api/mock-groups/<group-id> -H "$JSON" -d '{"input":{…},"versions":{"<stub-id>":1,…}}'  # every stub's version as loaded
+curl -u $AUTH -X DELETE $UI/api/mock-groups/<group-id>
+
 # Import a bundle (add ?prune=true to remove baseline mocks missing from it)
 curl -u $AUTH -X POST $UI/api/import -H "$JSON" --data-binary @bundle.json
 # Dry run: the same checks and report plus items [{index,id,outcome}] per mock; nothing is written

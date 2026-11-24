@@ -10,6 +10,7 @@ import type { PublicConfig } from '@/server/http/handlers/config'
 import type { SetupStatus } from '@/server/http/handlers/setup'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { MockPage } from '@/server/mocks/paging'
+import type { GroupInput } from '@/server/mocks/groups'
 import type { PublicUser } from '@/server/users/types'
 import type { NearMissView, RequestSummary } from '@/server/requests/journal'
 import type { TestRequestInput, TestRequestResult } from '@/server/wiremock/relay'
@@ -49,6 +50,7 @@ export const queryKeys = {
   tags: ['mocks', 'tags'] as const,
   integrations: ['integrations'] as const,
   mock: (id: string) => ['mocks', 'detail', id] as const,
+  mockGroup: (id: string) => ['mocks', 'group', id] as const,
   endpoints: (integration: string) => ['integrations', integration, 'endpoints'] as const,
   mockHistory: (id: string) => ['mocks', 'history', id] as const,
   requests: ['requests'] as const,
@@ -194,6 +196,37 @@ export function useDeleteMock() {
   return useMutation({
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       apiFetch<void>(`/api/mocks/${encodeURIComponent(id)}`, { method: 'DELETE', query: { version } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
+  })
+}
+
+// ── A mock with several responses (one stub per value) ───────────────────────────
+
+/** A group's stubs in editor order (the fallback last). */
+export function useMockGroup(id: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.mockGroup(id ?? ''),
+    queryFn: () => apiFetch<StubMapping[]>(`/api/mock-groups/${encodeURIComponent(id!)}`),
+    enabled: id !== undefined,
+  })
+}
+
+/** Creates a group (`replaces`: the single mock it grows from) or rewrites one (`id` + `versions`). */
+export function useSaveMockGroup() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (args: { id?: string; input: GroupInput; versions?: Record<string, number>; replaces?: { id: string; version: number } }) =>
+      args.id
+        ? apiFetch<StubMapping[]>(`/api/mock-groups/${encodeURIComponent(args.id)}`, { method: 'PUT', body: { input: args.input, versions: args.versions ?? {} } })
+        : apiFetch<StubMapping[]>('/api/mock-groups', { method: 'POST', body: { input: args.input, ...(args.replaces ? { replaces: args.replaces } : {}) } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
+  })
+}
+
+export function useDeleteMockGroup() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/api/mock-groups/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
   })
 }

@@ -12,7 +12,9 @@ import { Switch } from '@/ui/components/ui/switch'
 import { useT } from '@/ui/i18n'
 import {
   appliedGroupTag,
+  findCombinable,
   groupForReview,
+  type Combinable,
   initialReview,
   reviewedBundle,
   stubUrl,
@@ -50,10 +52,11 @@ export function ImportReview({
   const t = useT()
   const ids = useId()
   const groups = useMemo(() => groupForReview(bundle), [bundle])
-  const [state, setState] = useState<ReviewState>(() => initialReview(groups))
+  const combinable = useMemo(() => findCombinable(bundle), [bundle])
+  const [state, setState] = useState<ReviewState>(() => initialReview(groups, combinable))
   const [bulk, setBulk] = useState('')
   const [bulkProblem, setBulkProblem] = useState<string | null>(null)
-  const reviewed = useMemo(() => reviewedBundle(bundle, groups, state), [bundle, groups, state])
+  const reviewed = useMemo(() => reviewedBundle(bundle, groups, state, combinable), [bundle, groups, state, combinable])
 
   const onBundleRef = useRef(onBundle)
   onBundleRef.current = onBundle
@@ -132,6 +135,10 @@ export function ImportReview({
         <p className="text-[11px] text-muted-foreground">{t('review.intro')}</p>
       </div>
 
+      {combinable.map((c) => (
+        <CombineCard key={c.key} c={c} on={Boolean(state.combine[c.key])} onChange={(on) => update({ combine: { ...state.combine, [c.key]: on } })} />
+      ))}
+
       <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface-2/40 px-3 py-2 text-xs">
         <span className="font-medium tabular-nums">{t('review.selected', { count: selected, total: bundle.mocks.length })}</span>
         <label htmlFor={`${ids}-bulk`} className="ms-auto text-muted-foreground">
@@ -192,6 +199,43 @@ export function ImportReview({
         )}
       </p>
     </div>
+  )
+}
+
+/** "3 stubs differ only by one part of the URL": fold them into one mock with several responses, or keep them apart. */
+function CombineCard({ c, on, onChange }: { c: Combinable; on: boolean; onChange: (on: boolean) => void }) {
+  const t = useT()
+  const ids = useId()
+  const count = c.members.length + (c.fallback !== undefined ? 1 : 0)
+  const values = c.members.map((m) => m.value).join(', ')
+  return (
+    <section aria-labelledby={`${ids}-t`} className="flex flex-wrap items-center gap-3 rounded-md border border-hazard/40 bg-hazard/5 px-3 py-2.5 text-xs">
+      <div className="flex min-w-0 flex-1 basis-80 flex-col gap-0.5">
+        <h4 id={`${ids}-t`} className="font-medium">
+          {t('review.combineTitle', { count })}
+        </h4>
+        <p className="text-muted-foreground">
+          <span dir="ltr" className="font-mono text-foreground">
+            {c.method} {c.template}
+          </span>{' '}
+          {t(c.fallback !== undefined ? 'review.combineBodyFallback' : 'review.combineBody', { values, param: c.param, count })}
+        </p>
+      </div>
+      <div role="radiogroup" aria-labelledby={`${ids}-t`} className="flex gap-1 rounded-md border border-hazard/40 bg-surface p-0.5">
+        {([true, false] as const).map((value) => (
+          <button
+            key={String(value)}
+            type="button"
+            role="radio"
+            aria-checked={on === value}
+            onClick={() => onChange(value)}
+            className={cn('rounded px-2 py-1', on === value ? 'bg-hazard/15 text-hazard-fg' : 'text-muted-foreground hover:text-foreground')}
+          >
+            {value ? t('review.combineOn', { count }) : t('review.combineOff', { count })}
+          </button>
+        ))}
+      </div>
+    </section>
   )
 }
 
