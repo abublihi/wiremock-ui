@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { Link, createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { AlertCircleIcon, DatabaseIcon, InboxIcon } from 'lucide-react'
-import { useIntegrations, useMockPage } from '@/ui/api/queries'
+import { useIntegrations, useMockPage, useTags } from '@/ui/api/queries'
 import { GettingStartedChecklist } from '@/ui/components/guide/GettingStarted'
 import { WithTerm } from '@/ui/components/guide/Term'
 import { ExportMenu } from '@/ui/components/mocks/ExportMenu'
@@ -37,6 +37,7 @@ export const Route = createFileRoute('/_app/mocks/')({
     status: str(raw.status),
     q: str(raw.q),
     scenarios: raw.scenarios === 'only' ? 'only' : undefined,
+    tag: str(raw.tag),
     page: pageOf(raw.page),
   }),
   component: MocksRoute,
@@ -85,6 +86,7 @@ export function MocksPage({
       status: search.status,
       q: search.q,
       scenario: search.scenarios === 'only' ? '*' : undefined,
+      tag: search.tag,
     },
     { limit: size, offset: (page - 1) * size },
   )
@@ -92,9 +94,10 @@ export function MocksPage({
   // A filter change starts again at page 1.
   const onFilterChange = useCallback((next: MocksSearch) => onSearchChange({ ...next, page: undefined }), [onSearchChange])
   const integrations = useIntegrations()
+  const tags = useTags()
   // Nothing to build mocks from yet: the first step is the catalog, not New mock.
   const noCatalog = integrations.data?.length === 0
-  const filtered = Boolean(search.integration || search.status || search.q || search.scenarios || (!wiremockOnly && owner !== 'me' && owner !== 'all'))
+  const filtered = Boolean(search.integration || search.status || search.q || search.scenarios || search.tag || (!wiremockOnly && owner !== 'me' && owner !== 'all'))
 
   const count = mocks.data?.totalMocks ?? 0
   const baseline = mocks.data?.baseline ?? 0
@@ -103,7 +106,7 @@ export function MocksPage({
   const everyone = useMockPage({}, { limit: 1, offset: 0 }, { enabled: mine && mocks.data !== undefined && count === 0 })
   const shared = mine && count === 0 ? (everyone.data?.totalMocks ?? 0) : 0
   const clearFilters = () =>
-    onSearchChange({ owner: undefined, integration: undefined, status: undefined, q: undefined, scenarios: undefined, page: undefined })
+    onSearchChange({ owner: undefined, integration: undefined, status: undefined, q: undefined, scenarios: undefined, tag: undefined, page: undefined })
   // Past the last page (mocks deleted, an old link): go to the last page that has rows.
   const lastPage = mocks.data ? Math.max(1, Math.ceil(mocks.data.total / size)) : 1
   const pastEnd = Boolean(mocks.data && !mocks.isPlaceholderData && page > lastPage)
@@ -130,7 +133,7 @@ export function MocksPage({
 
       <GettingStartedChecklist />
 
-      <MockFilters search={search} integrations={integrations.data ?? []} onChange={onFilterChange} />
+      <MockFilters search={search} integrations={integrations.data ?? []} tags={tags.data} onChange={onFilterChange} />
 
       {mocks.isError && mocks.data && (
         <p role="alert" className="flex items-center gap-2 text-xs text-mismatch">
@@ -208,7 +211,7 @@ export function MocksPage({
       ) : (
         <div className="flex flex-col gap-3">
           {/* While a search or filter is set, scenario groups start open so a hit inside one is visible. */}
-          <MockTable mocks={mocks.data.items} expanded={Boolean(search.q || search.status || search.integration)} />
+          <MockTable mocks={mocks.data.items} expanded={Boolean(search.q || search.status || search.integration || search.tag)} />
           <MockPager
             page={page}
             size={size}

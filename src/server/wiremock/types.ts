@@ -1,6 +1,8 @@
 export type WireMockUiMeta = {
   integration?: string
   endpoint?: string
+  /** Free-form labels that group mocks (see src/server/mocks/tags.ts); absent when none. */
+  tags?: string[]
   owner: string
   version: number
   updatedAt: string

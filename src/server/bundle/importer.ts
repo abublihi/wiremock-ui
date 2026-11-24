@@ -5,6 +5,7 @@ import { validateEndpoint, validateIntegration, type CatalogService } from '../c
 import { ValidationError } from '../errors'
 import { logger } from '../logger'
 import { assertValidStub, canonicalJson, type MockService } from '../mocks/service'
+import { normaliseTags } from '../mocks/tags'
 import type { MockStore } from '../store/types'
 import type { StubMapping } from '../wiremock/types'
 import type { Bundle } from './parse'
@@ -18,7 +19,14 @@ export type ImportReport = {
   skipped: { id: string; reason: string }[]
   pruned: number
   ignoredOidcIdentities: number
+  /**
+   * Dry run only: what happens to each mock of the bundle, in bundle order (`index` into bundle.mocks). Two entries
+   * with the same id are one mock: the last one wins.
+   */
+  items?: ImportItem[]
 }
+
+export type ImportItem = { index: number; id: string; outcome: 'created' | 'updated' | 'unchanged' | 'skipped'; reason?: string }
 
 type Deps = {
   catalog: CatalogService
@@ -61,7 +69,7 @@ const invalid = <T>(what: string, fn: () => T): T => {
 export async function importBundle(
   bundle: Bundle,
   deps: Deps,
-  opts: { actor: string; prune: boolean; source: 'import' | 'seed'; unreadable?: number },
+  opts: { actor: string; prune: boolean; source: 'import' | 'seed'; unreadable?: number; dryRun?: boolean },
 ): Promise<ImportReport> {
   // Phase 1: validate everything; nothing is written until the whole bundle passes.
   const integrations = bundle.integrations.map((raw, i) =>
@@ -84,6 +92,7 @@ export async function importBundle(
   const prefixList = [...prefixes].map(([key, prefix]) => ({ key, prefix }))
 
   const mocks = new Map<string, StubMapping>()
+  const indexOf = new Map<string, number>()
   bundle.mocks.forEach((raw, i) => {
     const label = `mocks[${i}]${nameOf(raw, 'id')}`
     invalid(label, () => assertValidStub(raw))
@@ -100,6 +109,7 @@ export async function importBundle(
     if (ui?.owner !== undefined && (typeof ui.owner !== 'string' || ui.owner === '')) {
       throw new ValidationError(`${label}: metadata.wiremockUi.owner must be a non-empty string`)
     }
+    invalid(label, () => normaliseTags((ui as { tags?: unknown } | undefined)?.tags))
     if (typeof ui?.integration !== 'string') {
       const guess = guessIntegration(stub, prefixList)
       if (guess) {
@@ -107,7 +117,10 @@ export async function importBundle(
       }
     }
     mocks.set(id, stub)
+    indexOf.set(id, i)
   })
+
+  if (opts.dryRun) return dryRun(bundle, mocks, indexOf, deps, opts)
 
   // Phase 2: write. Catalog entries equal to the stored copy (ignoring updatedAt/updatedBy) are left alone.
   const storedIntegrations = new Map((await deps.catalog.listIntegrations()).map((i) => [i.key, i]))
@@ -165,6 +178,57 @@ export async function importBundle(
   }
 
   await safeRecord(deps.audit, { actor: opts.actor, action: 'import', target: 'bundle', details: { ...report } })
+  return report
+}
+
+/** The report an import would give, plus each mock's outcome; nothing is written and nothing is audited. */
+async function dryRun(
+  bundle: Bundle,
+  mocks: Map<string, StubMapping>,
+  indexOf: Map<string, number>,
+  deps: Deps,
+  opts: { prune: boolean; unreadable?: number },
+): Promise<ImportReport> {
+  const storedIntegrations = new Map((await deps.catalog.listIntegrations()).map((i) => [i.key, i]))
+  const report: ImportReport = {
+    integrations: 0,
+    endpoints: 0,
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    skipped: [],
+    pruned: 0,
+    ignoredOidcIdentities: bundle.oidcIdentities.length,
+    items: [],
+  }
+  for (const raw of bundle.integrations) {
+    const i = validateIntegration(raw)
+    if (!sameCatalogEntry(storedIntegrations.get(i.key), i)) report.integrations++
+  }
+  for (const raw of bundle.catalog) {
+    const e = validateEndpoint(raw)
+    if (!sameCatalogEntry(await deps.catalog.findEndpoint(e.integration, e.key), e)) report.endpoints++
+  }
+  for (const [id, stub] of mocks) {
+    const index = indexOf.get(id)!
+    const existing = await deps.store.get(id)
+    const existingOwner = existing ? (existing.metadata?.wiremockUi?.owner ?? 'baseline') : undefined
+    if (existingOwner !== undefined && existingOwner !== 'baseline') {
+      const reason = `owned by ${existingOwner}`
+      report.skipped.push({ id, reason })
+      report.items!.push({ index, id, outcome: 'skipped', reason })
+      continue
+    }
+    const outcome = await deps.mocks.importOutcome(stub, stub.metadata?.wiremockUi?.owner ?? 'baseline')
+    report[outcome]++
+    report.items!.push({ index, id, outcome })
+  }
+  report.items!.sort((a, b) => a.index - b.index)
+  if (opts.prune && !opts.unreadable) {
+    for (const stub of await deps.store.listAll()) {
+      if ((stub.metadata?.wiremockUi?.owner ?? 'baseline') === 'baseline' && !mocks.has(stub.id)) report.pruned++
+    }
+  }
   return report
 }
 

@@ -126,10 +126,13 @@ describe('WireMock-only mode (STORE_DRIVER=none)', () => {
     const bundle = JSON.stringify({ mocks: [{ request: { method: 'GET', urlPath: '/x' }, response: { status: 200 } }] })
     await user.upload(screen.getByLabelText('Choose files'), new File([bundle], 'b.json', { type: 'application/json' }))
     await screen.findByRole('region', { name: /In b\.json/ })
-    expect(screen.queryByRole('checkbox')).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Import' }))
+    // The review's own checkboxes pick mocks; there is no prune box.
+    expect(screen.queryByRole('checkbox', { name: /Remove baseline mocks/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: /^Import( \d+)?$/ }))
     await screen.findByText('Import finished')
-    expect(seen[0]!.searchParams.has('prune')).toBe(false)
+    const imports = seen.filter((u) => u.searchParams.get('dryRun') !== 'true')
+    expect(imports).toHaveLength(1)
+    expect(imports[0]!.searchParams.has('prune')).toBe(false)
   })
 
   it('Users explains there is no user management instead of listing accounts', async () => {

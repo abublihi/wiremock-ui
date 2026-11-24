@@ -292,12 +292,16 @@ describe('import page', () => {
     const calls: Call[] = []
     server.use(
       http.post(`${BASE}/api/import`, async ({ request }) => {
+        // The review's dry runs are not the import.
+        if (new URL(request.url).searchParams.get('dryRun') === 'true') return HttpResponse.json({ ...report, items: [] })
         await record(request, calls)
         return HttpResponse.json(report)
       }),
     )
     return calls
   }
+  /** "Import", or "Import 3" once the review counts the ticked mocks. */
+  const IMPORT = /^Import( \d+)?$/
   const file = (content: string, name = 'bundle.json') => new File([content], name, { type: 'application/json' })
   const bundle = JSON.stringify({ integrations: [{ key: 'a' }], catalog: [{ key: 'x' }, { key: 'y' }], mocks: [{}, {}, {}], oidcIdentities: [{}] })
 
@@ -315,9 +319,9 @@ describe('import page', () => {
     expect(within(list).getByText(/odd\.json: unrecognised bundle shape/)).toBeTruthy()
     expect(within(list).getByText('1 integration · 2 endpoints · 3 mocks')).toBeTruthy()
     expect(screen.getByText('Remove the files marked with an error (or fix them and choose again) to import the rest.')).toBeTruthy()
-    expect((screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: IMPORT }) as HTMLButtonElement).disabled).toBe(true)
     for (const name of ['notes.txt', 'big.json', 'bad.json', 'odd.json']) await ue.click(screen.getByRole('button', { name: `Remove ${name}` }))
-    expect((screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: IMPORT }) as HTMLButtonElement).disabled).toBe(false)
     expect(calls).toHaveLength(0)
   })
 
@@ -331,7 +335,7 @@ describe('import page', () => {
     expect(within(summary).getByText('Endpoints').nextSibling?.textContent).toBe('2')
     expect(within(summary).getByText('Mocks').nextSibling?.textContent).toBe('3')
     expect(calls).toHaveLength(0)
-    await ue.click(screen.getByRole('button', { name: 'Import' }))
+    await ue.click(screen.getByRole('button', { name: IMPORT }))
     await screen.findByText('Import finished')
     expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/import', search: '' })
     expect((calls[0]!.body as { mocks: unknown[] }).mocks).toHaveLength(3)
@@ -357,7 +361,7 @@ describe('import page', () => {
     expect(within(summary).getByText('Mocks').nextSibling?.textContent).toBe('4')
     expect(within(summary).getByText('more.zip/mappings/z1.json')).toBeTruthy()
     expect(within(summary).getByText(/Skipped 1 zip entry outside the archive: more\.zip\/\.\.\/evil\.json/)).toBeTruthy()
-    await ue.click(screen.getByRole('button', { name: 'Import' }))
+    await ue.click(screen.getByRole('button', { name: IMPORT }))
     await screen.findByText('Import finished')
     const sent = calls[0]!.body as { mocks: { request: { urlPath: string } }[] }
     expect(sent.mocks.map((m) => m.request.urlPath)).toEqual(['/a1', '/a2', '/b', '/z1'])
@@ -394,7 +398,7 @@ describe('import page', () => {
     ])
     const list = await screen.findByRole('list', { name: 'Files' })
     expect(within(list).getAllByRole('listitem').map((li) => li.querySelector('[data-path]')?.textContent)).toEqual(['mocks/one.json', 'mocks/sub/two.json'])
-    await ue.click(screen.getByRole('button', { name: 'Import' }))
+    await ue.click(screen.getByRole('button', { name: IMPORT }))
     await screen.findByText('Import finished')
     expect((calls[0]!.body as { mocks: unknown[] }).mocks).toHaveLength(2)
   })
@@ -407,7 +411,7 @@ describe('import page', () => {
     const big = (n: number) => file(JSON.stringify({ request: { method: 'GET', urlPath: '/p' }, response: { status: 200, body: pad } }), `p${n}.json`)
     await ue.upload(screen.getByLabelText('Choose files'), [big(1), big(2)])
     await screen.findByText(/Together these files are 12\.0 MB; one import can be at most 10 MB\. Split them into smaller imports\./)
-    expect((screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: IMPORT }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('sends ?prune=true only when the box is checked, and summarises a WireMock export', async () => {
@@ -418,19 +422,71 @@ describe('import page', () => {
     const summary = await screen.findByRole('region', { name: /In export\.json/ })
     expect(within(summary).getByText('Mocks').nextSibling?.textContent).toBe('2')
     await ue.click(screen.getByRole('checkbox', { name: "Remove baseline mocks that aren't in this import" }))
-    await ue.click(screen.getByRole('button', { name: 'Import' }))
+    await ue.click(screen.getByRole('button', { name: IMPORT }))
     await screen.findByText('Import finished')
     expect(calls[0]!.search).toBe('?prune=true')
   })
 
   it('shows a server refusal and keeps the files', async () => {
-    server.use(http.post(`${BASE}/api/import`, () => HttpResponse.json({ error: 'catalog[0]: integration "zz" does not exist' }, { status: 400 })))
+    server.use(
+      http.post(`${BASE}/api/import`, ({ request }) =>
+        new URL(request.url).searchParams.get('dryRun') === 'true'
+          ? HttpResponse.json({ ...report, items: [] })
+          : HttpResponse.json({ error: 'catalog[0]: integration "zz" does not exist' }, { status: 400 }),
+      ),
+    )
     await renderApp(<ImportPage />)
     const ue = userEvent.setup({ applyAccept: false })
     await ue.upload(screen.getByLabelText('Choose files'), file(bundle))
-    await ue.click(await screen.findByRole('button', { name: 'Import' }))
+    await ue.click(await screen.findByRole('button', { name: IMPORT }))
     await screen.findByText('catalog[0]: integration "zz" does not exist')
-    expect(screen.getByRole('button', { name: 'Import' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: IMPORT })).toBeTruthy()
+  })
+
+  it('review: suggested tags per URL start, renamed, turned off, unticked and added to the selection; the dry run shows outcomes', async () => {
+    const calls = mockImport()
+    const dry: { mocks: { request: { urlPath: string }; metadata?: { wiremockUi?: { tags?: string[] } } }[] }[] = []
+    server.use(
+      http.post(`${BASE}/api/import`, async ({ request }) => {
+        const body = (await request.json()) as (typeof dry)[number]
+        if (new URL(request.url).searchParams.get('dryRun') !== 'true') {
+          calls.push({ method: 'POST', path: '/api/import', search: new URL(request.url).search, body } as never)
+          return HttpResponse.json(report)
+        }
+        dry.push(body)
+        return HttpResponse.json({ ...report, created: body.mocks.length, updated: 0, unchanged: 0, skipped: [], pruned: 0, items: body.mocks.map((_, index) => ({ index, id: `id-${index}`, outcome: 'created' })) })
+      }),
+    )
+    await renderApp(<ImportPage />)
+    const ue = userEvent.setup({ applyAccept: false })
+    const stub = (path: string) => ({ request: { method: 'GET', urlPath: path }, response: { status: 200 } })
+    await ue.upload(screen.getByLabelText('Choose files'), file(JSON.stringify({ mappings: [stub('/ajeer-app/a'), stub('/ajeer-app/b'), stub('/qiwa/x')] }), 'm.json'))
+
+    const ajeer = await screen.findByRole('region', { name: 'Mocks to tag ajeer-app' })
+    expect(within(ajeer).getByText('every URL starts with /ajeer-app')).toBeTruthy()
+    const qiwa = screen.getByRole('region', { name: 'Mocks to tag qiwa' })
+    await waitFor(() => expect(within(ajeer).getAllByText('New')).toHaveLength(2))
+    await screen.findByText('Creates 3 · updates 0 · 0 unchanged')
+
+    const tag = within(ajeer).getByRole('textbox', { name: 'Suggested tag' })
+    await ue.clear(tag)
+    await ue.type(tag, 'Ajeer App')
+    expect(screen.getByRole('region', { name: 'Mocks to tag ajeer-app' })).toBeTruthy()
+    await ue.click(within(qiwa).getByRole('switch', { name: 'Apply the tag qiwa' }))
+    await ue.click(within(ajeer).getByRole('checkbox', { name: 'Import GET /ajeer-app/b' }))
+    expect(screen.getByText('2 of 3 selected')).toBeTruthy()
+    await ue.type(screen.getByRole('textbox', { name: 'Add tag to selected' }), 'sprint-1')
+    await ue.click(screen.getByRole('button', { name: 'Add' }))
+    await screen.findByText('Creates 2 · updates 0 · 0 unchanged · 1 not ticked')
+
+    await ue.click(screen.getByRole('button', { name: 'Import 2' }))
+    await screen.findByText('Import finished')
+    const sent = calls[0]!.body as (typeof dry)[number]
+    expect(sent.mocks.map((m) => [m.request.urlPath, m.metadata?.wiremockUi?.tags])).toEqual([
+      ['/ajeer-app/a', ['ajeer-app', 'sprint-1']],
+      ['/qiwa/x', ['sprint-1']],
+    ])
+    expect(dry.at(-1)).toEqual(sent)
   })
 
   it('offers an export of everything as a bundle or WireMock mappings', async () => {

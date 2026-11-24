@@ -24,7 +24,10 @@ export const runImport = withAuth('import.run', async ({ rt, request, principal 
     throw new ValidationError('Request body must be valid JSON')
   }
   const bundle = parseBundle(body, 'request body')
-  const prune = new URL(request.url).searchParams.get('prune') === 'true'
+  const query = new URL(request.url).searchParams
+  const prune = query.get('prune') === 'true'
+  // The import review asks first: the same checks and outcomes, nothing written.
+  const dryRun = query.get('dryRun') === 'true'
   // Spec A10: never delete stubs from the user's own WireMock.
   if (prune && rt.config.storeDriver === 'none') throw new ValidationError('Prune is not available in WireMock-only mode')
   const report = await importBundle(bundle, {
@@ -37,6 +40,7 @@ export const runImport = withAuth('import.run', async ({ rt, request, principal 
     actor: principal.user.username,
     prune,
     source: 'import',
+    dryRun,
   })
   return json(report)
 })

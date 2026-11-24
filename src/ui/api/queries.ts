@@ -29,7 +29,10 @@ export type RequestFilter = {
   windowMinutes?: number
 }
 /** `scenario`: one scenario's mocks, or `*` for every mock that belongs to a scenario. */
-export type MockFilter = { owner?: string; integration?: string; status?: string; q?: string; scenario?: string }
+export type MockFilter = { owner?: string; integration?: string; status?: string; q?: string; scenario?: string; tag?: string }
+
+/** A tag in use and how many mocks carry it (GET /api/tags). */
+export type TagCount = { tag: string; count: number }
 
 /** One page of the mocks list: `limit` rows (a scenario is one row) from row `offset`. */
 export type MockPageArgs = { limit: number; offset: number }
@@ -42,6 +45,8 @@ export const queryKeys = {
   mocks: ['mocks'] as const,
   mockList: (filter: MockFilter) => ['mocks', 'list', filter] as const,
   mockPage: (filter: MockFilter, page: MockPageArgs) => ['mocks', 'page', filter, page] as const,
+  // Under 'mocks', so every mock change (which invalidates 'mocks') refreshes the counts too.
+  tags: ['mocks', 'tags'] as const,
   integrations: ['integrations'] as const,
   mock: (id: string) => ['mocks', 'detail', id] as const,
   endpoints: (integration: string) => ['integrations', integration, 'endpoints'] as const,
@@ -151,6 +156,16 @@ export function useMockPage(filter: MockFilter, page: MockPageArgs, options: { e
     queryKey: queryKeys.mockPage(filter, page),
     queryFn: () => apiFetch<MockPage>('/api/mocks', { query: { ...filter, ...page } }),
     placeholderData: keepPreviousData,
+    enabled: options.enabled ?? true,
+  })
+}
+
+/** Every tag in use, most used first: the tag filter and the editor's suggestions. */
+export function useTags(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.tags,
+    queryFn: () => apiFetch<TagCount[]>('/api/tags'),
+    staleTime: 30_000,
     enabled: options.enabled ?? true,
   })
 }
@@ -653,6 +668,14 @@ export function useImport() {
         queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
         queryClient.invalidateQueries({ queryKey: queryKeys.audit }),
       ]),
+  })
+}
+
+/** The import review's dry run: what an import of `bundle` would do to each mock; nothing is written. */
+export function useImportPreview() {
+  return useMutation({
+    mutationFn: ({ bundle, prune }: { bundle: unknown; prune: boolean }) =>
+      apiFetch<ImportReport>('/api/import', { method: 'POST', body: bundle, query: { prune: prune ? 'true' : undefined, dryRun: 'true' } }),
   })
 }
 

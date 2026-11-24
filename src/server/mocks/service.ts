@@ -3,13 +3,14 @@ import { AppError, ConflictError, NotFoundError, ValidationError } from '../erro
 import { logger } from '../logger'
 import { newestFirst, pageMocks, type MockPage } from './paging'
 import { assertPowerFields, normalisePowerFields } from './power-fields'
+import { normaliseTags, tagsOf } from './tags'
 import type { MockStore } from '../store/types'
 import type { PublicUser } from '../users/types'
 import type { WireMockClient } from '../wiremock/client'
 import type { StubBase, StubMapping, WireMockUiMeta } from '../wiremock/types'
 
 export type MockInput = Omit<StubBase, 'id' | 'metadata'> & {
-  metadata?: { wiremockUi?: Partial<Pick<WireMockUiMeta, 'integration' | 'endpoint'>> } & Record<
+  metadata?: { wiremockUi?: Partial<Pick<WireMockUiMeta, 'integration' | 'endpoint' | 'tags'>> } & Record<
     string,
     unknown
   >
@@ -78,6 +79,18 @@ export function canonicalJson(value: unknown): string {
 export type ImportSource = 'import' | 'seed'
 /** How a mock entered the store other than through the editor or an import: an accepted recording (spec A12). */
 export type CreateSource = ImportSource | 'recording'
+
+/** A stub from a bundle as an import stores it: checked, its tags normalised, `owner` set, no uuid. */
+function importedStub(stub: StubMapping, owner: string): StubMapping {
+  assertValidStub(stub)
+  const { uuid: _uuid, ...clean } = stub
+  const ui = stub.metadata?.wiremockUi
+  const tags = normaliseTags(ui?.tags)
+  return {
+    ...clean,
+    metadata: { ...stub.metadata, wiremockUi: { integration: ui?.integration, endpoint: ui?.endpoint, ...(tags ? { tags } : {}), owner } },
+  } as StubMapping
+}
 
 const ownerOf = (stub: StubMapping) => stub.metadata?.wiremockUi?.owner ?? 'baseline'
 
@@ -159,9 +172,10 @@ export class MockService {
   }
 
   /** `scenario`: a scenario's name, or `*` for every mock that belongs to a scenario. */
-  async list(filter?: { integration?: string; owner?: string; status?: number; q?: string; scenario?: string }): Promise<StubMapping[]> {
+  async list(filter?: { integration?: string; owner?: string; status?: number; q?: string; scenario?: string; tag?: string }): Promise<StubMapping[]> {
     const all = await this.store.list({ integration: filter?.integration, owner: filter?.owner })
     const status = filter?.status
+    const tag = filter?.tag
     const q = filter?.q?.trim().toLowerCase()
     const scenario = filter?.scenario
     return all
@@ -172,9 +186,17 @@ export class MockService {
           if (scenario === '*' ? name === '' : name !== scenario) return false
         }
         if (q && !matchesQuery(stub, q)) return false
+        if (tag !== undefined && !tagsOf(stub).includes(tag)) return false
         return true
       })
       .sort(newestFirst)
+  }
+
+  /** Every tag in use with how many mocks carry it, most used first (ties by name). */
+  async tags(): Promise<{ tag: string; count: number }[]> {
+    const counts = new Map<string, number>()
+    for (const stub of await this.store.listAll()) for (const tag of tagsOf(stub)) counts.set(tag, (counts.get(tag) ?? 0) + 1)
+    return [...counts].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0))
   }
 
   /** One page of `list(filter)`; a scenario is one row (see `pageMocks`). */
@@ -215,14 +237,8 @@ export class MockService {
     source: ImportSource,
     actor: string,
   ): Promise<'created' | 'updated' | 'unchanged'> {
-    assertValidStub(stub)
-    const { uuid: _uuid, ...clean } = stub
+    const incoming = importedStub(stub, owner)
     const previous = await this.store.get(stub.id)
-    const ui = stub.metadata?.wiremockUi
-    const incoming = {
-      ...clean,
-      metadata: { ...stub.metadata, wiremockUi: { integration: ui?.integration, endpoint: ui?.endpoint, owner } },
-    } as StubMapping
     if (previous && comparable(previous) === comparable(incoming)) return 'unchanged'
     const version = previous?.metadata?.wiremockUi?.version ?? 0
     await this.save(stub.id, incoming as MockInput, previous ? version : 0, actor, previous, {
@@ -231,6 +247,14 @@ export class MockService {
       source,
     })
     return previous ? 'updated' : 'created'
+  }
+
+  /** What upsertImported would do with `stub`, without writing anything (the import review's dry run). */
+  async importOutcome(stub: StubMapping, owner: string): Promise<'created' | 'updated' | 'unchanged'> {
+    const incoming = importedStub(stub, owner)
+    const previous = await this.store.get(stub.id)
+    if (!previous) return 'created'
+    return comparable(previous) === comparable(incoming) ? 'unchanged' : 'updated'
   }
 
   /** Import prune: removes a mock regardless of owner. */
@@ -281,9 +305,11 @@ export class MockService {
   ): Promise<StubMapping> {
     this.validate(input)
     const prevMeta = previous?.metadata?.wiremockUi
+    const tags = normaliseTags(input.metadata?.wiremockUi?.tags)
     const wiremockUi: WireMockUiMeta = {
       integration: input.metadata?.wiremockUi?.integration,
       endpoint: input.metadata?.wiremockUi?.endpoint,
+      ...(tags ? { tags } : {}),
       owner: override?.owner ?? prevMeta?.owner ?? user,
       version: override?.version ?? expectedVersion + 1,
       updatedAt: this.now().toISOString(),

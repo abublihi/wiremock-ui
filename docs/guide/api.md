@@ -46,6 +46,11 @@ curl -u $AUTH -X POST $UI/api/mocks -H "$JSON" \
   -d '{"request":{"method":"GET","urlPath":"/hello"},"response":{"status":200,"body":"hi"}}'
 curl -u $AUTH "$UI/api/mocks?owner=me"          # yours; no owner = all, owner=baseline = baseline
 curl -u $AUTH "$UI/api/mocks?scenario=order-status" # one scenario's mocks; scenario=* every mock in a scenario
+curl -u $AUTH "$UI/api/mocks?tag=qiwa"           # mocks tagged qiwa
+curl -u $AUTH $UI/api/tags                       # [{"tag":"qiwa","count":12},…], most used first
+# Tags live in metadata.wiremockUi.tags (lower case; a-z 0-9 . _ -; at most 20 per mock, 40 characters each)
+curl -u $AUTH -X POST $UI/api/mocks -H "$JSON" \
+  -d '{"request":{"method":"GET","urlPath":"/hi"},"response":{"status":200},"metadata":{"wiremockUi":{"tags":["qiwa"]}}}'
 curl -u $AUTH "$UI/api/mocks?limit=50&offset=50" # one page: {items,total,totalMocks,baseline,offset,limit}
 # update and delete need the current version (from the create or list response)
 curl -u $AUTH -X PUT $UI/api/mocks/<id> -H "$JSON" \
@@ -86,6 +91,8 @@ curl -u $AUTH -X DELETE $UI/api/requests            # clear the request log
 
 # Import a bundle (add ?prune=true to remove baseline mocks missing from it)
 curl -u $AUTH -X POST $UI/api/import -H "$JSON" --data-binary @bundle.json
+# Dry run: the same checks and report plus items [{index,id,outcome}] per mock; nothing is written
+curl -u $AUTH -X POST "$UI/api/import?dryRun=true" -H "$JSON" --data-binary @bundle.json
 
 # Export: scope=all|integration|mine (integration=<key> with scope=integration), format=bundle|mappings
 curl -u $AUTH -OJ "$UI/api/export?scope=all&format=bundle"                       # wiremock-ui-all-<date>.json

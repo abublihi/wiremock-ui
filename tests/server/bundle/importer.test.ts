@@ -161,3 +161,44 @@ test('a bad webhook in a later mock aborts the import before any mock is written
   expect(await env.rt.store.listAll()).toEqual([])
   expect(await serve('/imp/hook-1')).toBe(404)
 })
+
+test('tags travel with an import, normalised; changing them updates the mock', async () => {
+  const id = '00000000-0000-4000-8000-0000000000d1'
+  const tagged = (tags: unknown) => stub('/imp/tags', { id, metadata: { wiremockUi: { tags } } })
+  expect((await run({ mocks: [tagged(['Qiwa API', 'qiwa-api', ' ajeer '])] })).created).toBe(1)
+  expect((await env.rt.store.get(id))?.metadata?.wiremockUi?.tags).toEqual(['qiwa-api', 'ajeer'])
+  expect((await run({ mocks: [tagged(['qiwa-api', 'ajeer'])] })).unchanged).toBe(1)
+  expect((await run({ mocks: [tagged(['ajeer'])] })).updated).toBe(1)
+  expect((await env.rt.store.get(id))?.metadata?.wiremockUi?.tags).toEqual(['ajeer'])
+  await expect(run({ mocks: [tagged(['ok', 'bad/tag'])] })).rejects.toThrow(/mocks\[0\].*"bad\/tag" is not a usable tag/)
+  await expect(run({ mocks: [tagged('qiwa')] })).rejects.toThrow(/tags must be a list of strings/)
+})
+
+test('a dry run reports each mock\'s outcome and writes nothing', async () => {
+  const kept = '00000000-0000-4000-8000-0000000000e1'
+  const gone = '00000000-0000-4000-8000-0000000000e3'
+  await run({ mocks: [stub('/dry/kept', { id: kept }), stub('/dry/gone', { id: gone })] })
+  await env.rt.mocks.create(stub('/dry/mine') as never, admin)
+  const personal = (await env.rt.store.list({ owner: 'ui-admin' }))[0]!
+  const before = await env.rt.store.listAll()
+  const report = await importBundle(
+    {
+      ...emptyBundle(),
+      mocks: [
+        stub('/dry/new'),
+        stub('/dry/kept', { id: kept }),
+        { ...stub('/dry/kept2', { id: kept }), response: { status: 500 } } as StubMapping,
+        stub('/dry/mine', { id: personal.id }),
+      ],
+    },
+    deps(),
+    { actor: 'ui-admin', prune: true, source: 'import', dryRun: true },
+  )
+  expect(report).toMatchObject({ created: 1, updated: 1, unchanged: 0, pruned: 1 })
+  expect(report.items).toEqual([
+    { index: 0, id: deterministicId(stub('/dry/new') as never), outcome: 'created' },
+    { index: 2, id: kept, outcome: 'updated' },
+    { index: 3, id: personal.id, outcome: 'skipped', reason: 'owned by ui-admin' },
+  ])
+  expect(await env.rt.store.listAll()).toEqual(before)
+})

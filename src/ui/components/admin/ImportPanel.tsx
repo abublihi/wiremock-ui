@@ -21,6 +21,8 @@ import {
 } from '@/ui/lib/import-files'
 import type { IntegrationFields } from '@/ui/lib/postman'
 import { cn } from '@/ui/lib/utils'
+import type { Bundle } from '@/server/bundle/shape'
+import { ImportReview } from './ImportReview'
 import { PostmanPreview } from './PostmanPreview'
 
 type Loaded = { label: string; results: FileResult[]; skipped: string[] }
@@ -40,6 +42,8 @@ export function ImportPanel() {
   /** The integration a Postman import went into (for the report's link). */
   const [postmanTarget, setPostmanTarget] = useState<IntegrationFields | null>(null)
   const [dragging, setDragging] = useState(false)
+  /** What the review step says to send (its ticked mocks with their tags), and how many mocks that is. */
+  const [reviewed, setReviewed] = useState<{ bundle: Bundle; count: number } | null>(null)
 
   // React has no prop for it: the folder picker needs the (non-standard, widely supported) webkitdirectory attribute.
   useEffect(() => {
@@ -99,11 +103,14 @@ export function ImportPanel() {
   const mixedPostman = postmanCount > 0 && !postman
   const tooBig = merged !== null && merged.bytes > MAX_IMPORT_BYTES
   const empty = loaded !== null && failed === 0 && loaded.results.length === 0
+  // Mocks to review: every file read, none too big, no Postman mixed in.
+  const reviewing = merged !== null && failed === 0 && !tooBig && !mixedPostman && merged.summary.mocks > 0
+  const nothingTicked = reviewing && reviewed?.count === 0
 
   const submit = async () => {
-    if (!merged || failed > 0 || tooBig || mixedPostman) return
+    if (!merged || failed > 0 || tooBig || mixedPostman || nothingTicked) return
     try {
-      setReport(await run.mutateAsync({ bundle: merged.bundle, prune }))
+      setReport(await run.mutateAsync({ bundle: reviewing && reviewed ? reviewed.bundle : merged.bundle, prune }))
     } catch {
       // shown from run.error
     }
@@ -112,7 +119,7 @@ export function ImportPanel() {
   if (report) return <ReportCard report={report} name={loaded?.label} integration={postmanTarget ?? undefined} onAgain={reset} />
 
   return (
-    <div className={cn('flex flex-col gap-4', postman ? 'max-w-6xl' : 'max-w-2xl')}>
+    <div className={cn('flex flex-col gap-4', postman || reviewing ? 'max-w-6xl' : 'max-w-2xl')}>
       <div
         onDragOver={(e) => {
           e.preventDefault()
@@ -249,6 +256,8 @@ export function ImportPanel() {
           )}
           {empty && <p className="text-xs text-muted-foreground">{t('import.nothingFound')}</p>}
 
+          {reviewing && <ImportReview key={loaded.results.map((r) => r.path).join('\n')} bundle={merged.bundle} prune={prune} onBundle={(bundle, count) => setReviewed({ bundle, count })} />}
+
           {!wiremockOnly && (
             <div className="flex items-start gap-2">
               <input
@@ -277,9 +286,9 @@ export function ImportPanel() {
             </Alert>
           )}
           <div>
-            <Button onClick={() => void submit()} disabled={run.isPending || failed > 0 || tooBig || empty || mixedPostman}>
+            <Button onClick={() => void submit()} disabled={run.isPending || failed > 0 || tooBig || empty || mixedPostman || nothingTicked}>
               {run.isPending ? <Spinner data-icon="inline-start" /> : <UploadIcon data-icon="inline-start" />}
-              {t(run.isPending ? 'import.running' : 'import.run')}
+              {run.isPending ? t('import.running') : reviewing && reviewed ? t('import.runCount', { count: reviewed.count }) : t('import.run')}
             </Button>
           </div>
         </section>

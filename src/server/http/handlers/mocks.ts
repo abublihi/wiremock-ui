@@ -71,11 +71,14 @@ export const listMocks = withAuth('mocks.read', async ({ rt, request, principal 
     q: q.get('q')?.trim() || undefined,
     // A scenario's name, or * for every mock that belongs to one.
     scenario: q.get('scenario') || undefined,
+    tag: q.get('tag')?.trim().toLowerCase() || undefined,
   }
   // With limit: { items, total, totalMocks, baseline, offset, limit }; without: the plain array scripts rely on.
   const page = parsePage(q)
   return json(page ? await rt.mocks.listPage(filter, page) : await rt.mocks.list(filter))
 })
+
+export const listTags = withAuth('mocks.read', async ({ rt }) => json(await rt.mocks.tags()))
 
 export const createMock = withAuth('mocks.create', async ({ rt, request, principal }) => {
   requireJson(request)

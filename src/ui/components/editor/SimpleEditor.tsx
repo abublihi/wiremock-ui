@@ -151,6 +151,7 @@ export function SimpleEditor({
   mock,
   keyValue,
   scenarioSeed,
+  tags = [],
   onChange,
   onSaved,
   onConflict,
@@ -163,6 +164,8 @@ export function SimpleEditor({
   keyValue?: string
   /** A new mock's scenario (when `initial` is not given): the Scenario section starts on and filled in. */
   scenarioSeed?: ScenarioSeed
+  /** The mock's tags (edited above the tabs); saved with the stub. */
+  tags?: string[]
   onChange?: (form: SimpleForm) => void
   onSaved?: (stub: StubMapping) => void | Promise<void>
   onConflict?: () => void
@@ -317,8 +320,11 @@ export function SimpleEditor({
     if (field) setServerErrors({ [field]: field === 'keyValue' && /required/.test(message) ? t('editor.keyRequired') : withoutFieldPath(message, t) })
     else setFormError({ title, message })
   }
+  const withTagList = <T extends object>(input: T): T => (tags.length > 0 ? { ...input, tags } : input)
   const args = (): PreviewArgs =>
-    quick ? { quick: toQuickInput(form) } : { integration: integration.key, endpoint: endpoint.key, input: toSimpleInput(form) }
+    quick
+      ? { quick: withTagList(toQuickInput(form)) }
+      : { integration: integration.key, endpoint: endpoint.key, input: withTagList(toSimpleInput(form)) }
   const blocked = Object.keys(clientErrors).length > 0
   const reset = () => {
     setServerErrors({})
@@ -361,7 +367,7 @@ export function SimpleEditor({
       } else if (quick) {
         // Free-form: the quick builder makes the stub, the normal create checks and saves it.
         saved = await createFreeMock.mutateAsync(await previewMock.mutateAsync(args()))
-      } else saved = await createMock.mutateAsync({ integration: integration.key, endpoint: endpoint.key, input: toSimpleInput(form) })
+      } else saved = await createMock.mutateAsync({ integration: integration.key, endpoint: endpoint.key, input: withTagList(toSimpleInput(form)) })
       toast.success(t('editor.saved'))
       if (onSaved) await onSaved(saved)
       else await navigate({ to: '/mocks/$id', params: { id: saved.id } })

@@ -54,6 +54,8 @@ Saving a mock checks it, pushes it into WireMock, then stores it; WireMock refus
 
 **History and conflicts.** **History** on an open mock lists its last 20 versions; pick one, then **Restore this version**. If someone saved the mock while you were editing, your save is refused ("Someone changed this mock since you opened it"): **Copy my JSON** keeps your draft, **Reload** shows theirs.
 
+**Tags.** Above the Simple and Advanced tabs, type a tag and press Enter (or a comma) to add it; × removes it. Tags are stored in lower case with spaces as `-` (`Qiwa API` → `qiwa-api`). They group mocks however you like: a system, a team, a sprint. The list shows them under each mock's name, and **Any tag** filters by one.
+
 **The list.** **All mocks / My mocks** switches between everyone's (baseline included, the default) and yours. The row menu (**…**) has **Open**, **Duplicate to my mocks** and **Delete** (undo from the toast). **Reset my mocks** deletes every mock you own, for a clean start. A scenario's mocks fold into one row, **Scenario: name · N mocks**.
 
 ## Tips and limits

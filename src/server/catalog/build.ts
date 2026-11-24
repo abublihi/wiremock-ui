@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { normaliseTags } from '../mocks/tags'
 import { ValidationError } from '../errors'
 import { assertBase64Body, assertHttpUrl, assertWebhook } from '../mocks/power-fields'
 import { trimTrailingSlashes } from '../url'
@@ -92,6 +93,8 @@ export const simpleMockSchema = z.strictObject(
     proxy: proxySchema.optional(),
     webhook: webhookSchema.optional(),
     scenario: scenarioSchema.optional(),
+    /** The mock's tags (normalised by normaliseTags; see src/server/mocks/tags.ts). */
+    tags: z.array(z.string({ error: 'tags must be a list of strings' }), { error: 'tags must be a list of strings' }).optional(),
   },
   { error: (iss) => (iss.code === 'unrecognized_keys' ? `unknown field: ${iss.keys.join(', ')}` : 'body must be an object') },
 )
@@ -240,7 +243,7 @@ export function buildStub(
     response: responseFor(endpoint, input),
     ...(input.webhook ? { serveEventListeners: [webhookListener(input.webhook)] } : {}),
     ...(input.scenario ? scenarioFields(input.scenario) : {}),
-    metadata: { wiremockUi: { integration: integration.key, endpoint: endpoint.key } },
+    metadata: { wiremockUi: { integration: integration.key, endpoint: endpoint.key, ...tagsFor(input.tags) } },
   }
 }
 
@@ -367,5 +370,12 @@ export function buildQuickStub(input: QuickMockInput): MockInput & { serveEventL
     response,
     ...(input.webhook ? { serveEventListeners: [webhookListener(input.webhook)] } : {}),
     ...(input.scenario ? scenarioFields(input.scenario) : {}),
+    ...(normaliseTags(input.tags, 'tags') ? { metadata: { wiremockUi: tagsFor(input.tags) } } : {}),
   }
+}
+
+/** `{ tags }` for the stub's wiremockUi metadata, or nothing when there are none. */
+function tagsFor(raw: string[] | undefined): { tags?: string[] } {
+  const tags = normaliseTags(raw, 'tags')
+  return tags ? { tags } : {}
 }

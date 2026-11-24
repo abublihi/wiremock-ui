@@ -31,6 +31,7 @@ import { Route as ApiRequestsRouteImport } from './routes/api/requests'
 import { Route as ApiScenariosRouteImport } from './routes/api/scenarios'
 import { Route as ApiSessionRouteImport } from './routes/api/session'
 import { Route as ApiSetupRouteImport } from './routes/api/setup'
+import { Route as ApiTagsRouteImport } from './routes/api/tags'
 import { Route as ApiTestRequestRouteImport } from './routes/api/test-request'
 import { Route as ApiUsersRouteImport } from './routes/api/users'
 import { Route as CatalogIndexRouteImport } from './routes/catalog.index'
@@ -179,6 +180,11 @@ const ApiSessionRoute = ApiSessionRouteImport.update({
 const ApiSetupRoute = ApiSetupRouteImport.update({
   id: '/api/setup',
   path: '/api/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTagsRoute = ApiTagsRouteImport.update({
+  id: '/api/tags',
+  path: '/api/tags',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiTestRequestRoute = ApiTestRequestRouteImport.update({
@@ -411,6 +417,7 @@ export interface FileRoutesByFullPath {
   '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/setup': typeof ApiSetupRoute
+  '/api/tags': typeof ApiTagsRoute
   '/api/test-request': typeof ApiTestRequestRoute
   '/api/users': typeof ApiUsersRouteWithChildren
   '/catalog/$': typeof CatalogSplatRoute
@@ -473,6 +480,7 @@ export interface FileRoutesByTo {
   '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/setup': typeof ApiSetupRoute
+  '/api/tags': typeof ApiTagsRoute
   '/api/test-request': typeof ApiTestRequestRoute
   '/api/users': typeof ApiUsersRouteWithChildren
   '/catalog/$': typeof CatalogSplatRoute
@@ -538,6 +546,7 @@ export interface FileRoutesById {
   '/api/scenarios': typeof ApiScenariosRouteWithChildren
   '/api/session': typeof ApiSessionRouteWithChildren
   '/api/setup': typeof ApiSetupRoute
+  '/api/tags': typeof ApiTagsRoute
   '/api/test-request': typeof ApiTestRequestRoute
   '/api/users': typeof ApiUsersRouteWithChildren
   '/catalog/$': typeof CatalogSplatRoute
@@ -604,6 +613,7 @@ export interface FileRouteTypes {
     | '/api/scenarios'
     | '/api/session'
     | '/api/setup'
+    | '/api/tags'
     | '/api/test-request'
     | '/api/users'
     | '/catalog/$'
@@ -666,6 +676,7 @@ export interface FileRouteTypes {
     | '/api/scenarios'
     | '/api/session'
     | '/api/setup'
+    | '/api/tags'
     | '/api/test-request'
     | '/api/users'
     | '/catalog/$'
@@ -730,6 +741,7 @@ export interface FileRouteTypes {
     | '/api/scenarios'
     | '/api/session'
     | '/api/setup'
+    | '/api/tags'
     | '/api/test-request'
     | '/api/users'
     | '/catalog/$'
@@ -789,6 +801,7 @@ export interface RootRouteChildren {
   ApiScenariosRoute: typeof ApiScenariosRouteWithChildren
   ApiSessionRoute: typeof ApiSessionRouteWithChildren
   ApiSetupRoute: typeof ApiSetupRoute
+  ApiTagsRoute: typeof ApiTagsRoute
   ApiTestRequestRoute: typeof ApiTestRequestRoute
   ApiUsersRoute: typeof ApiUsersRouteWithChildren
   CatalogSplatRoute: typeof CatalogSplatRoute
@@ -949,6 +962,13 @@ declare module '@tanstack/react-router' {
       path: '/api/setup'
       fullPath: '/api/setup'
       preLoaderRoute: typeof ApiSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tags': {
+      id: '/api/tags'
+      path: '/api/tags'
+      fullPath: '/api/tags'
+      preLoaderRoute: typeof ApiTagsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/test-request': {
@@ -1482,6 +1502,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiScenariosRoute: ApiScenariosRouteWithChildren,
   ApiSessionRoute: ApiSessionRouteWithChildren,
   ApiSetupRoute: ApiSetupRoute,
+  ApiTagsRoute: ApiTagsRoute,
   ApiTestRequestRoute: ApiTestRequestRoute,
   ApiUsersRoute: ApiUsersRouteWithChildren,
   CatalogSplatRoute: CatalogSplatRoute,

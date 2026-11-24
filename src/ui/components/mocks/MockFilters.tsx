@@ -7,9 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
+import type { TagCount } from '@/ui/api/queries'
 
 /** `scenarios: 'only'`: only mocks that belong to a scenario (the "Scenario mocks" chip). `page`: the list page, from 1. */
-export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string; scenarios?: 'only'; page?: number }
+export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string; scenarios?: 'only'; tag?: string; page?: number }
 
 /** The owner filter when the URL names none: everyone's mocks ('me' narrows to your own). */
 export const DEFAULT_OWNER = 'all'
@@ -22,10 +23,13 @@ const ON = "data-[state=on]:border-signal/40 data-[state=on]:bg-signal/10 data-[
 export function MockFilters({
   search,
   integrations,
+  tags = [],
   onChange,
 }: {
   search: MocksSearch
   integrations: Integration[]
+  /** Tags in use (the Tag filter shows only when there are some, or one is chosen). */
+  tags?: TagCount[]
   onChange: (next: MocksSearch) => void
 }) {
   const t = useT()
@@ -95,6 +99,23 @@ export function MockFilters({
           ))}
         </SelectContent>
       </Select>
+
+      {(tags.length > 0 || search.tag) && (
+        <Select value={search.tag ?? ANY} onValueChange={(value) => onChange({ tag: value === ANY ? undefined : value })}>
+          <SelectTrigger aria-label={t('mocks.tag')} className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ANY}>{t('mocks.anyTag')}</SelectItem>
+            {search.tag && !tags.some((x) => x.tag === search.tag) && <SelectItem value={search.tag}>{search.tag}</SelectItem>}
+            {tags.map((x) => (
+              <SelectItem key={x.tag} value={x.tag}>
+                {x.tag} <span className="text-muted-foreground">· {x.count}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       <Select value={search.status ?? ANY} onValueChange={(value) => onChange({ status: value === ANY ? undefined : value })}>
         <SelectTrigger aria-label={t('mocks.status')} className="w-40">

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { tagsOf } from '@/server/mocks/tags'
+import { TagChip } from './TagsField'
 import { Link } from '@tanstack/react-router'
 import { ChevronRightIcon, MoreHorizontalIcon, PencilIcon, WebhookIcon, WorkflowIcon } from 'lucide-react'
 import type { StubMapping } from '@/server/wiremock/types'
@@ -18,7 +20,7 @@ import { MockRowActions, mockName } from './MockActions'
 
 const URL_FIELDS = ['url', 'urlPath', 'urlPattern', 'urlPathPattern', 'urlPathTemplate'] as const
 
-function requestUrl(stub: StubMapping): string {
+export function requestUrl(stub: StubMapping): string {
   for (const field of URL_FIELDS) {
     const value = stub.request[field]
     if (typeof value === 'string') return value
@@ -158,6 +160,15 @@ function MockRow({ stub, step }: { stub: StubMapping; step?: string }) {
           (meta?.integration || meta?.endpoint) && (
             <p className="truncate text-xs text-muted-foreground">{[meta.integration, meta.endpoint].filter(Boolean).join(' · ')}</p>
           )
+        )}
+        {tagsOf(stub).length > 0 && (
+          <ul aria-label={t('tags.label')} className="mt-1 flex flex-wrap gap-1">
+            {tagsOf(stub).map((tag) => (
+              <li key={tag}>
+                <TagChip tag={tag} />
+              </li>
+            ))}
+          </ul>
         )}
       </TableCell>
       <TableCell className={REQUEST_CELL}>

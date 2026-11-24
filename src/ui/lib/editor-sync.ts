@@ -451,6 +451,16 @@ export function linkOf(stub: Pick<StubMapping, 'metadata'>): CatalogLink | undef
   return ui?.integration && ui.endpoint ? { integration: ui.integration, endpoint: ui.endpoint } : undefined
 }
 
+/** The mock's tags as the editor saves them: `stub` with `metadata.wiremockUi.tags` set (or removed when none). */
+export function withTags<T extends { metadata?: Record<string, unknown> }>(stub: T, tags: string[]): T {
+  const meta = isRecord(stub.metadata) ? stub.metadata : {}
+  const { tags: _old, ...ui } = isRecord(meta.wiremockUi) ? meta.wiremockUi : {}
+  const wiremockUi = tags.length > 0 ? { ...ui, tags } : ui
+  const metadata = Object.keys(wiremockUi).length > 0 ? { ...meta, wiremockUi } : Object.fromEntries(Object.entries(meta).filter(([k]) => k !== 'wiremockUi'))
+  const { metadata: _m, ...rest } = stub
+  return (Object.keys(metadata).length > 0 ? { ...rest, metadata } : rest) as T
+}
+
 /** The editable part of a stub: everything except the fields the server owns. */
 export function toEditable(stub: Omit<StubMapping, 'id'> & { id?: string }): EditableStub {
   const { id: _id, uuid: _uuid, persistent: _persistent, metadata, ...rest } = stub as Record<string, unknown>

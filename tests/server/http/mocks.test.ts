@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { healthz } from '../../../src/server/http/handlers/health'
-import { createMock, deleteMock, duplicateMock, getMock, listMocks, mockHistory, resetMine, restoreMock, updateMock } from '../../../src/server/http/handlers/mocks'
+import { createMock, deleteMock, duplicateMock, getMock, listMocks, listTags, mockHistory, resetMine, restoreMock, updateMock } from '../../../src/server/http/handlers/mocks'
 import { runImport } from '../../../src/server/http/handlers/imports'
 import type { Runtime } from '../../../src/server/runtime'
 import { STORELESS, URL_, basic, req as baseReq, signIn, startTestRuntime } from '../../helpers/http'
@@ -348,6 +348,33 @@ test('a body id/uuid cannot target another stub (create, update, duplicate, rest
   expect((await rt.wiremock.listStubIds()).length).toBe((await rt.store.listAll()).length + (STORELESS ? 0 : 1))
 })
 
+
+test('tags: saved normalised on create and update, filter the list (?tag=), counted by GET /api/tags; bad tags are 400', async () => {
+  const tagged = (path: string, tags: unknown) => input(path, { metadata: { wiremockUi: { tags } } })
+  const created = await createMock(rt, req('/api/mocks', 'POST', tagged('/h/tag-a', ['Tag Test', 'tag-test', 'zz-only'])))
+  const a = await created.json()
+  expect(created.status).toBe(201)
+  expect(a.metadata.wiremockUi.tags).toEqual(['tag-test', 'zz-only'])
+  const b = await (await createMock(rt, req('/api/mocks', 'POST', tagged('/h/tag-b', ['tag-test'])))).json()
+  const ids = async (qs: string) => ((await (await listMocks(rt, req(`/api/mocks?${qs}`))).json()) as { id: string }[]).map((x) => x.id)
+  expect((await ids('tag=tag-test')).sort()).toEqual([a.id, b.id].sort())
+  expect(await ids('tag=TAG-TEST')).toHaveLength(2)
+  expect(await ids('tag=zz-only')).toEqual([a.id])
+
+  const put = await updateMock(rt, req(`/api/mocks/${a.id}`, 'PUT', { stub: tagged('/h/tag-a', []), version: 1 }), { id: a.id })
+  const updated = await put.json()
+  expect(updated.metadata.wiremockUi.tags).toBeUndefined()
+  expect(await ids('tag=zz-only')).toEqual([])
+  const counts = (await (await listTags(rt, req('/api/tags'))).json()) as { tag: string; count: number }[]
+  expect(counts).toContainEqual({ tag: 'tag-test', count: 1 })
+  expect(counts.find((c) => c.tag === 'zz-only')).toBeUndefined()
+
+  for (const bad of [['a b/c'], 'tag-test', [1], Array.from({ length: 21 }, (_, i) => `t${i}`), ['x'.repeat(41)]]) {
+    const res = await createMock(rt, req('/api/mocks', 'POST', tagged('/h/tag-bad', bad)))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/^metadata\.wiremockUi\.tags/)
+  }
+})
 
 test('healthz 200 with lastSyncAt set; 503 with wiremock:"error" after WireMock stops', async () => {
   const ok = await healthz(rt, new Request(`${URL_}/healthz`))

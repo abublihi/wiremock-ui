@@ -5,7 +5,9 @@ import { toast } from 'sonner'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
 import { ApiError } from '@/ui/api/client'
-import { useCreateMock, usePreviewMock, useUpdateMock } from '@/ui/api/queries'
+import { useCreateMock, usePreviewMock, useTags, useUpdateMock } from '@/ui/api/queries'
+import { tagsOf } from '@/server/mocks/tags'
+import { TagsField } from '@/ui/components/mocks/TagsField'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import {
   AlertDialog,
@@ -38,6 +40,7 @@ import {
   toEditable,
   toQuickInput,
   toSimpleInput,
+  withTags,
 } from '@/ui/lib/editor-sync'
 import { AdvancedEditor } from './AdvancedEditor'
 import { HistorySheet } from './HistorySheet'
@@ -138,7 +141,12 @@ export function MockEditor({
   const [textSeed, setTextSeed] = useState(init.text)
   // Unsaved changes made before the last switch between tabs.
   const [carried, setCarried] = useState(false)
-  const dirty = carried || (mode === 'simple' ? simpleChanged : text !== textSeed)
+  // Tags sit above both tabs: one list, saved by either.
+  const [initialTags] = useState(() => (mock ? tagsOf(mock) : []))
+  const [tags, setTags] = useState(initialTags)
+  const tagsChanged = tags.join(',') !== initialTags.join(',')
+  const knownTags = useTags()
+  const dirty = carried || tagsChanged || (mode === 'simple' ? simpleChanged : text !== textSeed)
 
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<{ title: string; message: string } | null>(null)
@@ -205,7 +213,7 @@ export function MockEditor({
     setFormError(null)
     setSaving(true)
     try {
-      const stub = fromEditable(value, link)
+      const stub = withTags(fromEditable(value, link), tags)
       const version = mock?.metadata?.wiremockUi?.version ?? 0
       const saved = mock ? await updateMock.mutateAsync({ id: mock.id, stub, version }) : await createMock.mutateAsync(stub)
       setConflict(false)
@@ -264,6 +272,8 @@ export function MockEditor({
         </Alert>
       )}
 
+      <TagsField tags={tags} onChange={setTags} suggestions={knownTags.data?.map((x) => x.tag)} />
+
       <Tabs value={mode} onValueChange={(v) => void changeMode(v as EditorMode)} className="gap-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <TabsList aria-label={t('editor.mode')} className="border border-line bg-surface-2">
@@ -289,6 +299,7 @@ export function MockEditor({
               mock={mock}
               keyValue={keyValue}
               scenarioSeed={scenarioSeed}
+              tags={tags}
               onChange={(form) => {
                 formRef.current = form
                 onFormChange?.(form)

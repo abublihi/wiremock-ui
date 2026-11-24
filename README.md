@@ -55,7 +55,8 @@ Other ways to run it (the one-container image's settings, with Redis, from sourc
 - **Proxy** (forward to a real service), **webhooks** (call back after responding) and **scenarios** (pending, then shipped, then delivered), with a step-by-step scenario builder and a live state view.
 - **Request log** that updates live and stamps unmatched requests **No match**, with the closest mocks and the fields that differed.
 - **Record real traffic**, then accept the recorded answers you want from a review list (or turn logged requests into mocks). `RECORDING_ALLOWED=false` turns it off.
-- **Import and export**: bundles, WireMock mappings, files, folders, zips and **Postman collections** (each request becomes an endpoint, each saved example a mock). Baseline mocks can be seeded on every start.
+- **Import and export**: bundles, WireMock mappings, files, folders, zips and **Postman collections** (each request becomes an endpoint, each saved example a mock). A review step suggests **tags** per group of mocks (accept, rename or turn them off), lets you untick mocks and shows what each will do before anything is written. Baseline mocks can be seeded on every start.
+- **Tags**: free-form labels on mocks, edited above the editor and filterable in the list.
 - **History and restore** for every mock, conflict detection when two people edit the same one, and an **audit log**.
 - **Durable**: mocks live in the UI's store (one SQLite file, or Redis) and are put back into WireMock after it restarts. Or run **WireMock-only** and store nothing.
 - **A built-in guide** (Help → Guide, or press `?`) and a **How this works** button on every page.
