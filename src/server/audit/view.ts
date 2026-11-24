@@ -97,23 +97,15 @@ async function withSubjects(rt: Runtime, entries: AuditEntry[]): Promise<AuditVi
       return fallback
     }
   }
-  const [mocks, integrations, users] = await Promise.all([
+  const [mocks, users] = await Promise.all([
     kinds.has('mock') ? safe(() => rt.mocks.list(), []) : [],
-    kinds.has('integration') || kinds.has('endpoint') ? safe(() => rt.catalog.listIntegrations(), []) : [],
     kinds.has('user') ? safe(() => rt.users.list(), []) : [],
   ])
   const mockNames = new Map(mocks.map((m) => [m.id, m.name || m.id]))
-  const integrationNames = new Map(integrations.map((i) => [i.key, i.name]))
   const userNames = new Set(users.map((u) => u.username))
+  // Integrations and endpoints are retired: their old entries keep their kind, with no name to look up.
+  const integrationNames = new Map<string, string>()
   const endpointNames = new Map<string, string>()
-  if (kinds.has('endpoint')) {
-    const wanted = new Set(entries.filter((e) => kindOf(e) === 'endpoint').map((e) => e.target!.split('/')[0]))
-    await Promise.all(
-      [...wanted].filter((k) => integrationNames.has(k)).map(async (k) => {
-        for (const ep of await safe(() => rt.catalog.listEndpoints(k), [])) endpointNames.set(`${k}/${ep.key}`, ep.name)
-      }),
-    )
-  }
   return entries.map((e) => {
     const kind = kindOf(e)
     if (!kind) return e

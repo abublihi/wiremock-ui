@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { AlertCircleIcon, FileStackIcon, PauseIcon, PlayIcon, RadioTowerIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
-import { type RequestFilter, useClearRequests, useDocumentVisible, useIntegrations, useOlderRequests, useRequests, useSnapshot } from '@/ui/api/queries'
+import { type RequestFilter, useClearRequests, useDocumentVisible, useOlderRequests, useRequests, useSnapshot, useTags } from '@/ui/api/queries'
 import { useRecordingAllowed } from '@/ui/config'
 import { emptyMessage } from '@/ui/components/recording/RecordForms'
 import { WithTerm } from '@/ui/components/guide/Term'
@@ -40,7 +40,7 @@ const bool = (v: unknown) => (v === true || v === 'true' ? 'true' : v === false 
 
 export const Route = createFileRoute('/_app/requests')({
   validateSearch: (raw: Record<string, unknown>): RequestsSearch => ({
-    integration: str(raw.integration),
+    tag: str(raw.tag),
     matched: bool(raw.matched),
     status: str(raw.status),
     q: str(raw.q),
@@ -71,16 +71,16 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
   const filter = useMemo<RequestFilter>(
     () => ({
       matched: search.matched,
-      integration: search.integration,
+      tag: search.tag,
       status: search.status,
       q: search.q,
       windowMinutes: search.range ? WINDOW_MINUTES[search.range] : undefined,
     }),
-    [search.matched, search.integration, search.status, search.q, search.range],
+    [search.matched, search.tag, search.status, search.q, search.range],
   )
   const requests = useRequests(filter, { live })
-  const integrations = useIntegrations()
-  const filtered = Boolean(search.matched || search.integration || search.status || search.q || search.range)
+  const tags = useTags()
+  const filtered = Boolean(search.matched || search.tag || search.status || search.q || search.range)
 
   const live1 = requests.data ?? []
   // "Load older" pages sit below the live first page; live updates keep arriving on top.
@@ -95,7 +95,7 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
     if (shown) markRequestLogSeen(checklistUser)
   }, [shown, checklistUser])
   const clearFilters = () =>
-    onSearchChange({ matched: undefined, integration: undefined, status: undefined, q: undefined, range: undefined })
+    onSearchChange({ matched: undefined, tag: undefined, status: undefined, q: undefined, range: undefined })
   const open = useCallback((id: string) => onSearchChange({ open: id }), [onSearchChange])
 
   return (
@@ -126,7 +126,7 @@ export function RequestsPage({ search, onSearchChange }: { search: RequestsSearc
         </div>
       </header>
 
-      <RequestFilters search={search} integrations={integrations.data ?? []} onChange={onSearchChange} />
+      <RequestFilters search={search} tags={tags.data} onChange={onSearchChange} />
 
       {requests.isError && requests.data && (
         <p role="alert" className="flex items-center gap-2 text-xs text-mismatch">

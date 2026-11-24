@@ -52,7 +52,7 @@ describe('guide content (docs/guide/*.md)', () => {
       'getting-started',
       'concepts',
       'mocks',
-      'integrations',
+      'tags',
       'testing',
       'request-log',
       'scenarios',
@@ -94,7 +94,7 @@ describe('guide content (docs/guide/*.md)', () => {
       for (const [, href] of s.body.matchAll(/\]\(([^)]+)\)/g)) {
         const target = guideHref(href)
         if (target.kind === 'guide') expect(slugs.has(target.hash.split('--')[0]), `${s.slug} → ${href}`).toBe(true)
-        else if (target.kind === 'app') expect(target.to, `${s.slug} → ${href}`).toMatch(/^\/(integrations|mocks|mocks\/new|requests|scenarios|recording|import|users|audit)$/)
+        else if (target.kind === 'app') expect(target.to, `${s.slug} → ${href}`).toMatch(/^\/(mocks|mocks\/new|requests|scenarios|recording|import|users|audit)$/)
         else expect(href, `${s.slug} → ${href}`).toMatch(/^https:\/\//)
       }
     }
@@ -137,7 +137,7 @@ describe('search and links', () => {
   it('maps links: guide files to /guide#section, app paths to the router, everything else outside', () => {
     expect(guideHref('scenarios.md')).toEqual({ kind: 'guide', hash: 'scenarios' })
     expect(guideHref('./sync.md#marker')).toEqual({ kind: 'guide', hash: 'sync--marker' })
-    expect(guideHref('/integrations')).toEqual({ kind: 'app', to: '/integrations' })
+    expect(guideHref('/scenarios')).toEqual({ kind: 'app', to: '/scenarios' })
     expect(guideHref('//evil.example/x')).toEqual({ kind: 'external', href: '//evil.example/x' })
     expect(guideHref('https://wiremock.org')).toEqual({ kind: 'external', href: 'https://wiremock.org' })
   })
@@ -146,8 +146,6 @@ describe('search and links', () => {
     ['/mocks', 'mocks'],
     ['/mocks/new', 'mocks'],
     ['/mocks/abc-123', 'mocks'],
-    ['/integrations', 'integrations'],
-    ['/integrations/blog/endpoints/new', 'integrations'],
     ['/requests', 'request-log'],
     ['/scenarios/new', 'scenarios'],
     ['/scenarios/order-status/edit', 'scenarios'],
@@ -179,9 +177,9 @@ describe('Markdown rendering', () => {
   })
 
   it('turns guide and app links into router links, and folds stub JSON', async () => {
-    await renderApp(<GuideMarkdown markdown={'See [Scenarios](scenarios.md) or [Open Integrations →](/integrations).\n\n```stub\n{"request":{}}\n```'} />)
+    await renderApp(<GuideMarkdown markdown={'See [Scenarios](scenarios.md) or [Open the request log →](/requests).\n\n```stub\n{"request":{}}\n```'} />)
     expect(screen.getByRole('link', { name: 'Scenarios' }).getAttribute('href')).toBe('/guide#scenarios')
-    expect(screen.getByRole('link', { name: 'Open Integrations →' }).getAttribute('href')).toBe('/integrations')
+    expect(screen.getByRole('link', { name: 'Open the request log →' }).getAttribute('href')).toBe('/requests')
     const summary = screen.getByText('The stub JSON this produces')
     expect(summary.tagName).toBe('SUMMARY')
     expect(summary.closest('details')?.querySelector('pre')?.textContent).toContain('"request"')
@@ -283,7 +281,7 @@ describe('contextual help', () => {
 
   it.each([
     ['/requests', 'Request log and near misses', 'request-log'],
-    ['/integrations/blog', 'Integrations and endpoints', 'integrations'],
+    ['/mocks/new', 'Mocks and the editor', 'mocks'],
     ['/scenarios/new', 'Scenarios and the builder', 'scenarios'],
   ])('"How this works" on %s opens the %s section with a link to the full guide', async (path, title, slug) => {
     await renderAt(path)
@@ -335,19 +333,9 @@ describe('contextual help', () => {
 
 describe('Getting started checklist', () => {
   const mockQueries: URLSearchParams[] = []
-  const endpointCalls: string[] = []
-  function api(opts: { integrations?: number; endpoints?: number; mocks?: number; requests?: number; endpointsOn?: string }) {
+  function api(opts: { mocks?: number; requests?: number }) {
     mockQueries.length = 0
-    endpointCalls.length = 0
     server.use(
-      http.get(`${BASE}/api/integrations`, () =>
-        HttpResponse.json(Array.from({ length: opts.integrations ?? 0 }, (_, i) => ({ key: `i${i}`, name: `I${i}`, prefix: `/i${i}` }))),
-      ),
-      http.get(`${BASE}/api/integrations/:key/endpoints`, ({ params }) => {
-        endpointCalls.push(String(params.key))
-        const count = opts.endpointsOn === undefined || opts.endpointsOn === params.key ? (opts.endpoints ?? 0) : 0
-        return HttpResponse.json(Array.from({ length: count }, (_, i) => ({ key: `e${i}` })))
-      }),
       http.get(`${BASE}/api/mocks`, ({ request }) => {
         mockQueries.push(new URL(request.url).searchParams)
         return HttpResponse.json({ items: [], total: 0, totalMocks: opts.mocks ?? 0, baseline: 0, offset: 0, limit: 1 })
@@ -361,33 +349,26 @@ describe('Getting started checklist', () => {
       .filter((li) => li.hasAttribute('data-done'))
       .map((li) => li.textContent?.replace(/\(done\).*/, '').trim())
 
-  it('starts with nothing ticked and points at the first step', async () => {
+  it('starts with nothing ticked and points at the first step: a mock', async () => {
     api({})
     await renderApp(<GettingStartedChecklist />)
     await screen.findByRole('heading', { name: 'Getting started' })
     await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0'))
-    expect(screen.getByRole('link', { name: /Open Integrations/ }).getAttribute('href')).toBe('/integrations')
+    expect(screen.getByRole('link', { name: /New mock/ }).getAttribute('href')).toBe('/mocks/new')
   })
 
-  it('ticks itself from real data: integration, endpoint, mock, request, and the request log once opened', async () => {
-    api({ integrations: 1, endpoints: 2, mocks: 3, requests: 1 })
+  it('ticks itself from real data: a mock, a request, and the request log once opened', async () => {
+    api({ mocks: 3, requests: 1 })
     await renderApp(<GettingStartedChecklist />)
-    await waitFor(() => expect(done()).toEqual(['1. Add an integration', '2. Add an endpoint', '3. Create a mock', '4. Send a test request']))
+    await waitFor(() => expect(done()).toEqual(['1. Create a mock', '2. Send a test request']))
     expect(screen.getByRole('link', { name: /Open the request log/ })).toBeTruthy()
+    expect(window.localStorage.getItem(REQUEST_SENT_KEY)).toBe('1')
     // The mock step counts the signed-in user's own mocks.
     expect(mockQueries.at(-1)?.get('owner')).toBe('sara')
     act(() => markRequestLogSeen('u1'))
-    // All five done: it hides itself for good (until the Guide shows it again).
+    // All three done: it hides itself for good (until the Guide shows it again).
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Getting started' })).toBeNull())
     expect(window.localStorage.getItem(CHECKLIST_DONE_KEY)).toBe('1')
-  })
-
-  it('looks past the first ten integrations for an endpoint, and keeps the request step once WireMock had a request', async () => {
-    api({ integrations: 14, endpoints: 1, endpointsOn: 'i12', requests: 1 })
-    await renderApp(<GettingStartedChecklist />)
-    await waitFor(() => expect(done()).toEqual(['1. Add an integration', '2. Add an endpoint', '4. Send a test request']))
-    expect(endpointCalls).toContain('i12')
-    expect(window.localStorage.getItem(REQUEST_SENT_KEY)).toBe('1')
   })
 
   it('is dismissed per browser and comes back from the guide', async () => {

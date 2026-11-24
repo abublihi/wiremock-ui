@@ -79,7 +79,7 @@ describe('history', () => {
     historyServer(calls)
     await renderApp(<EditMockPage id="m-1" />)
     const ue = userEvent.setup()
-    const key = (await screen.findByLabelText('Value of $.idNo in the request body')) as HTMLInputElement
+    const key = (await screen.findByRole('textbox', { name: 'URL' })) as HTMLInputElement
     await ue.type(key, '9')
     const draft = key.value
     await ue.click(screen.getByRole('button', { name: 'History' }))
@@ -89,7 +89,7 @@ describe('history', () => {
     expect(await screen.findByText('Version 1 restored')).toBeTruthy()
     expect(screen.getByText('Your unsaved changes are kept — saving them will ask you to reload.')).toBeTruthy()
     expect(calls).toEqual([{ method: 'POST', path: 'restore', body: { version: 1 } }])
-    expect((screen.getByLabelText('Value of $.idNo in the request body', { selector: 'input' }) as HTMLInputElement).value).toBe(draft)
+    expect((screen.getByRole('textbox', { name: 'URL', hidden: true }) as HTMLInputElement).value).toBe(draft)
   })
 
   it('restoring without a draft has no draft note', async () => {

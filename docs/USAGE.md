@@ -7,16 +7,16 @@ The user guide lives in [`docs/guide/`](guide/), one file per feature. The same 
 | | Section | What it covers |
 |---|---|---|
 | 1 | [Getting started](guide/getting-started.md) | From nothing to a mock your app calls, in five minutes, with the Blog API example. |
-| 2 | [Concepts](guide/concepts.md) | Integration, endpoint, mock, the key, baseline and "my" mocks, and which mock wins. |
-| 3 | [Mocks and the editor](guide/mocks.md) | Make, edit, test and clean up mocks, in Simple or Advanced mode, or straight from a URL. |
-| 4 | [Integrations and endpoints](guide/integrations.md) | Describe each system your app calls once, so anyone can make a mock for it in a few clicks. |
+| 2 | [Concepts](guide/concepts.md) | Mock, tags, several responses, baseline and "my" mocks, and which mock wins. |
+| 3 | [Mocks and the editor](guide/mocks.md) | Make, edit, test and clean up mocks, on the URL form or as raw stub JSON. |
+| 4 | [Tags and several responses](guide/tags.md) | Group mocks with tags, and let one mock answer differently by a value in the request. |
 | 5 | [Testing and Copy as curl](guide/testing.md) | Send a request to WireMock from the UI and see which mock answered, or copy it as a curl command. |
 | 6 | [Request log and near misses](guide/request-log.md) | Everything WireMock received, which mock answered, and why a request matched nothing. |
 | 7 | [Scenarios and the builder](guide/scenarios.md) | The same request answered differently on later calls, like an order going pending, shipped, delivered. |
 | 8 | [Proxy (forward to a real service)](guide/proxy.md) | Let a mock pass the request on to a real service and return its answer unchanged. |
 | 9 | [Webhooks (call back after responding)](guide/webhooks.md) | Have WireMock send a request of its own after it answers, like the status callback your app waits for. |
 | 10 | [Recording and snapshots](guide/recording.md) | Turn a real service's answers (or requests already in the log) into mocks, after you review them. |
-| 11 | [Import and export](guide/import-export.md) | Bring mocks and integrations in from files, folders, zips and Postman; take them out as a bundle or WireMock mappings. |
+| 11 | [Import and export](guide/import-export.md) | Bring mocks in from files, folders, zips and Postman, tagged as you review them; take them out as a bundle or WireMock mappings. |
 | 12 | [Users and audit](guide/users-audit.md) | Who can sign in, and who changed what. |
 | 13 | [Storage and WireMock-only mode](guide/storage.md) | Where mocks are kept (SQLite, Redis, or nowhere but WireMock) and what changes in each mode. |
 | 14 | [Sync with WireMock](guide/sync.md) | How the UI keeps WireMock equal to its store, survives WireMock restarts, and adopts existing stubs. |

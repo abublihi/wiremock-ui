@@ -4,7 +4,6 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { Scenario } from '@/server/scenarios/service'
 import { ScenarioBuilder } from '@/ui/components/scenarios/ScenarioBuilder'
 import { renderApp } from './helpers'
@@ -18,23 +17,6 @@ afterEach(() => {
 afterAll(() => server.close())
 
 const BASE = 'http://localhost:3000'
-const CATALOG = `${BASE}/api/integrations/nic/endpoints`
-const integration: Integration = { key: 'nic', name: 'NIC', prefix: '/nic', updatedAt: '', updatedBy: '' }
-// A text endpoint: its body is a plain textarea (easy to type in here); JSON bodies use the CodeMirror editor.
-const endpoint: Endpoint = {
-  integration: 'nic',
-  key: 'loan',
-  name: 'Loan status',
-  method: 'GET',
-  path: '/loan/status',
-  pathType: 'exact',
-  lookup: { location: 'query', expression: 'id' },
-  contentType: 'text',
-  exampleResponses: { '200': 'pending' },
-  allowedStatuses: [],
-  updatedAt: '',
-  updatedBy: '',
-}
 const existing: Scenario = {
   name: 'loan-approval',
   state: 'Started',
@@ -46,7 +28,7 @@ const existing: Scenario = {
 type Call = { method: string; path: string; body?: unknown }
 
 /**
- * The catalog, the scenario list, and the create/delete endpoints; `failOn` makes the nth create (1-based) fail and
+ * The scenario list, and the create/delete endpoints; `failOn` makes the nth create (1-based) fail and
  * `failDelete` the deletes of those mock ids. `scenarioGets` counts the scenario list fetches.
  */
 let scenarioGets = 0
@@ -61,13 +43,10 @@ function mockApi({ failOn, failDelete = [], scenarios = [] }: { failOn?: number;
     return HttpResponse.json({ id: `m-${creates}`, ...(body as object), metadata: { wiremockUi: { version: 1 } } }, { status: 201 })
   }
   server.use(
-    http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
-    http.get(CATALOG, () => HttpResponse.json([endpoint])),
     http.get(`${BASE}/api/scenarios`, () => {
       scenarioGets += 1
       return HttpResponse.json({ scenarios })
     }),
-    http.post(`${CATALOG}/loan/mocks`, ({ request }) => created('catalog', request)),
     http.post(`${BASE}/api/mocks`, ({ request }) => created('mocks', request)),
     http.delete(`${BASE}/api/mocks/:id`, ({ request, params }) => {
       calls.push({ method: 'DELETE', path: `${String(params.id)}?version=${new URL(request.url).searchParams.get('version')}` })
@@ -81,9 +60,8 @@ function mockApi({ failOn, failDelete = [], scenarios = [] }: { failOn?: number;
 const textbox = (name: string) => screen.getByRole('textbox', { name }) as HTMLInputElement
 const moveSelect = (n: number) => screen.getByRole('combobox', { name: `Step ${n}: then move to` })
 
-async function pickEndpoint(ue: ReturnType<typeof userEvent.setup>) {
-  await ue.click(await screen.findByRole('option', { name: /Loan status/ }))
-  await ue.type(await screen.findByLabelText('Value of query parameter id'), '7')
+async function fillRequest(ue: ReturnType<typeof userEvent.setup>) {
+  await ue.type(await screen.findByRole('textbox', { name: 'URL' }), '/loan/status?id=7')
 }
 
 describe('scenario builder', () => {
@@ -127,7 +105,7 @@ describe('scenario builder', () => {
     const ue = userEvent.setup()
     await ue.click(screen.getByRole('button', { name: 'Create scenario' }))
     expect(screen.getByText('Enter a scenario name.')).toBeTruthy()
-    expect(screen.getByText('Pick an endpoint of an integration, or switch to Method and URL.')).toBeTruthy()
+    expect(screen.getByText('Enter a URL path that starts with /, e.g. /orders/42/status.')).toBeTruthy()
     expect(screen.getByText("Name this step's state.")).toBeTruthy()
     expect(textbox('Step 2 state').getAttribute('aria-invalid')).toBe('true')
     expect(screen.getByText('Fix the highlighted fields, then create the scenario.')).toBeTruthy()
@@ -152,21 +130,14 @@ describe('scenario builder', () => {
     expect(screen.getByRole('link', { name: 'Open it' }).getAttribute('href')).toBe('/scenarios?scenario=loan-approval')
   })
 
-  it('saves one mock per step through the catalog builder, then opens the scenario with a toast', async () => {
+  it('saves one mock per step, then opens the scenario with a toast', async () => {
     const calls = mockApi()
     const { router } = await renderApp(<ScenarioBuilder />)
     const ue = userEvent.setup()
     await ue.type(textbox('Scenario name'), 'loan-approval')
-    await pickEndpoint(ue)
-    // Bodies start from the catalog example for their status.
-    expect(textbox('Step 1 response body').value).toBe('pending')
-    expect(screen.getAllByText('// prefilled from the endpoint example for 200')).toHaveLength(2)
+    await fillRequest(ue)
     await ue.type(textbox('Step 2 state'), 'approved')
-    await ue.clear(textbox('Step 2 response body'))
-    await ue.type(textbox('Step 2 response body'), 'approved')
     await ue.type(screen.getByRole('spinbutton', { name: 'Step 2 delay in seconds' }), '2')
-    // Custom headers would make a step Advanced-only; the hint says so.
-    expect(screen.getAllByText('Custom headers make this step editable in Advanced mode only.')).toHaveLength(2)
 
     await ue.click(screen.getByRole('button', { name: 'Create scenario' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/scenarios'))
@@ -175,25 +146,25 @@ describe('scenario builder', () => {
     expect(calls).toEqual([
       {
         method: 'POST',
-        path: 'catalog',
+        path: 'mocks',
         body: {
-          keyValue: '7',
-          status: 200,
-          body: 'pending',
           name: 'loan-approval — Started',
-          scenario: { name: 'loan-approval', requiredState: 'Started', newState: 'approved' },
+          request: { method: 'GET', url: '/loan/status?id=7' },
+          response: { status: 200 },
+          scenarioName: 'loan-approval',
+          requiredScenarioState: 'Started',
+          newScenarioState: 'approved',
         },
       },
       {
         method: 'POST',
-        path: 'catalog',
+        path: 'mocks',
         body: {
-          keyValue: '7',
-          status: 200,
-          body: 'approved',
-          delayMs: 2000,
           name: 'loan-approval — approved',
-          scenario: { name: 'loan-approval', requiredState: 'approved' },
+          request: { method: 'GET', url: '/loan/status?id=7' },
+          response: { status: 200, fixedDelayMilliseconds: 2000 },
+          scenarioName: 'loan-approval',
+          requiredScenarioState: 'approved',
         },
       },
     ])
@@ -204,7 +175,7 @@ describe('scenario builder', () => {
     const { router } = await renderApp(<ScenarioBuilder />)
     const ue = userEvent.setup()
     await ue.type(textbox('Scenario name'), 'loan-approval')
-    await pickEndpoint(ue)
+    await fillRequest(ue)
     await ue.type(textbox('Step 2 state'), 'approved')
     await ue.click(screen.getByRole('button', { name: 'Add step' }))
     await ue.type(textbox('Step 3 state'), 'closed')
@@ -225,7 +196,7 @@ describe('scenario builder', () => {
     await renderApp(<ScenarioBuilder />)
     const ue = userEvent.setup()
     await ue.type(textbox('Scenario name'), 'loan-approval')
-    await pickEndpoint(ue)
+    await fillRequest(ue)
     await ue.type(textbox('Step 2 state'), 'approved')
     await ue.click(screen.getByRole('button', { name: 'Add step' }))
     await ue.type(textbox('Step 3 state'), 'closed')
@@ -240,12 +211,11 @@ describe('scenario builder', () => {
     await waitFor(() => expect(scenarioGets).toBeGreaterThan(gets))
   })
 
-  it('an uncatalogued request: method and URL, saved as full stubs', async () => {
+  it('the request is a method and URL; a path without / is refused; saved as full stubs', async () => {
     const calls = mockApi()
     await renderApp(<ScenarioBuilder />)
     const ue = userEvent.setup()
     await ue.type(textbox('Scenario name'), 'order')
-    await ue.click(screen.getByRole('radio', { name: 'Method and URL' }))
     await ue.type(textbox('URL'), 'orders/1')
     await ue.type(textbox('Step 2 state'), 'shipped')
     await ue.click(screen.getByRole('button', { name: 'Create scenario' }))

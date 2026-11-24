@@ -33,7 +33,7 @@ The first step of the Orders example:
 **Build a scenario.** [Open Scenarios →](/scenarios) → **New scenario**. One page holds the whole scenario:
 
 1. **Scenario name**: `order-status` (letters, digits and `- _ .`, so the page can move and reset it).
-2. **Request**: every step answers the same request. Pick an **Integration endpoint** (for example **Orders API → Get order**, key `1001`), or **Method and URL** (`GET` `/orders/1001`).
+2. **Request**: every step answers the same request, a **Method** and **URL** (`GET` `/orders/1001`; add `?name=value` to match a query too).
 3. **Steps**, in the order calls get them. Each step has a position and its **state** ("1 · Started", "2 · shipped", "3 · delivered") and an **answer** (status, headers, body, optional delay):
    - step 1 (`Started`) answers `{"status":"pending"}`;
    - step 2 (`shipped`) answers `{"status":"shipped"}`;

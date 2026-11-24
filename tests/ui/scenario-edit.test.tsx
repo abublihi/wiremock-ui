@@ -4,7 +4,6 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { Scenario } from '@/server/scenarios/service'
 import type { StubMapping } from '@/server/wiremock/types'
 import { EditMockPage } from '@/ui/components/editor/EditMockPage'
@@ -22,23 +21,8 @@ afterEach(() => {
 afterAll(() => server.close())
 
 const BASE = 'http://localhost:3000'
-const integration: Integration = { key: 'nic', name: 'NIC', prefix: '/nic', updatedAt: '', updatedBy: '' }
-// A text endpoint: step bodies are plain textareas.
-const endpoint: Endpoint = {
-  integration: 'nic',
-  key: 'loan',
-  name: 'Loan status',
-  method: 'GET',
-  path: '/loan/status',
-  pathType: 'exact',
-  contentType: 'text',
-  exampleResponses: {},
-  allowedStatuses: [],
-  updatedAt: '',
-  updatedBy: '',
-}
 const REQUEST = { method: 'GET', urlPath: '/nic/loan/status' }
-const meta = (version: number) => ({ wiremockUi: { integration: 'nic', endpoint: 'loan', owner: 'sara', version, updatedAt: '2026-01-01T00:00:00.000Z', updatedBy: 'sara', source: 'ui' } })
+const meta = (version: number) => ({ wiremockUi: { tags: ['loans'], owner: 'sara', version, updatedAt: '2026-01-01T00:00:00.000Z', updatedBy: 'sara', source: 'ui' } })
 const pending = {
   id: 'm1',
   name: 'loan — Started',
@@ -76,8 +60,6 @@ function mockApi({ failPut, noHistory = false }: { failPut?: string; noHistory?:
   const stubs = [pending, approved, cancel]
   let created = 0
   server.use(
-    http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
-    http.get(`${BASE}/api/integrations/nic/endpoints`, () => HttpResponse.json([endpoint])),
     http.get(`${BASE}/api/scenarios`, () => HttpResponse.json({ scenarios: [] })),
     http.get(`${BASE}/api/mocks`, ({ request }) => {
       calls.push({ method: 'GET', path: `mocks${new URL(request.url).search}` })
@@ -135,8 +117,6 @@ describe('editing a scenario', () => {
     )
     const urls: URL[] = []
     server.use(
-      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
-      http.get(`${BASE}/api/integrations/nic/endpoints`, () => HttpResponse.json([endpoint])),
       http.get(`${BASE}/api/scenarios`, () => HttpResponse.json({ scenarios: [] })),
       http.get(`${BASE}/api/mocks`, ({ request }) => {
         const url = new URL(request.url)
@@ -162,7 +142,6 @@ describe('editing a scenario', () => {
     expect(textbox('Step 1 response body').value).toBe('pending')
     const request = screen.getByRole('heading', { name: 'Request' }).closest('section')!
     expect(within(request).getByText('/nic/loan/status')).toBeTruthy()
-    expect(within(request).getByText('NIC → Loan status')).toBeTruthy()
     expect(screen.queryByRole('radio', { name: 'Method and URL' })).toBeNull()
     const kept = screen.getByRole('heading', { name: /Kept as is \(1\)/ }).closest('section')!
     expect(within(kept).getByText('Cancel loan')).toBeTruthy()
@@ -194,7 +173,7 @@ describe('editing a scenario', () => {
           response: { status: 200, body: 'paid out' },
           scenarioName: 'loan',
           requiredScenarioState: 'paid',
-          metadata: { wiremockUi: { integration: 'nic', endpoint: 'loan' } },
+          metadata: { wiremockUi: { tags: ['loans'] } },
         },
       },
       {
@@ -209,7 +188,7 @@ describe('editing a scenario', () => {
             scenarioName: 'loan',
             requiredScenarioState: 'approved',
             newScenarioState: 'paid',
-            metadata: { wiremockUi: { integration: 'nic', endpoint: 'loan' } },
+            metadata: { wiremockUi: { tags: ['loans'] } },
           },
         },
       },
@@ -262,7 +241,7 @@ describe('editing a scenario', () => {
           scenarioName: 'loan',
           requiredScenarioState: 'Started',
           newScenarioState: 'approved',
-          metadata: { wiremockUi: { integration: 'nic', endpoint: 'loan' } },
+          metadata: { wiremockUi: { tags: ['loans'] } },
         },
       },
     })
@@ -389,8 +368,6 @@ describe('editing a scenario: retries, undo and the live state', () => {
       history.set(s.id, [...(history.get(s.id) ?? []), s])
     }
     server.use(
-      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
-      http.get(`${BASE}/api/integrations/nic/endpoints`, () => HttpResponse.json([endpoint])),
       http.get(`${BASE}/api/scenarios`, () => HttpResponse.json({ scenarios: [{ name: 'loan', state: live, possibleStates: [], settable: true, mocks: [] }] })),
       http.post(`${BASE}/api/scenarios/reset`, async ({ request }) => {
         calls.push({ method: 'RESET', path: 'scenarios', body: await request.json() })
@@ -445,7 +422,7 @@ describe('editing a scenario: retries, undo and the live state', () => {
         const body = (await request.json()) as { mocks: StubMapping[] }
         calls.push({ method: 'IMPORT', path: 'import', body })
         for (const m of body.mocks) keep(withVersion(m, 1))
-        return HttpResponse.json({ integrations: 0, endpoints: 0, created: body.mocks.length, updated: 0, unchanged: 0, skipped: [], pruned: 0, ignoredOidcIdentities: 0 })
+        return HttpResponse.json({ created: body.mocks.length, updated: 0, unchanged: 0, skipped: [], pruned: 0, ignoredOidcIdentities: 0 })
       }),
     )
     return { calls, store }
@@ -496,7 +473,7 @@ describe('editing a scenario: retries, undo and the live state', () => {
     expect(summary(calls)).toEqual(['PUT m1', 'DELETE m2?version=2', 'DELETE m3?version=1', 'RESTORE m2', 'IMPORT import', 'RESTORE m1', 'PUT m1'])
     const imported = (calls.find((c) => c.method === 'IMPORT')!.body as { mocks: StubMapping[] }).mocks[0]
     expect(imported.id).toBe('m2')
-    expect(imported.metadata?.wiremockUi).toEqual({ integration: 'nic', endpoint: 'loan', owner: 'sara' })
+    expect(imported.metadata?.wiremockUi).toEqual({ tags: ['loans'], owner: 'sara' })
     expect(store.get('m2')!.response).toEqual(approved.response)
     expect(store.get('m1')!.newScenarioState).toBe('approved')
   })

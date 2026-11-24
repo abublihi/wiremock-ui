@@ -62,7 +62,6 @@ function setup(opts: { stubs: StubMapping[]; failDeletes?: Set<string>; failTwic
     store,
     locks,
     mocks: mocks as never,
-    catalog: {} as never,
     audit: { record: async () => {}, list: async () => ({ entries: [], nextCursor: null }) },
     config: { recordingAllowed: true, wiremockUrl: 'http://wiremock:8080', wiremockPublicUrl: 'http://wiremock:8080', seedPrune: false, storeDriver: 'sqlite' },
   })

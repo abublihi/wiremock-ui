@@ -1,12 +1,10 @@
 import { useId, useMemo, useState, type ReactNode } from 'react'
-import { useQueries } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { AlertTriangleIcon, CheckIcon, FileWarningIcon, CopyIcon, GitBranchIcon, SearchXIcon, ShieldAlertIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Endpoint, Integration } from '@/server/catalog/types'
-import { matchesPrefix } from '@/server/catalog/prefix'
 import type { Recording, ReviewItem } from '@/server/recording/types'
-import { endpointsQueryOptions, useAcceptRecording, useDiscardRecording, useIntegrations } from '@/ui/api/queries'
+import { useAcceptRecording, useDiscardRecording, useTags } from '@/ui/api/queries'
+import { TagsField } from '@/ui/components/mocks/TagsField'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { StatusBadge } from '@/ui/components/common/StatusBadge'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
@@ -24,17 +22,14 @@ import {
 import { Button } from '@/ui/components/ui/button'
 import { Checkbox } from '@/ui/components/ui/checkbox'
 import { Input } from '@/ui/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import { Spinner } from '@/ui/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useSeedPrune, useWireMockOnly } from '@/ui/config'
 import { useT } from '@/ui/i18n'
-import { NEW_ENDPOINT, acceptPayload, formatBytes, groupReviewItems, newEndpointFor, suggestLink, type ReviewGroup, type RowChoice } from '@/ui/lib/recording'
+import { acceptPayload, formatBytes, groupReviewItems, suggestTags, type ReviewGroup, type RowChoice } from '@/ui/lib/recording'
 import { relativeTime } from '@/ui/lib/time'
 import { cn } from '@/ui/lib/utils'
 
-// Radix Select has no empty value: these stand for "none".
-const NONE = '__none__'
 const ON = 'data-[state=on]:border-signal/50 data-[state=on]:bg-signal/10 data-[state=on]:text-signal-fg'
 
 /** The recorded answer as text, for checking it before accepting (bodies may hold real data). */
@@ -61,21 +56,14 @@ const acceptable = (item: ReviewItem) => !item.tooLarge
 
 /**
  * One recording's review list: each recorded stub with its method, URL, status, body size and warnings,
- * a name and a catalog link to pick; Accept selected creates the mocks, Discard drops rows.
+ * a name and tags to pick; Accept selected creates the mocks, Discard drops rows.
  */
 export function ReviewList({ recording }: { recording: Recording }) {
   const t = useT()
   const ids = useId()
   const navigate = useNavigate()
-  const integrations = useIntegrations()
-  const allIntegrations = integrations.data ?? []
-  // Only integrations whose prefix takes one of the recorded paths are worth loading endpoints for.
-  const relevant = useMemo(
-    () => allIntegrations.filter((i) => i.prefix !== '/' && recording.items.some((item) => matchesPrefix(item.url.split('?')[0], i.prefix))),
-    [allIntegrations, recording.items],
-  )
-  const endpointQueries = useQueries({ queries: relevant.map((i) => endpointsQueryOptions(i.key)) })
-  const endpoints: Record<string, Endpoint[] | undefined> = Object.fromEntries(relevant.map((i, n) => [i.key, endpointQueries[n]?.data]))
+  const knownTags = useTags()
+  const tagSuggestions = knownTags.data?.map((x) => x.tag)
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set(recording.items.filter(preselected).map((i) => i.id)))
   const [choices, setChoices] = useState<Record<string, RowChoice>>({})
@@ -93,7 +81,7 @@ export function ReviewList({ recording }: { recording: Recording }) {
   const items = recording.items
   const groups = useMemo(() => groupReviewItems(items), [items])
   const wiremockOnly = useWireMockOnly()
-  const choiceOf = (item: ReviewItem): RowChoice => choices[item.id] ?? { name: '', ...suggestLink(item, allIntegrations, endpoints) }
+  const choiceOf = (item: ReviewItem): RowChoice => choices[item.id] ?? { name: '', tags: suggestTags(item) }
   const setChoice = (item: ReviewItem, patch: Partial<RowChoice>) => setChoices((prev) => ({ ...prev, [item.id]: { ...choiceOf(item), ...patch } }))
   const picked = items.filter((i) => selected.has(i.id))
   const selectable = items.filter(acceptable)
@@ -113,7 +101,7 @@ export function ReviewList({ recording }: { recording: Recording }) {
 
   const onAccept = async () => {
     // "Keep only the first answer" rows go as plain mocks in the same call (the server saved them plain too).
-    const payload = acceptPayload(picked.map((item) => ({ item, ...choiceOf(item) })), allIntegrations).map((row) =>
+    const payload = acceptPayload(picked.map((item) => ({ item, ...choiceOf(item) }))).map((row) =>
       plain.has(row.id) ? { ...row, dropScenario: true } : row,
     )
     try {
@@ -172,8 +160,7 @@ export function ReviewList({ recording }: { recording: Recording }) {
       onCheck={(on) => toggle(item.id, on)}
       choice={choiceOf(item)}
       onChoice={(patch) => setChoice(item, patch)}
-      integrations={allIntegrations}
-      endpoints={endpoints}
+      tagSuggestions={tagSuggestions}
       error={errors[item.id]}
     />
   )
@@ -328,8 +315,7 @@ function ReviewRow({
   onCheck,
   choice,
   onChoice,
-  integrations,
-  endpoints,
+  tagSuggestions,
   error,
 }: {
   item: ReviewItem
@@ -338,16 +324,13 @@ function ReviewRow({
   onCheck: (on: boolean) => void
   choice: RowChoice
   onChoice: (patch: Partial<RowChoice>) => void
-  integrations: Integration[]
-  endpoints: Record<string, Endpoint[] | undefined>
+  tagSuggestions?: string[]
   error?: string
 }) {
   const t = useT()
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
   const hasBody = bodyText(item) !== null
-  const integration = integrations.find((i) => i.key === choice.integration)
-  const options = integration ? (endpoints[integration.key] ?? []) : []
   const scenario = !plain && typeof item.stub.scenarioName === 'string' ? item.stub.scenarioName : undefined
   const label = item.stub.name ?? `${item.method} ${item.url}`
   return (
@@ -407,48 +390,8 @@ function ReviewRow({
           </label>
           <Input id={id('name')} className="h-8 text-xs" placeholder={label} value={choice.name} onChange={(e) => onChoice({ name: e.target.value })} />
         </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor={id('integration')} className="text-xs text-muted-foreground">
-            {t('recording.integration')}
-          </label>
-          <Select
-            value={choice.integration || NONE}
-            onValueChange={(v) => {
-              const key = v === NONE ? '' : v
-              onChoice({ integration: key, endpoint: key ? suggestLink(item, integrations.filter((i) => i.key === key), endpoints).endpoint || NEW_ENDPOINT : '' })
-            }}
-          >
-            <SelectTrigger id={id('integration')} size="sm" className="w-full text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE}>{t('recording.noIntegration')}</SelectItem>
-              {integrations.map((i) => (
-                <SelectItem key={i.key} value={i.key}>
-                  {i.name} <span className="font-mono text-muted-foreground">{i.prefix}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor={id('endpoint')} className="text-xs text-muted-foreground">
-            {t('recording.endpoint')}
-          </label>
-          <Select value={choice.endpoint || NONE} disabled={!integration} onValueChange={(v) => onChoice({ endpoint: v === NONE ? '' : v })}>
-            <SelectTrigger id={id('endpoint')} size="sm" className="w-full text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE}>{t('recording.noEndpoint')}</SelectItem>
-              {options.map((e) => (
-                <SelectItem key={e.key} value={e.key}>
-                  {e.name}
-                </SelectItem>
-              ))}
-              {integration && <SelectItem value={NEW_ENDPOINT}>{t('recording.newEndpoint', { name: newEndpointFor(item, integration).name })}</SelectItem>}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col gap-1 sm:col-span-2">
+          <TagsField tags={choice.tags} onChange={(tags) => onChoice({ tags })} suggestions={tagSuggestions} label={t('recording.tags')} />
         </div>
       </div>
       {hasBody && <RecordedAnswer item={item} />}

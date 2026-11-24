@@ -162,11 +162,7 @@ function MockRow({ stub, step }: { stub: StubMapping; step?: string }) {
           <p dir="ltr" className="truncate font-mono text-xs text-muted-foreground">
             {step}
           </p>
-        ) : (
-          (meta?.integration || meta?.endpoint) && (
-            <p className="truncate text-xs text-muted-foreground">{[meta.integration, meta.endpoint].filter(Boolean).join(' · ')}</p>
-          )
-        )}
+        ) : null}
         {tagsOf(stub).length > 0 && (
           <ul aria-label={t('tags.label')} className="mt-1 flex flex-wrap gap-1">
             {tagsOf(stub).map((tag) => (
@@ -312,7 +308,7 @@ function GroupRows({ id, mocks, open, onToggle }: { id: string; mocks: StubMappi
               aria-expanded={open}
               aria-label={t('groups.toggle', { name: first.name || t('mocks.unnamed') })}
               onClick={onToggle}
-              className="mt-0.5 rounded-sm outline-none hover:text-signal-fg focus-visible:ring-2 focus-visible:ring-ring"
+              className="-my-1 -ms-1.5 inline-flex size-6 shrink-0 items-center justify-center rounded-sm outline-none hover:text-signal-fg focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ChevronRightIcon aria-hidden className={cn('size-3.5 shrink-0 transition-transform motion-reduce:transition-none', open && 'rotate-90')} />
             </button>

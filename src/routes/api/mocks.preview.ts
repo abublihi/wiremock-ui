@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { previewQuickMock } from '../../server/http/handlers/catalog'
+import { previewQuickMock } from '../../server/http/handlers/mocks'
 import { getRuntime } from '../../server/runtime'
 import { methodNotAllowed } from '../../server/http/handlers/fallback'
 

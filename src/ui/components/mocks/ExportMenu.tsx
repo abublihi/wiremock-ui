@@ -15,8 +15,8 @@ import { exportUrl, type ExportScope } from '@/ui/lib/export'
 export function ExportMenu({ scope }: { scope: ExportScope }) {
   const t = useT()
   const label =
-    scope.scope === 'integration'
-      ? t('export.scopeIntegration', { integration: scope.integration })
+    scope.scope === 'tag'
+      ? t('export.scopeTag', { tag: scope.tag })
       : t(scope.scope === 'mine' ? 'export.scopeMine' : 'export.scopeAll')
   return (
     <DropdownMenu>

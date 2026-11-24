@@ -9,7 +9,7 @@ summary: Where mocks are kept (SQLite, Redis, or nowhere but WireMock) and what 
 
 ## What it is
 
-wiremock-ui keeps the real copy of every mock, integration, account, history entry and audit entry in a **store**. There are three choices, set with `STORE_DRIVER`:
+wiremock-ui keeps the real copy of every mock (with its tags), account, history entry and audit entry in a **store**. There are three choices, set with `STORE_DRIVER`:
 
 | Store | When | Good for |
 |---|---|---|
@@ -23,12 +23,12 @@ With SQLite or Redis, WireMock holds a working copy the UI can rebuild at any ti
 
 ## How to
 
-Check which mode you are in: in WireMock-only mode the Users page is gone, the Mocks page has no **My mocks / All mocks** switch, and the Integrations page says integration changes are kept in memory.
+Check which mode you are in: in WireMock-only mode the Users page is gone, and the Mocks page has no **My mocks / All mocks** switch.
 
 In WireMock-only mode:
 
 - there is one account (`ADMIN_USER`), no **Users** management, no **History** or restore, no **Reset my mocks**;
-- integrations live in memory and are lost on restart: put them in a `SEED_PATH` file, or export a bundle to keep them;
+- tags and mocks with several responses live in each stub's `metadata.wiremockUi`, so WireMock keeps them with the stubs;
 - the request log, test panel, curl, proxies, webhooks, scenarios, recording, import and export work as usual; pruning baseline mocks on import is not offered;
 - nothing is synced: the UI never deletes or re-adds stubs behind your back.
 

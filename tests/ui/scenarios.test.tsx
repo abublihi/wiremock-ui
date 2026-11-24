@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import type { Endpoint, Integration } from '@/server/catalog/types'
+import { buildQuickStub, type QuickMockInput } from '@/server/catalog/build'
 import type { Scenario } from '@/server/scenarios/service'
 import { ScenariosPage } from '@/routes/_app/scenarios.index'
 import { NewMockPage, type NewMockSearch } from '@/ui/components/editor/NewMockPage'
@@ -125,7 +125,7 @@ describe('Scenarios page', () => {
     expect(await screen.findByText('Copied curl command')).toBeTruthy()
     expect(await navigator.clipboard.readText()).toContain('http://wm:8080/nic/loan/status')
     await ue.click(within(card).getByRole('button', { name: 'Try GET /nic/loan/status' }))
-    const panel = await screen.findByRole('dialog', { name: 'Try this endpoint' })
+    const panel = await screen.findByRole('dialog', { name: 'Try this request' })
     expect((within(panel).getByRole('textbox', { name: 'Path' }) as HTMLInputElement).value).toBe('/nic/loan/status')
   })
 
@@ -210,24 +210,26 @@ describe('Scenarios page', () => {
 
 // ── Editor: the Scenario (stateful) section ───────────────────────────────────
 
-const CATALOG = `${BASE}/api/integrations/nic/endpoints`
-const integration: Integration = { key: 'nic', name: 'NIC', prefix: '/nic', updatedAt: '', updatedBy: '' }
-const endpoint: Endpoint = {
-  integration: 'nic',
-  key: 'loan',
-  name: 'Loan status',
-  method: 'GET',
-  path: '/loan/status',
-  pathType: 'exact',
-  lookup: { location: 'query', expression: 'id' },
-  contentType: 'json',
-  exampleResponses: { '200': '{"status":"pending"}' },
-  allowedStatuses: [],
-  updatedAt: '',
-  updatedBy: '',
+/** The quick preview through the real builder (what the Simple form sends and gets back). */
+function mockPreview(calls: Call[]) {
+  server.use(
+    http.get(`${BASE}/api/tags`, () => HttpResponse.json([])),
+    http.post(`${BASE}/api/mocks/preview`, async ({ request }) => {
+      const body = (await request.json()) as QuickMockInput
+      calls.push({ method: 'POST', path: 'preview', body })
+      return HttpResponse.json(buildQuickStub(body))
+    }),
+  )
 }
 
-function NewHarness({ initial = { integration: 'nic', endpoint: 'loan' } }: { initial?: NewMockSearch }) {
+/** Fills the URL form with GET /loan/status. */
+async function fillUrl(ue: ReturnType<typeof userEvent.setup>, path = '/loan/status') {
+  const url = await screen.findByRole('textbox', { name: 'URL' })
+  await ue.clear(url)
+  await ue.type(url, path)
+}
+
+function NewHarness({ initial = {} }: { initial?: NewMockSearch }) {
   const [search, setSearch] = useState<NewMockSearch>(initial)
   return (
     <>
@@ -240,19 +242,11 @@ function NewHarness({ initial = { integration: 'nic', endpoint: 'loan' } }: { in
 describe('mock editor — scenario', () => {
   const open = async () => {
     const calls: Call[] = []
-    server.use(
-      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
-      http.get(CATALOG, () => HttpResponse.json([endpoint])),
-      http.post(`${CATALOG}/loan/preview`, async ({ request }) => {
-        calls.push({ method: 'POST', path: 'preview', body: await request.json() })
-        return HttpResponse.json({ name: 'built', request: {}, response: { status: 200 } })
-      }),
-    )
+    mockPreview(calls)
     mockScenarios([[loan()]])
     await renderApp(<NewHarness />)
-    await screen.findByRole('textbox', { name: 'Response body' })
     const ue = userEvent.setup()
-    await ue.type(screen.getByLabelText('Value of query parameter id'), '7')
+    await fillUrl(ue)
     return { calls, ue }
   }
 
@@ -273,14 +267,7 @@ describe('mock editor — scenario', () => {
     await ue.click(within(newState.closest('[data-slot="field"]') as HTMLElement).getByRole('button', { name: 'approved' }))
 
     await ue.click(screen.getByRole('button', { name: 'Preview' }))
-    await waitFor(() =>
-      expect(calls.at(-1)?.body).toEqual({
-        keyValue: '7',
-        status: 200,
-        body: '{"status":"pending"}',
-        scenario: { name: 'loan-approval', requiredState: 'Started', newState: 'approved' },
-      }),
-    )
+    await waitFor(() => expect(calls.at(-1)?.body).toMatchObject({ request: { method: 'GET', url: '/loan/status' }, scenario: { name: 'loan-approval', requiredState: 'Started', newState: 'approved' } }))
   })
 
   it('the live state follows WireMock (polled every 2 s while visible)', async () => {
@@ -311,39 +298,30 @@ describe('mock editor — adding a step to a scenario', () => {
   const oldLast = {
     id: 'm2',
     name: 'Loan approved',
-    request: { method: 'GET', urlPath: '/nic/loan/status' },
+    request: { method: 'GET', urlPath: '/loan/status' },
     response: { status: 200 },
     scenarioName: 'loan-approval',
     requiredScenarioState: 'approved',
-    metadata: { wiremockUi: { integration: 'nic', endpoint: 'loan', version: 4 } },
+    metadata: { wiremockUi: { tags: ['loans'], version: 4 } },
   }
   const first = { ...oldLast, id: 'm1', name: 'Loan pending', requiredScenarioState: 'Started', newScenarioState: 'approved' }
 
-  /** The catalog, preview/create, the mock list and updates; `putStatus` makes the update of the old last step fail. */
+  /** Preview/create, the mock list and updates; `putStatus` makes the update of the old last step fail. */
   function mockEditorApi({ putStatus = 200 }: { putStatus?: number } = {}) {
     const calls: Call[] = []
+    mockPreview(calls)
     server.use(
-      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])),
-      http.get(CATALOG, () => HttpResponse.json([endpoint])),
-      http.post(`${CATALOG}/loan/preview`, async ({ request }) => {
-        calls.push({ method: 'POST', path: 'preview', body: await request.json() })
-        return HttpResponse.json({ name: 'built', request: {}, response: { status: 200 } })
-      }),
-      http.post(`${CATALOG}/loan/mocks`, async ({ request }) => {
-        const body = (await request.json()) as { scenario: { name: string; requiredState: string } }
+      http.post(`${BASE}/api/mocks`, async ({ request }) => {
+        const body = (await request.json()) as { request: unknown; scenarioName: string; requiredScenarioState: string }
         calls.push({ method: 'POST', path: 'create', body })
-        return HttpResponse.json(
-          // The saved step matches the same request as the old last step (the move is limited to that request).
-          { id: 'm3', name: 'new', request: oldLast.request, response: {}, scenarioName: body.scenario.name, requiredScenarioState: body.scenario.requiredState },
-          { status: 201 },
-        )
+        return HttpResponse.json({ id: 'm3', ...body }, { status: 201 })
       }),
       http.get(`${BASE}/api/mocks`, () =>
         HttpResponse.json([
           first,
           oldLast,
           // Same state, another request: never moved on.
-          { ...oldLast, id: 'm4', name: 'Other request', request: { method: 'POST', urlPath: '/nic/loan/status' } },
+          { ...oldLast, id: 'm4', name: 'Other request', request: { method: 'POST', urlPath: '/loan/status' } },
           { ...oldLast, id: 'm3', name: 'new', requiredScenarioState: 'step-3', metadata: {} },
         ]),
       ),
@@ -359,18 +337,15 @@ describe('mock editor — adding a step to a scenario', () => {
   async function openAndFill() {
     const ue = userEvent.setup()
     const app = await renderApp(<NewHarness initial={{ scenario: 'loan-approval', state: 'step-3', after: 'approved' }} />)
-    await ue.click(await screen.findByRole('option', { name: /Loan status/ }))
-    await screen.findByRole('textbox', { name: 'Response body' })
-    await ue.type(screen.getByLabelText('Value of query parameter id'), '7')
+    // The same request as the old last step: the move is limited to mocks of that request.
+    await fillUrl(ue)
     return { ue, ...app }
   }
 
-  it('opened from a scenario card: a banner explains it, the pick keeps the scenario, and the Scenario section answers in the new state', async () => {
+  it('opened from a scenario card: a banner explains it, the search keeps the scenario, and the Scenario section answers in the new state', async () => {
     const calls = mockEditorApi()
     const { ue } = await openAndFill()
     expect(JSON.parse(screen.getByRole('status', { name: 'search' }).textContent!)).toEqual({
-      integration: 'nic',
-      endpoint: 'loan',
       scenario: 'loan-approval',
       state: 'step-3',
       after: 'approved',
@@ -381,8 +356,6 @@ describe('mock editor — adding a step to a scenario', () => {
     expect((screen.getByRole('textbox', { name: 'Scenario name' }) as HTMLInputElement).value).toBe('loan-approval')
     const required = screen.getByRole('textbox', { name: 'Only answers when the scenario is in state' }) as HTMLInputElement
     expect(required.value).toBe('step-3')
-    // The body still follows the catalog example, as for any new mock.
-    expect(screen.getByText('// prefilled from the endpoint example for 200')).toBeTruthy()
     // The checkbox is on by default and follows the state typed in the form.
     expect(screen.getByRole('checkbox', { name: 'Make the current last step move to step-3' }).getAttribute('aria-checked')).toBe('true')
     await ue.clear(required)
@@ -394,7 +367,7 @@ describe('mock editor — adding a step to a scenario', () => {
     expect(screen.queryByText(/The mocks still work, but Set as current on the Scenarios page can't move the scenario to it/)).toBeNull()
 
     await ue.click(screen.getByRole('button', { name: 'Preview' }))
-    await waitFor(() => expect((calls.at(-1)?.body as { scenario?: unknown })?.scenario).toEqual({ name: 'loan-approval', requiredState: 'closed' }))
+    await waitFor(() => expect((calls.filter((c) => c.path === 'preview').at(-1)?.body as { scenario?: unknown })?.scenario).toEqual({ name: 'loan-approval', requiredState: 'closed' }))
   })
 
   it('after saving, the old last step is updated (with its version) to move the scenario to the new state', async () => {
@@ -411,12 +384,13 @@ describe('mock editor — adding a step to a scenario', () => {
           version: 4,
           stub: {
             name: 'Loan approved',
-            request: { method: 'GET', urlPath: '/nic/loan/status' },
+            request: { method: 'GET', urlPath: '/loan/status' },
             response: { status: 200 },
             scenarioName: 'loan-approval',
             requiredScenarioState: 'approved',
             newScenarioState: 'step-3',
-            metadata: { wiremockUi: { integration: 'nic', endpoint: 'loan' } },
+            // Its tags stay with it.
+            metadata: { wiremockUi: { tags: ['loans'] } },
           },
         },
       },
@@ -444,16 +418,15 @@ describe('mock editor — adding a step to a scenario', () => {
     expect(calls.filter((c) => c.method === 'PUT')).toEqual([])
   })
 
-  it('with no mock of this endpoint in the last state, the banner says so and offers no move', async () => {
+  it('with no mock in the last state, the banner says so and offers no move', async () => {
     mockEditorApi()
-    server.use(http.get(`${BASE}/api/mocks`, () => HttpResponse.json([first, { ...oldLast, metadata: { wiremockUi: { integration: 'nic', endpoint: 'other', version: 4 } } }])))
+    server.use(http.get(`${BASE}/api/mocks`, () => HttpResponse.json([first])))
     await openAndFill()
-    expect(await screen.findByText(/No mock of this endpoint answers in approved and stays there/)).toBeTruthy()
+    expect(await screen.findByText(/No mock answers in approved and stays there/)).toBeTruthy()
     expect(screen.queryByRole('checkbox', { name: /Make the current last step move/ })).toBeNull()
   })
 
   it('the blank JSON stub starts with the scenario fields too', async () => {
-    server.use(http.get(`${BASE}/api/integrations`, () => HttpResponse.json([integration])), http.get(CATALOG, () => HttpResponse.json([endpoint])))
     mockScenarios([[loan()]])
     await renderApp(<NewHarness initial={{ mode: 'json', scenario: 'loan-approval', state: 'step-3', after: 'approved' }} />)
     expect(screen.getByText('Adding a step to scenario loan-approval')).toBeTruthy()

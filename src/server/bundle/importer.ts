@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
 import { safeRecord, type AuditLog } from '../audit/log'
-import { longestPrefixMatch } from '../catalog/prefix'
-import { validateEndpoint, validateIntegration, type CatalogService } from '../catalog/service'
+import { legacyEndpointsOf, migrateLinkedStubs, type LegacyEndpoint } from '../catalog/migrate'
 import { ValidationError } from '../errors'
 import { logger } from '../logger'
 import { assertValidStub, canonicalJson, type MockService } from '../mocks/service'
@@ -12,8 +11,6 @@ import type { StubMapping } from '../wiremock/types'
 import type { Bundle } from './parse'
 
 export type ImportReport = {
-  integrations: number
-  endpoints: number
   created: number
   updated: number
   unchanged: number
@@ -30,15 +27,14 @@ export type ImportReport = {
 export type ImportItem = { index: number; id: string; outcome: 'created' | 'updated' | 'unchanged' | 'skipped'; reason?: string }
 
 type Deps = {
-  catalog: CatalogService
+  /** Endpoints of the retired catalog that stored mocks may still name (src/server/catalog/migrate.ts). */
+  legacyEndpoints?: () => Promise<LegacyEndpoint[]>
   mocks: MockService
   store: MockStore
   audit: AuditLog
   /** Re-adds person-owned mocks above baseline ones; called when the import wrote any baseline mock. */
   reposition?: () => Promise<void>
 }
-
-const URL_FIELDS = ['url', 'urlPath', 'urlPathTemplate'] as const
 
 /** Version-5-style UUID from the SHA-1 of the stub without id/uuid/wiremockUi metadata. */
 export function deterministicId(stub: Record<string, unknown>): string {
@@ -50,12 +46,6 @@ export function deterministicId(stub: Record<string, unknown>): string {
     .digest('hex')
   const variant = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16)
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`
-}
-
-/** The integration whose prefix matches the stub URL best (longest prefix), if any. */
-export function guessIntegration(stub: StubMapping, prefixes: { key: string; prefix: string }[]): string | undefined {
-  const urls = URL_FIELDS.map((f) => stub.request[f]).filter((u): u is string => typeof u === 'string')
-  return longestPrefixMatch(urls, prefixes)
 }
 
 const invalid = <T>(what: string, fn: () => T): T => {
@@ -72,26 +62,12 @@ export async function importBundle(
   deps: Deps,
   opts: { actor: string; prune: boolean; source: 'import' | 'seed'; unreadable?: number; dryRun?: boolean },
 ): Promise<ImportReport> {
+  // Integrations and endpoints are retired: a bundle's mocks linked to them become tagged mocks (and, for an
+  // endpoint with a key, one mock with several responses). The bundle's own catalog and the old stored one name them.
+  const endpoints = [...legacyEndpointsOf(bundle.catalog), ...((await deps.legacyEndpoints?.()) ?? [])]
+  const migrated = migrateLinkedStubs(bundle.mocks, endpoints)
+
   // Phase 1: validate everything; nothing is written until the whole bundle passes.
-  const integrations = bundle.integrations.map((raw, i) =>
-    invalid(`integrations[${i}]${nameOf(raw, 'key')}`, () => validateIntegration(raw)),
-  )
-  const known = new Set((await deps.catalog.listIntegrations()).map((i) => i.key))
-  const bundleKeys = new Set(integrations.map((i) => i.key))
-  const endpoints = bundle.catalog.map((raw, i) =>
-    invalid(`catalog[${i}]${nameOf(raw, 'key')}`, () => {
-      const e = validateEndpoint(raw)
-      if (!bundleKeys.has(e.integration) && !known.has(e.integration)) {
-        throw new ValidationError(`integration "${e.integration}" does not exist`)
-      }
-      return e
-    }),
-  )
-
-  const prefixes = new Map((await deps.catalog.listIntegrations()).map((i) => [i.key, i.prefix]))
-  for (const i of integrations) prefixes.set(i.key, i.prefix)
-  const prefixList = [...prefixes].map(([key, prefix]) => ({ key, prefix }))
-
   const mocks = new Map<string, StubMapping>()
   const indexOf = new Map<string, number>()
   bundle.mocks.forEach((raw, i) => {
@@ -104,45 +80,23 @@ export async function importBundle(
     if (given !== undefined && (typeof given !== 'string' || given === '')) {
       throw new ValidationError(`${label}: id must be a non-empty string`)
     }
+    // The id comes from the stub as written, so a re-import of the same file finds the same mocks.
     const id = (given as string | undefined) ?? deterministicId(raw)
-    const ui = raw.metadata?.wiremockUi as { owner?: unknown; integration?: unknown } | undefined
-    const stub = { ...raw, id } as StubMapping
+    const stub = { ...migrated[i]!, id } as StubMapping
+    const ui = stub.metadata?.wiremockUi as { owner?: unknown; tags?: unknown; group?: unknown } | undefined
     if (ui?.owner !== undefined && (typeof ui.owner !== 'string' || ui.owner === '')) {
       throw new ValidationError(`${label}: metadata.wiremockUi.owner must be a non-empty string`)
     }
-    invalid(label, () => normaliseTags((ui as { tags?: unknown } | undefined)?.tags))
-    invalid(label, () => assertGroupMeta((ui as { group?: unknown } | undefined)?.group))
-    if (typeof ui?.integration !== 'string') {
-      const guess = guessIntegration(stub, prefixList)
-      if (guess) {
-        stub.metadata = { ...stub.metadata, wiremockUi: { ...(ui as object), integration: guess } as never }
-      }
-    }
+    invalid(label, () => normaliseTags(ui?.tags))
+    invalid(label, () => assertGroupMeta(ui?.group))
     mocks.set(id, stub)
     indexOf.set(id, i)
   })
 
   if (opts.dryRun) return dryRun(bundle, mocks, indexOf, deps, opts)
 
-  // Phase 2: write. Catalog entries equal to the stored copy (ignoring updatedAt/updatedBy) are left alone.
-  const storedIntegrations = new Map((await deps.catalog.listIntegrations()).map((i) => [i.key, i]))
-  let upsertedIntegrations = 0
-  for (const i of integrations) {
-    if (sameCatalogEntry(storedIntegrations.get(i.key), i)) continue
-    await deps.catalog.upsertIntegration(i, opts.actor)
-    upsertedIntegrations++
-  }
-  let upsertedEndpoints = 0
-  for (const e of endpoints) {
-    if (sameCatalogEntry(await deps.catalog.findEndpoint(e.integration, e.key), e)) continue
-    await deps.catalog.upsertEndpoint(e, opts.actor)
-    upsertedEndpoints++
-  }
-
   const source = opts.source
   const report: ImportReport = {
-    integrations: upsertedIntegrations,
-    endpoints: upsertedEndpoints,
     created: 0,
     updated: 0,
     unchanged: 0,
@@ -191,10 +145,7 @@ async function dryRun(
   deps: Deps,
   opts: { prune: boolean; unreadable?: number },
 ): Promise<ImportReport> {
-  const storedIntegrations = new Map((await deps.catalog.listIntegrations()).map((i) => [i.key, i]))
   const report: ImportReport = {
-    integrations: 0,
-    endpoints: 0,
     created: 0,
     updated: 0,
     unchanged: 0,
@@ -202,14 +153,6 @@ async function dryRun(
     pruned: 0,
     ignoredOidcIdentities: bundle.oidcIdentities.length,
     items: [],
-  }
-  for (const raw of bundle.integrations) {
-    const i = validateIntegration(raw)
-    if (!sameCatalogEntry(storedIntegrations.get(i.key), i)) report.integrations++
-  }
-  for (const raw of bundle.catalog) {
-    const e = validateEndpoint(raw)
-    if (!sameCatalogEntry(await deps.catalog.findEndpoint(e.integration, e.key), e)) report.endpoints++
   }
   for (const [id, stub] of mocks) {
     const index = indexOf.get(id)!
@@ -232,12 +175,6 @@ async function dryRun(
     }
   }
   return report
-}
-
-function sameCatalogEntry(stored: { updatedAt: string; updatedBy: string } | null | undefined, incoming: object): boolean {
-  if (!stored) return false
-  const { updatedAt: _at, updatedBy: _by, ...rest } = stored
-  return canonicalJson(rest) === canonicalJson(incoming)
 }
 
 function nameOf(raw: unknown, field: string): string {

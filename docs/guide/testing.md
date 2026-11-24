@@ -17,14 +17,14 @@ The request goes from the UI's server to WireMock's stub port (never to the admi
 
 ## How to
 
-1. Open a saved mock and choose **Test** in its header. The panel is filled with a request that mock should match: its method, a concrete path (template variables filled with the key value or the endpoint's example), the key where the endpoint looks for it, and the endpoint's example body.
+1. Open a saved mock and choose **Test** in its header. The panel is filled with a request that mock should match: its method (`ANY` becomes `GET`), a concrete path (template variables filled from the mock's path matchers, a regex filled with a sample path when one fits), and the query parameters, headers and body its matchers ask for. For a response of a mock with several responses, that means the response's value.
 2. Edit anything, then **Send**.
 3. Read the status, the time it took, the headers, the body, and the stamp:
    - **Matched this mock**: the saved version answered.
    - **Matched another mock:** followed by its name: another mock won (a link opens it). See "Which mock wins" in [Concepts](concepts.md).
    - **No match**: nothing matched; **See unmatched requests** opens the request log.
 
-Other ways in: **Try it** on an endpoint's row (with the endpoint's example request), and **Resend** in the request log (with a logged request).
+Other ways in: **Resend** in the request log (with a logged request), and **Try** on a scenario's card. A mock with several responses also has a **Try it** box in the editor that shows, without sending anything, which response answers a value.
 
 **Copy as curl** (in the test panel, the editor header, a mock's row menu and the request-log drawer) copies a command such as:
 

@@ -29,7 +29,7 @@ WireMock's record API (`/__admin/recordings/start`, `stop`, `snapshot`). While r
 2. Optionally narrow which requests become mocks: a **Method**, and **Paths to record**. Use `*` for anything: `/api/*` or `/api/Products*`. The query string is not part of the path, so `/api/Products?limit=3` records `/api/Products` (the page says it left `?limit=3` out). A regular expression such as `/api/.*` is recognised and sent as is; **Read as** overrides the guess. The line under the field shows what will be matched.
 3. **Start recording**. Every page shows a banner, "Recording traffic to …", with **Stop**.
 4. Point your app (or curl) at **WireMock**, not at the real service, and use it as usual.
-5. **Stop** opens the review list: one row per request with its method, URL, status, size and recorded answer. Rows an existing mock already answers are marked **Duplicate of …**. Name rows, link them to an integration and endpoint if you like, then **Accept N selected** (as your mocks, or as baseline). **Discard** drops rows.
+5. **Stop** opens the review list: one row per request with its method, URL, status, size and recorded answer. Rows an existing mock already answers are marked **Duplicate of …**. Give rows a **Name** and **Tags** if you like, then **Accept N selected** (as your mocks, or as baseline). **Discard** drops rows.
 
 **From the request log.** The **From the request log** tab, or **Create mocks from these** on the Request log, makes a review list from requests WireMock already logged, including ones a mock answered.
 

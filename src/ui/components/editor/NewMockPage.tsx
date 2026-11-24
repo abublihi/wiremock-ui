@@ -2,39 +2,30 @@ import { useId, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { AlertCircleIcon, ArrowLeftRightIcon, BracesIcon, DatabaseIcon, LinkIcon, PlusIcon, WorkflowIcon } from 'lucide-react'
-import type { Integration } from '@/server/catalog/types'
+import { AlertCircleIcon, ArrowLeftRightIcon, BracesIcon, WorkflowIcon } from 'lucide-react'
 import type { StubMapping } from '@/server/wiremock/types'
 import { apiFetch } from '@/ui/api/client'
-import { queryKeys, useEndpoints, useIntegrations, useMocks, useRequest, useSaveMockGroup, useUpdateMock } from '@/ui/api/queries'
+import { queryKeys, useMocks, useRequest, useSaveMockGroup, useUpdateMock } from '@/ui/api/queries'
 import { type GroupForm, byLabel, groupInput } from '@/ui/lib/groups'
 import { GroupEditor } from './GroupEditor'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Checkbox } from '@/ui/components/ui/checkbox'
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/ui/components/ui/empty'
-import type { ScenarioReturn } from '@/ui/components/catalog/EndpointPage'
-import { IntegrationForm } from '@/ui/components/catalog/IntegrationForm'
 import { Skeleton } from '@/ui/components/ui/skeleton'
 import { useT } from '@/ui/i18n'
-import { type ScenarioSeed, isScenarioNameSettable, linkOf } from '@/ui/lib/editor-sync'
+import { type ScenarioSeed, isScenarioNameSettable } from '@/ui/lib/editor-sync'
 import { lastStateMocks, lastStepMocks, movedOn } from '@/ui/lib/scenario-builder'
 import { stubFromRequest } from '@/ui/lib/prefill'
 import { EditorShell } from './EditorShell'
-import { EndpointInfo, EndpointPicker } from './EndpointPicker'
 import { MockEditor } from './MockEditor'
 
 /**
- * `key`: with an endpoint, the key value the new mock starts with ("Make a mock for p-2" from a near miss).
  * `from`: a logged request id to start from ("Create mock from this request").
  * `scenario` + `state`: a step added to a scenario ("Add a mock to this scenario"): the mock starts in it, answering in `state`.
  * `after`: the scenario's current last state; once saved, the mocks answering there can be made to move on to the new state.
  */
 export type NewMockSearch = {
-  integration?: string
-  endpoint?: string
-  key?: string
-  /** `json`: a blank free-form stub; `url`: a quick mock of a URL, without an integration. */
+  /** `json`: a blank stub in the JSON editor; `url` (or none): the form for a URL. */
   mode?: 'json' | 'url'
   from?: string
   scenario?: string
@@ -42,10 +33,7 @@ export type NewMockSearch = {
   after?: string
 }
 
-/**
- * New mock: pick an integration endpoint (kept in the URL) and fill the Simple form, mock a URL directly (the quick
- * form), or start from blank JSON. With no integrations yet, an empty state offers all three.
- */
+/** New mock: the form for a URL (it can grow into several responses), or blank JSON, or a logged request's copy. */
 export function NewMockPage({ search, onSearchChange: setSearch }: { search: NewMockSearch; onSearchChange: (next: NewMockSearch) => void }) {
   const t = useT()
   const navigate = useNavigate()
@@ -53,8 +41,7 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
   const updateMock = useUpdateMock()
   const seed: ScenarioSeed | undefined = search.scenario ? { name: search.scenario, requiredState: search.state ?? 'Started' } : undefined
   const after = seed ? search.after : undefined
-  // Picking or changing the endpoint keeps the scenario the mock is being added to.
-  // The scenario context as search params, carried through every way out and back (an endpoint added on its page).
+  // Switching between the form and JSON keeps the scenario the mock is being added to.
   const scenarioSearch = seed ? { scenario: seed.name, state: seed.requiredState, ...(after ? { after } : {}) } : {}
   const onSearchChange = (next: NewMockSearch) => setSearch({ ...next, ...scenarioSearch })
   // The state the new step answers in, as the Simple form has it now (editable there).
@@ -63,16 +50,12 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
   /** The quick mock growing into one with several responses (not saved yet). */
   const [growing, setGrowing] = useState<GroupForm | null>(null)
   const saveGroup = useSaveMockGroup()
-  // Before saving, the new step's request is not known yet: offer the move only when some mock of the same endpoint
-  // (any mock, without one) answers in the last state. The save then moves only those matching the same request.
+  // Before saving, the new step's request is not known yet: offer the move when some mock answers in the last state.
+  // The save then moves only those matching the same request.
   const scenarioMocks = useMocks({ scenario: seed?.name }, { enabled: Boolean(seed && after) })
   const lastCandidates =
     seed && after && scenarioMocks.data
-      ? lastStateMocks(scenarioMocks.data, seed.name, after).filter((s) => {
-          if (!search.integration || !search.endpoint || search.mode === 'json' || search.from) return true
-          const link = linkOf(s)
-          return link?.integration === search.integration && link.endpoint === search.endpoint
-        }).length
+      ? lastStateMocks(scenarioMocks.data, seed.name, after).length
       : undefined
   const canMoveLast = lastCandidates !== 0
   const notice = seed && (
@@ -112,177 +95,57 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
     }
     await queryClient.invalidateQueries({ queryKey: queryKeys.scenarios })
   }
-  const integrations = useIntegrations()
-  const endpoints = useEndpoints(search.endpoint ? search.integration : undefined)
-  const integration = integrations.data?.find((i) => i.key === search.integration)
-  const endpoint = endpoints.data?.find((e) => e.key === search.endpoint)
   const open = async (stub: StubMapping) => {
     if (linkLast && canMoveLast) await moveLastStepOn(stub)
     await navigate({ to: '/mocks/$id', params: { id: stub.id } })
   }
 
-  const change = (label: string) => (
+  const toForm = (
     <Button variant="outline" size="sm" onClick={() => onSearchChange({})}>
       <ArrowLeftRightIcon data-icon="inline-start" />
-      {label}
+      {t('editor.useForm')}
+    </Button>
+  )
+  const toJson = (
+    <Button variant="outline" size="sm" onClick={() => onSearchChange({ mode: 'json' })}>
+      <BracesIcon data-icon="inline-start" />
+      {t('editor.useJson')}
     </Button>
   )
 
   if (search.from) {
-    return <FromRequest id={search.from} change={change(t('editor.pickInstead'))} seed={seed} notice={notice} onSaved={open} />
+    return <FromRequest id={search.from} change={toForm} seed={seed} notice={notice} onSaved={open} />
   }
 
   if (search.mode === 'json') {
     return (
-      <EditorShell title={t('editor.newTitle')} caption={t('editor.blankCaption')} actions={change(t('editor.pickInstead'))} notice={notice}>
-        <MockEditor simpleUnavailable={t('editor.noCatalog')} scenarioSeed={seed} onSaved={open} />
+      <EditorShell title={t('editor.newTitle')} caption={t('editor.blankCaption')} actions={toForm} notice={notice}>
+        {/* Keyed by mode: switching between the form and JSON starts a fresh editor, never the other one's state. */}
+        <MockEditor key="json" simpleUnavailable={t('editor.blankUnavailable')} scenarioSeed={seed} onSaved={open} />
       </EditorShell>
     )
   }
 
-  if (search.mode === 'url') {
-    if (growing) {
-      return (
-        <EditorShell title={t('editor.newTitle')} caption={t('groups.editCaption', { count: growing.rows.length + (growing.fallback.on ? 1 : 0), by: byLabel(growing.by) })}>
-          <GroupEditor
-            initial={growing}
-            cancelLabel={t('groups.backToOne')}
-            onCancel={() => setGrowing(null)}
-            onSave={async (form) => {
-              const stubs = await saveGroup.mutateAsync({ input: groupInput(form) })
-              await navigate({ to: '/mocks/$id', params: { id: stubs[0]!.id } })
-              return stubs
-            }}
-          />
-        </EditorShell>
-      )
-    }
+  if (growing) {
     return (
-      <EditorShell title={t('editor.newTitle')} caption={t('editor.quickCaption')} actions={change(t('editor.pickInstead'))} notice={notice}>
-        <MockEditor quick scenarioSeed={seed} onFormChange={seed ? onFormChange : undefined} onSaved={open} onAddResponse={setGrowing} />
-      </EditorShell>
-    )
-  }
-
-  if (!search.integration || !search.endpoint) {
-    const toQuick = () => onSearchChange({ mode: 'url' })
-    const toBlank = () => onSearchChange({ mode: 'json' })
-    if (integrations.data?.length === 0) {
-      return (
-        <EditorShell title={t('editor.newTitle')} caption={t('editor.noIntegrations.caption')} notice={notice}>
-          <NoIntegrations onQuick={toQuick} onBlank={toBlank} scenario={scenarioSearch} />
-        </EditorShell>
-      )
-    }
-    return (
-      <EditorShell title={t('editor.newTitle')} caption={t('editor.newCaption')} notice={notice}>
-        <EndpointPicker
-          onPick={(i, e) => onSearchChange({ integration: i, endpoint: e })}
-          onQuick={toQuick}
-          onBlank={toBlank}
-          addReturnsHere={scenarioSearch}
+      <EditorShell title={t('editor.newTitle')} caption={t('groups.editCaption', { count: growing.rows.length + (growing.fallback.on ? 1 : 0), by: byLabel(growing.by) })}>
+        <GroupEditor
+          initial={growing}
+          cancelLabel={t('groups.backToOne')}
+          onCancel={() => setGrowing(null)}
+          onSave={async (form) => {
+            const stubs = await saveGroup.mutateAsync({ input: groupInput(form) })
+            await navigate({ to: '/mocks/$id', params: { id: stubs[0]!.id } })
+            return stubs
+          }}
         />
       </EditorShell>
     )
   }
-
-  if (integrations.isPending || endpoints.isPending) {
-    return (
-      <EditorShell title={t('editor.newTitle')} caption="//" notice={notice}>
-        <Skeleton className="h-96 w-full" />
-      </EditorShell>
-    )
-  }
-  if (!integration || !endpoint) {
-    const error = integrations.error ?? endpoints.error
-    return (
-      <EditorShell title={t('editor.newTitle')} caption="//" actions={change(t('editor.changeEndpoint'))} notice={notice}>
-        <Alert variant="destructive">
-          <AlertCircleIcon />
-          <AlertTitle>{error ? t('editor.pickLoadFailed') : t('editor.endpointMissing', { ref: `${search.integration}/${search.endpoint}` })}</AlertTitle>
-          {error && <AlertDescription>{error.message}</AlertDescription>}
-        </Alert>
-      </EditorShell>
-    )
-  }
-
-  const ref = t('editor.endpointRef', { integration: integration.name, endpoint: endpoint.name })
   return (
-    <EditorShell
-      title={t('editor.newTitle')}
-      caption={`// ${ref}`}
-      actions={change(t('editor.changeEndpoint'))}
-      aside={<EndpointInfo integration={integration} endpoint={endpoint} />}
-      notice={notice}
-    >
-      <p className="sr-only">{ref}</p>
-      {/* "Change endpoint" navigates, so the editor's unsaved-changes guard covers it. */}
-      <MockEditor
-        key={`${integration.key}/${endpoint.key}`}
-        catalog={{ integration, endpoint }}
-        keyValue={search.key}
-        scenarioSeed={seed}
-        onFormChange={seed ? onFormChange : undefined}
-        onSaved={open}
-      />
+    <EditorShell title={t('editor.newTitle')} caption={t('editor.quickCaption')} actions={toJson} notice={notice}>
+      <MockEditor key="url" quick scenarioSeed={seed} onFormChange={seed ? onFormChange : undefined} onSaved={open} onAddResponse={setGrowing} />
     </EditorShell>
-  )
-}
-
-/**
- * The new-mock page before any integration exists: what an integration is for, and three ways on — add one (then its
- * first endpoint, then back here with it picked), mock a URL directly, or write the stub JSON by hand.
- */
-function NoIntegrations({ onQuick, onBlank, scenario }: { onQuick: () => void; onBlank: () => void; scenario: ScenarioReturn }) {
-  const t = useT()
-  const navigate = useNavigate()
-  const [adding, setAdding] = useState(false)
-  const hintId = useId()
-  const added = (integration: Integration) =>
-    void navigate({ to: '/integrations/$key/endpoints/new', params: { key: integration.key }, search: { next: 'mock', ...scenario } })
-  return (
-    <Empty className="rounded-md border border-dashed border-line">
-      <EmptyHeader className="max-w-md">
-        <EmptyMedia variant="icon">
-          <DatabaseIcon />
-        </EmptyMedia>
-        <EmptyTitle>{t('editor.noIntegrations.title')}</EmptyTitle>
-        <EmptyDescription>{t('editor.noIntegrations.body')}</EmptyDescription>
-      </EmptyHeader>
-      <EmptyContent className="max-w-lg gap-3">
-        <div className="flex flex-col items-center gap-1">
-          <Button onClick={() => setAdding(true)} aria-describedby={hintId}>
-            <PlusIcon data-icon="inline-start" />
-            {t('editor.noIntegrations.add')}
-          </Button>
-          <span id={hintId} className="text-xs text-muted-foreground">
-            {t('editor.noIntegrations.addHint')}
-          </span>
-        </div>
-        <div className="grid w-full gap-2 sm:grid-cols-2">
-          <ChoiceButton icon={<LinkIcon />} title={t('editor.noIntegrations.url')} hint={t('editor.noIntegrations.urlHint')} onClick={onQuick} />
-          <ChoiceButton icon={<BracesIcon />} title={t('editor.noIntegrations.blank')} hint={t('editor.noIntegrations.blankHint')} onClick={onBlank} />
-        </div>
-      </EmptyContent>
-      <IntegrationForm open={adding} onOpenChange={setAdding} onSaved={added} />
-    </Empty>
-  )
-}
-
-/** A secondary way on: a bordered button with a title and one line of hint. */
-function ChoiceButton({ icon, title, hint, onClick }: { icon: React.ReactNode; title: string; hint: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="glow-border flex flex-col items-start gap-1 rounded-md border border-line bg-surface px-3 py-2.5 text-start outline-none transition-colors hover:border-signal/40 focus-visible:ring-3 focus-visible:ring-ring/50"
-    >
-      <span className="flex items-center gap-2 text-sm font-medium [&>svg]:size-3.5 [&>svg]:text-signal-fg">
-        {icon}
-        {title}
-      </span>
-      <span className="text-xs text-muted-foreground">{hint}</span>
-    </button>
   )
 }
 

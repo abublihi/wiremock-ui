@@ -14,16 +14,15 @@ test('/api/mocks/reset-mine is not captured by /api/mocks/$id', () => {
   expect(leaf('/api/mocks/abc/restore')).toBe('/api/mocks/$id/restore')
 })
 
-test('catalog routes resolve to their own files', () => {
-  expect(leaf('/api/integrations')).toBe('/api/integrations')
-  expect(leaf('/api/integrations/pay')).toBe('/api/integrations/$key')
-  expect(leaf('/api/integrations/pay/endpoints')).toBe('/api/integrations/$key/endpoints')
-  expect(leaf('/api/integrations/pay/endpoints/get-user')).toBe('/api/integrations/$key/endpoints/$endpoint')
+test('mock-group and tag routes resolve to their own files', () => {
+  expect(leaf('/api/mock-groups')).toBe('/api/mock-groups')
+  expect(leaf('/api/mock-groups/g1')).toBe('/api/mock-groups/$id')
+  expect(leaf('/api/tags')).toBe('/api/tags')
 })
 
-test('catalog build routes resolve to their own files', () => {
-  expect(leaf('/api/integrations/pay/endpoints/get-user/mocks')).toBe('/api/integrations/$key/endpoints/$endpoint/mocks')
-  expect(leaf('/api/integrations/pay/endpoints/get-user/preview')).toBe('/api/integrations/$key/endpoints/$endpoint/preview')
+test('the retired Integrations API answers through the /api splat', () => {
+  expect(leaf('/api/integrations')).toBe('/api/$')
+  expect(leaf('/api/integrations/pay/endpoints')).toBe('/api/$')
 })
 
 test('import route resolves', () => {
@@ -57,11 +56,10 @@ test('the quick-mock preview is not captured by /api/mocks/$id', () => {
   expect(leaf('/api/mocks/preview')).toBe('/api/mocks/preview')
 })
 
-test('Integrations pages resolve under /integrations; old /catalog URLs land on the redirect routes', () => {
-  expect(leaf('/integrations')).toBe('/_app/integrations/')
-  expect(leaf('/integrations/nic')).toBe('/_app/integrations/$key/')
-  expect(leaf('/integrations/nic/endpoints/new')).toBe('/_app/integrations/$key/endpoints/new')
-  expect(leaf('/integrations/nic/endpoints/fetch/edit')).toBe('/_app/integrations/$key/endpoints/$endpoint/edit')
+test('old Integrations and Catalog URLs land on the redirect routes', () => {
+  expect(leaf('/integrations')).toBe('/integrations/')
+  expect(leaf('/integrations/nic')).toBe('/integrations/$')
+  expect(leaf('/integrations/nic/endpoints/fetch/edit')).toBe('/integrations/$')
   expect(leaf('/catalog')).toBe('/catalog/')
   expect(leaf('/catalog/nic')).toBe('/catalog/$')
   expect(leaf('/catalog/nic/endpoints/fetch/edit')).toBe('/catalog/$')

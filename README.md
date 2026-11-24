@@ -49,15 +49,14 @@ Other ways to run it (the one-container image's settings, with Redis, from sourc
 
 ## Features
 
-- **Integrations and endpoints.** Describe each service once: the **Blog API** at `/blog` has an endpoint **Get post** `GET /blog/posts/{id}` whose key is the path variable `id`. After that, a mock is "id 42 answers 200 with this body", made in a few clicks.
-- **Simple and Advanced mode.** Simple mode builds the stub from the endpoint (key value, status preset, body prefilled from the endpoint's example, slow responses, faults). **Mock a URL directly** does the same for a method and URL without an integration. **Advanced mode** edits the full stub JSON.
-- **Test a mock** from the editor, or **Try it** on an endpoint, and see which mock answered. **Copy as curl** for any mock or logged request.
+- **Simple and Advanced mode.** **New mock** opens a form: a method, a URL (exact path, path template or regex), what else to match, and the answer (status preset, body, headers, slow responses, faults). **Advanced mode** edits the full stub JSON, or start from blank JSON.
+- **Several responses by value**: one mock that answers differently by a URL variable, query parameter, header, JSON or XML body field or form field (`GET /blog/posts/{id}`: `id` 42 → 200, `id` 404 → 404, any other `id` → a default), with an "any other value" response and a Try it box. A near miss in the request log offers "Add a response for" the value it had.
+- **Tags**: free-form labels on mocks (`blog`, `sprint-42`), edited above the editor; the Mocks list, the request log and export filter by tag.
+- **Test a mock** from the editor and see which mock answered. **Copy as curl** for any mock or logged request.
 - **Proxy** (forward to a real service), **webhooks** (call back after responding) and **scenarios** (pending, then shipped, then delivered), with a step-by-step scenario builder and a live state view.
 - **Request log** that updates live and stamps unmatched requests **No match**, with the closest mocks and the fields that differed.
 - **Record real traffic**, then accept the recorded answers you want from a review list (or turn logged requests into mocks). `RECORDING_ALLOWED=false` turns it off.
-- **Import and export**: bundles, WireMock mappings, files, folders, zips and **Postman collections** (each request becomes an endpoint, each saved example a mock). A review step suggests **tags** per group of mocks (accept, rename or turn them off), lets you untick mocks and shows what each will do before anything is written. Baseline mocks can be seeded on every start.
-- **Tags**: free-form labels on mocks, edited above the editor and filterable in the list.
-- **Several responses by value**: one mock that answers differently by a URL variable, query parameter, header or body field, with an "any other value" row and a Try it box; import offers to fold stubs that differ only by one URL segment into one.
+- **Import and export**: bundles, WireMock mappings, files, folders, zips and **Postman collections** (each saved example a mock, tagged with the collection and its folder). A review step suggests **tags** per group of mocks (accept, rename or turn them off), lets you untick mocks, offers to fold stubs that differ only by one URL segment into one mock with several responses, and shows what each will do before anything is written. Baseline mocks can be seeded on every start. Bundles from older versions with integrations still import; so do stores that had them (see [Concepts](docs/guide/concepts.md)).
 - **History and restore** for every mock, conflict detection when two people edit the same one, and an **audit log**.
 - **Durable**: mocks live in the UI's store (one SQLite file, or Redis) and are put back into WireMock after it restarts. Or run **WireMock-only** and store nothing.
 - **A built-in guide** (Help → Guide, or press `?`) and a **How this works** button on every page.
@@ -73,10 +72,8 @@ Other ways to run it (the one-container image's settings, with Redis, from sourc
 
 | | |
 | --- | --- |
-| ![Integrations](docs/screenshots/integrations-dark.png) **Integrations** explain integration → endpoint → mock at a glance. | ![An integration](docs/screenshots/integration-dark.png) **An integration** and its endpoints, with Try it. |
-| ![Endpoint form](docs/screenshots/endpoint-dark.png) **An endpoint**: method, path, where the key is, examples. | ![New mock picker](docs/screenshots/new-mock-picker-dark.png) **New mock** starts from an endpoint. |
-| ![No integrations yet](docs/screenshots/new-mock-empty-dark.png) **A fresh install** offers three ways to start. | ![Simple editor](docs/screenshots/editor-dark.png) **Simple mode**: key value, status and body. |
-| ![Advanced editor](docs/screenshots/advanced-dark.png) **Advanced mode**: the full stub JSON. | ![Mock a URL directly](docs/screenshots/quick-mock-dark.png) **Mock a URL directly**, no integration needed. |
+| ![Mocks](docs/screenshots/mocks-dark.png) **The Mocks list**, filtered by owner, tag or status. | ![New mock](docs/screenshots/quick-mock-dark.png) **New mock**: a method, a URL and the answer. |
+| ![Simple editor](docs/screenshots/editor-dark.png) **Simple mode**: status, body and behaviour. | ![Advanced editor](docs/screenshots/advanced-dark.png) **Advanced mode**: the full stub JSON. |
 | ![Test panel](docs/screenshots/test-panel-dark.png) **Test a mock** and see which mock answered. | ![Proxy and webhook](docs/screenshots/proxy-webhook-dark.png) **Proxy** to a real service and **call back** afterwards. |
 | ![Body from a file](docs/screenshots/body-file-dark.png) **A response body from a file**, binary included. | ![Request log](docs/screenshots/requests-dark.png) **The request log**, live. |
 | ![Near misses](docs/screenshots/near-miss-dark.png) **Why a request matched nothing**, field by field. | ![Scenarios](docs/screenshots/scenarios-dark.png) **Scenarios** with their live state. |
@@ -95,10 +92,10 @@ flowchart LR
   tester["Browser<br/>(testers)"] -- "UI + /api<br/>session cookie + CSRF" --> ui
   ci["Scripts / CI"] -- "/api<br/>HTTP Basic" --> ui
   subgraph ui["wiremock-ui server"]
-    api["REST handlers<br/>(withAuth)"] --> svc["MockService · CatalogService<br/>ScenarioService · RecordingService"]
+    api["REST handlers<br/>(withAuth)"] --> svc["MockService<br/>ScenarioService · RecordingService"]
     svc --> rec["Reconciler<br/>(sync loop)"]
   end
-  svc -- "mocks, history, users,<br/>sessions, catalog, audit" --> store[("Store<br/>SQLite file · Redis · none")]
+  svc -- "mocks, history, users,<br/>sessions, audit" --> store[("Store<br/>SQLite file · Redis · none")]
   svc -- "admin API<br/>/__admin (Basic auth)" --> wm["WireMock 3"]
   rec -- "marker check,<br/>full sync" --> wm
   app["Application under test"] -- "HTTP calls<br/>(stub port)" --> wm
@@ -106,8 +103,8 @@ flowchart LR
 
 ### Where things live
 
-- **The store is the source of truth** for mocks (with their history: the last 20 versions, kept 7 days after a delete), integrations and endpoints, users, sessions, the sign-in rate limit, recording review lists and the audit log (30 days). The store is a SQLite file (default, Node's built-in `node:sqlite`, no native build) or Redis (`REDIS_URL`; several UI instances can share it). Both drivers pass the same contract tests.
-- **WireMock holds a copy** of every mock as a stub mapping. Each stub carries `metadata.wiremockUi` (owner, integration, endpoint, version, updatedAt, updatedBy, source), so a stub in WireMock always says who made it.
+- **The store is the source of truth** for mocks (with their history: the last 20 versions, kept 7 days after a delete), users, sessions, the sign-in rate limit, recording review lists and the audit log (30 days). The store is a SQLite file (default, Node's built-in `node:sqlite`, no native build) or Redis (`REDIS_URL`; several UI instances can share it). Both drivers pass the same contract tests.
+- **WireMock holds a copy** of every mock as a stub mapping. Each stub carries `metadata.wiremockUi` (owner, tags, version, updatedAt, updatedBy, source, and `group` for a mock with several responses), so a stub in WireMock always says who made it. A mock with several responses is one stub per response, sharing `group.id`.
 - **Read live from WireMock, never stored:** the request log, near misses (WireMock's own near-miss API, explained field by field), scenario states, and recordings in progress. The request log is WireMock's journal, so keep `--max-request-journal-entries` set (Compose sets 5000).
 
 ### Saving a mock
@@ -174,11 +171,11 @@ flowchart TD
 
 ### Adopting stubs WireMock already has
 
-Pointing a fresh UI at a WireMock that already serves stubs does not wipe them. At start, if the store has no mocks and WireMock has stubs, the UI first records a durable **adoption-pending** flag in the store, then (after the seed, so integration prefixes are known) stores every live stub with its own id, owner `wiremock` (or the owner its metadata names), source `adopt`, integration guessed from the URL prefix. While the flag is set, no full sync deletes anything from WireMock; a start that stops part-way leaves the flag for the next one. Adoption runs under the sync lock and clears the flag when it is done; from then on the store is the source of truth.
+Pointing a fresh UI at a WireMock that already serves stubs does not wipe them. At start, if the store has no mocks and WireMock has stubs, the UI first records a durable **adoption-pending** flag in the store, then (after the seed) stores every live stub with its own id, owner `wiremock` (or the owner its metadata names), source `adopt`, and the tags and group its metadata names. While the flag is set, no full sync deletes anything from WireMock; a start that stops part-way leaves the flag for the next one. Adoption runs under the sync lock and clears the flag when it is done; from then on the store is the source of truth.
 
 ### WireMock-only mode (`STORE_DRIVER=none`)
 
-For looking at and editing a WireMock's own stubs without storing anything. WireMock is the mock store: lists and reads go live to `GET /__admin/mappings`, a save imports one stub after checking the live stub's version, a delete is an admin DELETE. There is no reconciler, no marker stub, no sync and no prune: the UI never adds or deletes stubs on its own. Accounts (only `ADMIN_USER`), sessions, integrations, recordings and the audit log (last 500 entries) live in memory and are lost on restart; there is no history. The UI hides Users management, History/Restore and the My/All toggle. See [Storage and WireMock-only mode](docs/guide/storage.md).
+For looking at and editing a WireMock's own stubs without storing anything. WireMock is the mock store: lists and reads go live to `GET /__admin/mappings`, a save imports one stub after checking the live stub's version, a delete is an admin DELETE. There is no reconciler, no marker stub, no sync and no prune: the UI never adds or deletes stubs on its own. Accounts (only `ADMIN_USER`), sessions, recordings and the audit log (last 500 entries) live in memory and are lost on restart; there is no history. The UI hides Users management, History/Restore and the My/All toggle. See [Storage and WireMock-only mode](docs/guide/storage.md).
 
 ### Sign-in, sessions and audit
 
@@ -186,7 +183,7 @@ For looking at and editing a WireMock's own stubs without storing anything. Wire
 - **Scripts**: HTTP Basic auth with a user's name and password on any `/api` call; no CSRF token needed.
 - **Rate limit**: 10 failed sign-ins in 15 minutes from one IP blocks that IP until the window ends (`TRUST_PROXY` decides where the IP comes from).
 - **No roles**: everyone who can sign in can do everything. Passwords are bcrypt hashes.
-- **Audit log**: every change (mocks, integrations, users, imports, syncs, adoptions, recordings) with who, what and when, on the Audit page and `GET /api/audit`.
+- **Audit log**: every change (mocks, scenarios, users, imports, syncs, adoptions, recordings) with who, what and when, on the Audit page and `GET /api/audit`.
 - **WireMock's admin API** must have basic auth: the UI refuses to start against an open one.
 
 ### Code map
@@ -197,6 +194,10 @@ For looking at and editing a WireMock's own stubs without storing anything. Wire
 | `src/server/config.ts` | Every environment variable (see below). |
 | `src/cli/` | The `wiremock-ui` command (`create-admin`, `reset-password`, `list-users`), built to `dist/cli/` by `vite.cli.config.ts`. |
 | `src/server/mocks/service.ts` | The save path: validation, version check, WireMock first, rollback. |
+| `src/server/mocks/groups.ts`, `http/handlers/groups.ts` | Mocks with several responses: one stub per value sharing `metadata.wiremockUi.group`, and `/api/mock-groups`. |
+| `src/server/mocks/tags.ts` | Tag rules (lower case, `a-z 0-9 . _ -`, at most 40 characters and 20 per mock) and `/api/tags`. |
+| `src/server/catalog/` | `build.ts`: the stub the New mock form builds (method, URL, response). `migrate.ts`, `migrate-store.ts`: moving mocks off the retired integrations (to tags and mocks with several responses) on start-up and import. `store.ts`, `types.ts`: the old catalog, read only for that. |
+| `src/server/bundle/importer.ts`, `http/handlers/export.ts` | Import (with `dryRun`) and export (`scope=all\|tag\|mine`). |
 | `src/server/sync/reconciler.ts`, `sync/adopt.ts` | Marker check, full sync, precedence, adoption. |
 | `src/server/store/` | Store drivers: `sqlite/`, `redis.ts`, `wiremock.ts` (WireMock-only), `memory.ts`. |
 | `src/server/wiremock/client.ts` | The WireMock admin API client. |
@@ -226,7 +227,7 @@ Everything is set through environment variables. Empty values count as unset. Bo
 | `BOOT_TIMEOUT_SECONDS` | `60` | positive integer | optional | all | `120` | How long the start waits for WireMock and the store before giving up. |
 | `TRUST_PROXY` | `false` | boolean | optional | all | `true` | Behind a reverse proxy: take the client IP for the sign-in rate limit from `X-Forwarded-For` (rightmost hop). |
 | `PUBLIC_UI_URL` | none | URL | optional | all | `https://mocks.example.com` | The address people use to reach the UI. An `https` URL makes session cookies `Secure` (they are also `Secure` on any `https` request, see Security). |
-| `SEED_PATH` | none | bundle file or folder of `*.json` | optional | all | `examples/seed.json` | Imported on every start as baseline mocks (and integrations). See [Import and export](docs/guide/import-export.md). |
+| `SEED_PATH` | none | bundle file or folder of `*.json` | optional | all | `examples/seed.json` | Imported on every start as baseline mocks. See [Import and export](docs/guide/import-export.md). |
 | `SEED_PRUNE` | `false` | boolean | optional | sqlite, redis | `true` | With `SEED_PATH`: delete baseline mocks that are no longer in the seed. People's own mocks are never touched. Ignored in `none` mode. |
 | `RECORDING_ALLOWED` | `true` | boolean | optional | all | `false` | `false` turns recording and "create mocks from the request log" off: the Recording page is hidden and the API answers 403. Recording, like proxy mocks, lets signed-in users make WireMock connect to any address it can reach. |
 | `PORT` | `3000` | port number | optional | all | `3400` | Port the UI listens on. |
@@ -258,9 +259,7 @@ These are remembered per browser, not on the server:
 | --- | --- | --- | --- |
 | Theme | Moon/sun button in the top bar | dark | cookie `wmui_theme` = `dark`, `light` or `system` (so the first page render is already right) |
 | Mocks per page | Mocks list footer | 50 (25, 50 or 100) | `localStorage` `wmui.mocks.pageSize` |
-| "How it fits together" explainer | Integrations page | shown | `localStorage` `wmui.catalogExplainer.dismissed` |
-| Getting-started checklist | Mocks page | shown | `localStorage` `wmui.gettingStarted.dismissed` (and `wmui.gettingStarted.requestLogSeen`) |
-| WireMock-only notice | Integrations page in `none` mode | shown | `localStorage` `wmui.catalogMemoryNotice.dismissed` |
+| Getting-started checklist | Mocks page | shown | `localStorage` `wmui.checklist.<user id>.dismissed` (and `.requestSent`, `.requestLogSeen`, `.done`), per user |
 
 ## Development
 

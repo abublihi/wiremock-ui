@@ -22,14 +22,14 @@ function parseFilter(q: URLSearchParams): RequestFilter {
     limit: limit ? int(limit, 'limit', 1, 1000) : undefined,
     since: since || undefined,
     matched: matched ? matched === 'true' : undefined,
-    integration: q.get('integration') || undefined,
+    tag: q.get('tag')?.trim().toLowerCase() || undefined,
     status: status ? int(status, 'status', 100, 599) : undefined,
     q: q.get('q')?.trim() || undefined,
   }
 }
 
 /**
- * GET /api/requests?limit&since&matched&integration&status&q → RequestSummary[] (newest first; filters applied to the
+ * GET /api/requests?limit&since&matched&tag&status&q → RequestSummary[] (newest first; filters applied to the
  * newest `limit`). With `before=<loggedAt>|<id>` (the last row shown) → { requests, nextCursor, scanLimitReached? }:
  * the next `limit` older rows that pass the filters ("Load older"); `nextCursor` goes in the next `before`.
  */

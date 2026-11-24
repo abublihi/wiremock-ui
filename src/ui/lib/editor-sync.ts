@@ -155,10 +155,6 @@ export function emptyForm(endpoint: Endpoint): SimpleForm {
 export type ScenarioSeed = { name: string; requiredState: string }
 
 /** The form with its Scenario section turned on for `seed` (unchanged without one). */
-/** A new endpoint mock starting with a key value ("Make a mock for p-2"); unchanged when the endpoint has no key. */
-export function withKey(form: SimpleForm, endpoint: Endpoint, keyValue: string | undefined): SimpleForm {
-  return keyValue !== undefined && endpoint.lookup ? { ...form, isDefault: false, keyValue } : form
-}
 
 export function seedScenario(form: SimpleForm, seed: ScenarioSeed | undefined): SimpleForm {
   return seed ? { ...form, scenario: { enabled: true, name: seed.name, requiredState: seed.requiredState, newState: '' } } : form
@@ -184,11 +180,6 @@ export function isHttpUrl(text: string, opts: { templated?: boolean } = {}): boo
 
 /** The header names in the "remove" text. */
 export const headerNames = (text: string) => text.split(/[\s,]+/).filter(Boolean)
-
-/** The name the server gives a mock when the form's name is empty. */
-export function generatedName(endpoint: Endpoint, form: Pick<SimpleForm, 'isDefault' | 'keyValue'>): string {
-  return `${endpoint.name} — ${form.isDefault ? 'default' : form.keyValue.trim()}`
-}
 
 /** The body the preview and create endpoints accept. */
 export function toSimpleInput(form: SimpleForm): SimpleMockInput {
@@ -240,130 +231,6 @@ function webhookInput(hook: WebhookForm): NonNullable<SimpleMockInput['webhook']
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const onlyKeys = (obj: Record<string, unknown>, allowed: readonly string[]) => Object.keys(obj).every((k) => allowed.includes(k))
-
-// Same as the server builder's escapeRegex (not imported: that module pulls zod and server code).
-const escapeRegex = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
-
-/** The request URL the builder writes for an endpoint under its integration's prefix. */
-function urlFor(integration: Integration, endpoint: Endpoint): string {
-  const root = integration.prefix === '/' ? '' : integration.prefix
-  return endpoint.pathType === 'regex' ? escapeRegex(root) + endpoint.path : root + endpoint.path
-}
-
-const URL_FIELD: Record<Endpoint['pathType'], string> = { exact: 'urlPath', template: 'urlPathTemplate', regex: 'urlPathPattern' }
-const LOOKUP_FIELD = {
-  jsonPath: 'bodyPatterns',
-  xPath: 'bodyPatterns',
-  query: 'queryParameters',
-  path: 'pathParameters',
-  header: 'headers',
-  form: 'formParameters',
-} as const
-
-/** Reads the key value out of the lookup matcher the builder writes; undefined when the shape differs. */
-function readKey(request: Record<string, unknown>, lookup: NonNullable<Endpoint['lookup']>): string | undefined {
-  const value = request[LOOKUP_FIELD[lookup.location]]
-  let match: unknown
-  if (lookup.location === 'jsonPath' || lookup.location === 'xPath') {
-    if (!Array.isArray(value) || value.length !== 1 || !isRecord(value[0])) return undefined
-    const op = lookup.location === 'jsonPath' ? 'matchesJsonPath' : 'matchesXPath'
-    const pattern = value[0][op]
-    if (!onlyKeys(value[0], [op]) || !isRecord(pattern) || !onlyKeys(pattern, ['expression', 'equalTo'])) return undefined
-    if (pattern.expression !== lookup.expression) return undefined
-    match = pattern.equalTo
-  } else {
-    if (!isRecord(value) || !onlyKeys(value, [lookup.expression]) || !isRecord(value[lookup.expression])) return undefined
-    const matcher = value[lookup.expression] as Record<string, unknown>
-    if (!onlyKeys(matcher, ['equalTo'])) return undefined
-    match = matcher.equalTo
-  }
-  return typeof match === 'string' ? match : undefined
-}
-
-/**
- * Turns a stored stub back into the Simple form for its endpoint, or null when the stub holds anything the
- * form cannot show (extra matchers, headers, transformers, another priority…): Simple mode never drops fields.
- */
-export function fromStub(stub: StubMapping, integration: Integration, endpoint: Endpoint): SimpleForm | null {
-  if (!onlyKeys(stub, ['id', 'uuid', 'name', 'priority', 'persistent', 'request', 'response', 'metadata', 'serveEventListeners', ...SCENARIO_KEYS])) return null
-  const meta = stub.metadata
-  if (!isRecord(meta) || !onlyKeys(meta, ['wiremockUi'])) return null
-  if (meta.wiremockUi?.integration !== endpoint.integration || meta.wiremockUi?.endpoint !== endpoint.key) return null
-
-  // Request: method, the endpoint's URL field, and (for a key mock) exactly the lookup matcher.
-  const { request, response } = stub
-  if (!isRecord(request) || !isRecord(response)) return null
-  const urlField = URL_FIELD[endpoint.pathType]
-  const url = request[urlField]
-  if (request.method !== endpoint.method || url !== urlFor(integration, endpoint)) return null
-  const lookupField = endpoint.lookup ? LOOKUP_FIELD[endpoint.lookup.location] : undefined
-  const isDefault = lookupField === undefined || !(lookupField in request)
-  if (!onlyKeys(request, isDefault ? ['method', urlField] : ['method', urlField, lookupField!])) return null
-  const keyValue = isDefault ? '' : readKey(request, endpoint.lookup!)
-  if (keyValue === undefined) return null
-  if (stub.priority !== (isDefault ? PRIORITY.default : PRIORITY.key)) return null
-
-  const form = emptyForm(endpoint)
-  form.isDefault = isDefault
-  form.keyValue = keyValue
-  if (stub.scenarioName !== undefined || stub.requiredScenarioState !== undefined || stub.newScenarioState !== undefined) {
-    const scenario = readScenario(stub)
-    if (!scenario) return null
-    form.scenario = scenario
-  }
-  if (stub.serveEventListeners !== undefined) {
-    const webhook = readWebhook(stub.serveEventListeners, form.webhook)
-    if (!webhook) return null
-    form.webhook = webhook
-  }
-
-  // Response: a proxy, a fault, or a status with the endpoint's content type and an optional body; either may be delayed.
-  const delay = response.fixedDelayMilliseconds
-  if (delay !== undefined && typeof delay !== 'number') return null
-  if (response.proxyBaseUrl !== undefined) {
-    const proxy = readProxy(response)
-    if (!proxy) return null
-    form.answer = 'proxy'
-    form.proxy = proxy
-  } else if (response.fault !== undefined) {
-    if (!isFault(response.fault) || !onlyKeys(response, ['fault', 'fixedDelayMilliseconds'])) return null
-    form.fault = response.fault
-    form.body = ''
-  } else if (response.base64Body !== undefined) {
-    // A body uploaded from a file: the builder writes the file's Content-Type and nothing else.
-    if (!onlyKeys(response, ['status', 'headers', 'base64Body', 'fixedDelayMilliseconds'])) return null
-    const { status, headers, base64Body } = response
-    if (typeof status !== 'number' || typeof base64Body !== 'string' || !isRecord(headers) || !onlyKeys(headers, ['Content-Type'])) return null
-    const contentType = headers['Content-Type']
-    if (typeof contentType !== 'string' || contentType === '') return null
-    form.status = status
-    form.preset = presetForStatus(status, delay)
-    form.body = ''
-    form.binary = { base64: base64Body, name: '', size: base64Size(base64Body), contentType }
-    if (form.preset === 'timeout') return finish(stub, endpoint, form)
-  } else {
-    const bodyField = endpoint.contentType === 'json' ? 'jsonBody' : 'body'
-    if (!onlyKeys(response, ['status', 'headers', bodyField, 'fixedDelayMilliseconds'])) return null
-    const { status, headers } = response
-    if (typeof status !== 'number' || !isRecord(headers) || !onlyKeys(headers, ['Content-Type'])) return null
-    if (headers['Content-Type'] !== MIME[endpoint.contentType]) return null
-    form.status = status
-    form.preset = presetForStatus(status, delay)
-    if (!(bodyField in response)) form.body = ''
-    else if (bodyField === 'jsonBody') form.body = JSON.stringify(response.jsonBody, null, 2)
-    else if (typeof response.body === 'string') form.body = response.body
-    else return null
-    if (form.preset === 'timeout') return finish(stub, endpoint, form)
-  }
-
-  if (delay !== undefined) {
-    const seconds = delay / 1000
-    if (!Number.isInteger(seconds) || seconds < SLOW_MIN_SECONDS || seconds > SLOW_MAX_SECONDS) return null
-    form.slow = true
-    form.delaySeconds = seconds
-  }
-  return finish(stub, endpoint, form)
-}
 
 const isStringMap = (v: unknown): v is Record<string, string> =>
   isRecord(v) && Object.keys(v).length > 0 && Object.values(v).every((x) => typeof x === 'string')
@@ -434,11 +301,6 @@ function readWebhook(listeners: unknown, defaults: WebhookForm): WebhookForm | n
   return null
 }
 
-function finish(stub: StubMapping, endpoint: Endpoint, form: SimpleForm): SimpleForm {
-  const name = typeof stub.name === 'string' ? stub.name : ''
-  form.name = name === generatedName(endpoint, form) ? '' : name
-  return form
-}
 
 /** The catalog endpoint a mock belongs to (kept in `metadata.wiremockUi`). */
 export type CatalogLink = { integration: string; endpoint: string }

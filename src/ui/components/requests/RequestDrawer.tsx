@@ -134,7 +134,7 @@ function DrawerBody({ id }: { id: string }) {
           {t('request.resend')}
         </Button>
         <Button asChild>
-          <Link to="/mocks/new" search={e.wasMatched ? { from: id } : createMockSearch(id, misses.data?.[0])}>
+          <Link to="/mocks/new" search={e.wasMatched ? { from: id } : createMockSearch(id)}>
             <PlusIcon data-icon="inline-start" />
             {t('request.createMock')}
           </Link>

@@ -30,7 +30,7 @@ type Row = {
   matched: boolean
   stubId: string | null
   stubName: string | null
-  integration: string | null
+  tags: string[]
   durationMs: number | null
   forwardedTo?: string | null
   recordingProxy?: boolean
@@ -44,20 +44,20 @@ const row = (id: string, over: Partial<Row> = {}): Row => ({
   matched: true,
   stubId: `stub-${id}`,
   stubName: `Mock ${id}`,
-  integration: 'pay',
+  tags: ['pay'],
   durationMs: 12,
   ...over,
 })
 const unmatched = (id: string, over: Partial<Row> = {}) =>
   row(id, { matched: false, status: 404, stubId: null, stubName: null, ...over })
 
-const integrations = [{ key: 'pay', name: 'Payments', prefix: '/pay', updatedAt: '', updatedBy: '' }]
+const tags = [{ tag: 'pay', count: 1 }]
 
 /** Serves `pages` in order (the last one repeats) and records every list call. */
 function mockList(pages: Row[][]) {
   const calls: URLSearchParams[] = []
   server.use(
-    http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+    http.get(`${BASE}/api/tags`, () => HttpResponse.json(tags)),
     http.get(`${BASE}/api/requests`, ({ request }) => {
       calls.push(new URL(request.url).searchParams)
       return HttpResponse.json(pages[Math.min(calls.length - 1, pages.length - 1)])
@@ -97,10 +97,10 @@ describe('request table', () => {
 
   it('passes the filters to the API', async () => {
     const calls = mockList([[]])
-    await renderApp(<Harness initial={{ matched: 'false', integration: 'pay', status: '404', q: 'refund' }} />)
+    await renderApp(<Harness initial={{ matched: 'false', tag: 'pay', status: '404', q: 'refund' }} />)
     await screen.findByText('No requests match these filters')
     const params = calls[0]!
-    expect(Object.fromEntries(params)).toMatchObject({ matched: 'false', integration: 'pay', status: '404', q: 'refund' })
+    expect(Object.fromEntries(params)).toMatchObject({ matched: 'false', tag: 'pay', status: '404', q: 'refund' })
     expect(params.has('since')).toBe(false)
     await userEvent.setup().click(screen.getByRole('radio', { name: 'Matched' }))
     expect(lastSearch.matched).toBe('true')
@@ -193,7 +193,7 @@ describe('load older', () => {
   it('is offered when the live page is full; pages back with the cursor, keeps the filters, and says when it reached the end', async () => {
     const calls: URLSearchParams[] = []
     server.use(
-      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/tags`, () => HttpResponse.json(tags)),
       http.get(`${BASE}/api/requests`, ({ request }) => {
         const q = new URL(request.url).searchParams
         calls.push(q)
@@ -230,7 +230,7 @@ describe('clear log', () => {
   it('is offered to every signed-in user and empties the table after confirming', async () => {
     let cleared = false
     server.use(
-      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/tags`, () => HttpResponse.json(tags)),
       http.get(`${BASE}/api/requests`, () => HttpResponse.json(cleared ? [] : [row('a')])),
       http.delete(`${BASE}/api/requests`, ({ request }) => {
         expect(request.headers.get('X-CSRF-Token')).toBe('csrf-1')
@@ -267,8 +267,8 @@ const detail = (over: Record<string, unknown> = {}) => ({
 
 const misses = [
   {
-    stub: { id: 'stub-refund', name: 'Refund ok', owner: 'omar', integration: 'pay', endpoint: null },
-    keyValue: null,
+    stub: { id: 'stub-refund', name: 'Refund ok', owner: 'omar' },
+    group: null,
     distance: 0.12,
     diffs: [
       { field: 'method', expected: 'equalTo POST', actual: 'POST', matched: true },
@@ -276,13 +276,13 @@ const misses = [
       { field: 'body', expected: 'matchesXPath //a', actual: null, matched: null },
     ],
   },
-  { stub: { id: 'stub-2', name: null, owner: null, integration: null, endpoint: null }, keyValue: null, distance: 0.4, diffs: [] },
+  { stub: { id: 'stub-2', name: null, owner: null }, group: null, distance: 0.4, diffs: [] },
 ]
-/** The closest near miss is a mock of the Payments "refund" endpoint, which keys on the paymentId path variable. */
+/** The closest near miss is one response of a mock with several responses, by the paymentId path variable. */
 const endpointMisses = [
   {
-    stub: { id: 'stub-p1', name: 'Refund — p-1', owner: 'omar', integration: 'pay', endpoint: 'refund' },
-    keyValue: 'p-2',
+    stub: { id: 'stub-p1', name: 'Refund — p-1', owner: 'omar' },
+    group: { id: 'g-refund', by: { location: 'path', expression: 'paymentId' }, keyValue: 'p-2' },
     distance: 0.05,
     diffs: [{ field: 'pathParam.paymentId', expected: 'equalTo p-1', actual: 'p-2', matched: false }],
   },
@@ -332,24 +332,24 @@ describe('request drawer', () => {
     expect(create.getAttribute('href')).toBe('/mocks/new?from=b')
   })
 
-  it('"Create mock from this request" opens Simple on the closest endpoint with its key filled in', async () => {
+  it('"Create mock from this request" opens the URL form prefilled from the request', async () => {
     mockDetail(endpointMisses)
     await renderApp(<Harness initial={{ open: 'b' }} />)
     const drawer = await screen.findByRole('dialog')
     await within(drawer).findByRole('article', { name: 'Refund — p-1' })
     const create = within(drawer).getByRole('link', { name: 'Create mock from this request' })
-    await waitFor(() => expect(create.getAttribute('href')).toBe('/mocks/new?integration=pay&endpoint=refund&key=p-2'))
+    await waitFor(() => expect(create.getAttribute('href')).toBe('/mocks/new?from=b'))
   })
 
-  it('each endpoint near miss offers "Make a mock for <value>"', async () => {
+  it('a near miss that answers by a value offers "Add a response for <value>" on that mock', async () => {
     mockDetail(endpointMisses)
     await renderApp(<Harness initial={{ open: 'b' }} />)
     const card = await screen.findByRole('article', { name: 'Refund — p-1' })
-    const make = within(card).getByRole('link', { name: 'Make a mock for p-2' })
-    expect(make.getAttribute('href')).toBe('/mocks/new?integration=pay&endpoint=refund&key=p-2')
-    // A free-form mock has no endpoint key to fill in.
+    const add = within(card).getByRole('link', { name: 'Add a response for p-2' })
+    expect(add.getAttribute('href')).toBe('/mocks/stub-p1?add=p-2')
+    // A mock with one response has nothing to add to.
     const other = screen.getByRole('article', { name: 'Refund ok' })
-    expect(within(other).queryByRole('link', { name: /Make a mock for/ })).toBeNull()
+    expect(within(other).queryByRole('link', { name: /Add a response for/ })).toBeNull()
   })
 
   it('explains the near misses: mismatches first, highlighted; unchecked rows say why', async () => {
@@ -429,7 +429,7 @@ describe('new mock from a request', () => {
   it('opens the quick form with the method, path and JSON body prefilled, and creates with POST', async () => {
     let created: unknown
     server.use(
-      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/tags`, () => HttpResponse.json(tags)),
       http.get(`${BASE}/api/requests/b`, () => HttpResponse.json(detail())),
       http.post(`${BASE}/api/mocks/preview`, async ({ request }) => HttpResponse.json(buildQuickStub((await request.json()) as QuickMockInput))),
       http.post(`${BASE}/api/mocks`, async ({ request }) => {
@@ -477,7 +477,7 @@ describe('load older: scan limit', () => {
   it('says when the server stopped searching at the newest 10,000', async () => {
     const at = (n: number) => new Date(Date.parse('2026-11-20T10:00:00.000Z') - n * 1000).toISOString()
     server.use(
-      http.get(`${BASE}/api/integrations`, () => HttpResponse.json(integrations)),
+      http.get(`${BASE}/api/tags`, () => HttpResponse.json(tags)),
       http.get(`${BASE}/api/requests`, ({ request }) => {
         const q = new URL(request.url).searchParams
         if (!q.get('before')) return HttpResponse.json(q.get('since') ? [] : Array.from({ length: 500 }, (_, n) => row(`r${n}`, { loggedAt: at(n) })))

@@ -5,7 +5,6 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { CatalogPage } from '@/routes/_app/integrations.index'
 import { MocksPage, type MocksSearch } from '@/routes/_app/mocks.index'
 import { ImportPage } from '@/routes/_app/import'
 import { UsersPage } from '@/routes/_app/users'
@@ -101,24 +100,13 @@ describe('WireMock-only mode (STORE_DRIVER=none)', () => {
     expect(screen.queryByRole('menuitem', { name: 'Change password' })).toBeNull()
   })
 
-  it('Integrations warns that changes are kept in memory; the banner can be dismissed', async () => {
-    server.use(
-      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([])),
-    )
-    const user = userEvent.setup()
-    await renderApp(none(<CatalogPage />))
-    const banner = await screen.findByRole('status')
-    expect(banner.textContent).toContain('Integration changes are kept in memory and lost on restart (WireMock-only mode)')
-    await user.click(screen.getByRole('button', { name: 'Dismiss' }))
-    await waitFor(() => expect(screen.queryByText(/kept in memory/)).toBeNull())
-  })
 
   it('Import offers no prune: a bundle is posted without it', async () => {
     const seen: URL[] = []
     server.use(
       http.post(`${BASE}/api/import`, ({ request }) => {
         seen.push(new URL(request.url))
-        return HttpResponse.json({ integrations: 0, endpoints: 0, created: 1, updated: 0, unchanged: 0, skipped: [], pruned: 0, ignoredOidcIdentities: 0 })
+        return HttpResponse.json({ created: 1, updated: 0, unchanged: 0, skipped: [], pruned: 0, ignoredOidcIdentities: 0 })
       }),
     )
     const user = userEvent.setup({ applyAccept: false })
@@ -145,10 +133,4 @@ describe('WireMock-only mode (STORE_DRIVER=none)', () => {
     expect(asked).toBe(false)
   })
 
-  it('with a store none of this changes: the catalog shows no banner', async () => {
-    server.use(http.get(`${BASE}/api/integrations`, () => HttpResponse.json([])))
-    await renderApp(<CatalogPage />)
-    await screen.findByText('Add the system your app calls')
-    expect(screen.queryByText(/kept in memory/)).toBeNull()
-  })
 })

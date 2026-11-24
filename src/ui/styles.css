@@ -47,6 +47,8 @@
   /* Signal / hazard as text on the canvas (the fills are already AA in dark). */
   --signal-fg: var(--signal);
   --hazard-fg: var(--hazard);
+  /* Mismatch as small text on its own tint: lifted from --mismatch for 4.5:1. */
+  --mismatch-fg: #ff6b70;
   /* WireMock brand: signal = logo blue #0FB2EF, hazard = logo orange #FF9505. Dark text on signal fills: 7.8:1 (dark) / 5.3:1 (light). */
   --on-signal: #04121a;
   --grid-dot: rgb(38 50 72 / 0.6);
@@ -71,6 +73,7 @@
   --muted-text: var(--muted-ink);
   --signal-fg: #02668f;
   --hazard-fg: #9a5200;
+  --mismatch-fg: #a8201f;
   --on-signal: #04121a;
   --grid-dot: rgb(140 156 178 / 0.45);
   --glass: rgb(255 255 255 / 0.72);
@@ -95,6 +98,7 @@
     --muted-text: var(--muted-ink);
     --signal-fg: #02668f;
     --hazard-fg: #9a5200;
+    --mismatch-fg: #a8201f;
     --on-signal: #04121a;
     --grid-dot: rgb(140 156 178 / 0.45);
     --glass: rgb(255 255 255 / 0.72);
@@ -162,6 +166,7 @@
   --color-hazard: var(--hazard);
   --color-hazard-fg: var(--hazard-fg);
   --color-mismatch: var(--mismatch);
+  --color-mismatch-fg: var(--mismatch-fg);
   --color-match: var(--match);
 
   --color-background: var(--background);

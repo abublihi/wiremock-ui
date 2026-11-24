@@ -105,10 +105,10 @@ describe('parsing and merging', () => {
     ]
     expect(results.map((r) => (r.ok ? r.summary : r.error.key))).toEqual([
       'import.invalidJson',
-      { integrations: 1, endpoints: 1, mocks: 1, oidcIdentities: 0 },
-      { integrations: 0, endpoints: 0, mocks: 2, oidcIdentities: 0 },
-      { integrations: 0, endpoints: 0, mocks: 1, oidcIdentities: 0 },
-      { integrations: 0, endpoints: 0, mocks: 1, oidcIdentities: 0 },
+      { mocks: 1, oidcIdentities: 0 },
+      { mocks: 2, oidcIdentities: 0 },
+      { mocks: 1, oidcIdentities: 0 },
+      { mocks: 1, oidcIdentities: 0 },
       'import.fileShape',
       'import.fileShape',
     ])

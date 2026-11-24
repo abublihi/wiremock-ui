@@ -1,8 +1,6 @@
 import { z } from 'zod'
 import { safeRecord, type AuditLog } from '../audit/log'
-import { buildStub, MIME, type SimpleMockInput } from '../catalog/build'
-import type { CatalogService } from '../catalog/service'
-import type { Endpoint, Integration } from '../catalog/types'
+import { normaliseTags } from '../mocks/tags'
 import { prunesBaseline, type Config } from '../config'
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../errors'
 import { logger } from '../logger'
@@ -84,7 +82,6 @@ export const snapshotSchema = z.strictObject(
   },
   { error: (iss) => (iss.code === 'unrecognized_keys' ? `unknown field: ${iss.keys.join(', ')}` : 'body must be an object') },
 )
-const keyField = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, 'keys must be 1–63 characters: a-z, 0-9 or -')
 export const acceptSchema = z.strictObject(
   {
     items: z
@@ -92,10 +89,8 @@ export const acceptSchema = z.strictObject(
         z.strictObject({
           id: z.string({ error: 'items.id must be a string' }),
           name: z.string({ error: 'items.name must be a string' }).optional(),
-          integration: keyField.optional(),
-          endpoint: keyField.optional(),
-          /** Create this endpoint from the recorded request first. */
-          newEndpoint: z.strictObject({ key: keyField, name: z.string().min(1, 'newEndpoint.name must not be empty') }).optional(),
+          /** Tags for the new mock (normalised as everywhere; see src/server/mocks/tags.ts). */
+          tags: z.array(z.string({ error: 'items.tags must be a list of strings' }), { error: 'items.tags must be a list of strings' }).optional(),
           /** Accept a recorded scenario's row as a plain mock ("Keep only the first answer"): no scenario fields. */
           dropScenario: z.boolean({ error: 'items.dropScenario must be true or false' }).optional(),
         }),
@@ -146,7 +141,6 @@ type Deps = {
   /** For the short lock around accept and discard (any driver). */
   locks: Pick<MockStore, 'acquireLock' | 'releaseLock'>
   mocks: MockService
-  catalog: CatalogService
   audit: AuditLog
   config: Pick<Config, 'recordingAllowed' | 'wiremockUrl' | 'wiremockPublicUrl' | 'publicUiUrl' | 'seedPrune' | 'seedPath' | 'storeDriver'>
   now?: () => Date
@@ -182,12 +176,6 @@ function recordSpec(input: Omit<SnapshotInput, 'ids'>): Record<string, unknown> 
       : {}),
   }
 }
-
-const pathOf = (stub: ReviewStub) =>
-  typeof stub.request.urlPath === 'string' ? stub.request.urlPath : String(stub.request.url ?? '/').split('?')[0]
-
-const contentTypeOf = (type: string | undefined): Endpoint['contentType'] =>
-  !type ? 'text' : /[/+]json/i.test(type) ? 'json' : /[/+]xml/i.test(type) ? 'xml' : /html/i.test(type) ? 'html' : 'text'
 
 /** A row whose body is over the cap: the body is not kept, the row says so and cannot be accepted. */
 function withoutBody(item: ReviewItem): ReviewItem {
@@ -424,7 +412,7 @@ export class RecordingService {
         continue
       }
       try {
-        const stub = await this.stubFor(choice.dropScenario ? withoutScenario(item) : item, choice, actor.username)
+        const stub = await this.stubFor(choice.dropScenario ? withoutScenario(item) : item, choice)
         const mock = await this.deps.mocks.createRecorded(stub, owner, actor)
         created.push({ id: item.id, mockId: mock.id })
         byId.delete(item.id)
@@ -444,82 +432,12 @@ export class RecordingService {
     return { created, failed, recording: result }
   }
 
-  /** The mock to create for one item: the Simple form's endpoint shape when it fits, else the quick shape (+ link). */
-  private async stubFor(item: ReviewItem, choice: AcceptInput['items'][number], actor: string): Promise<MockInput> {
+  /** The mock to create for one item: the recorded stub, with the name and tags chosen in the review list. */
+  private async stubFor(item: ReviewItem, choice: AcceptInput['items'][number]): Promise<MockInput> {
     const name = choice.name?.trim()
     if (choice.name !== undefined && !name) throw new ValidationError('Name must not be empty')
-    const quick = { ...structuredClone(item.stub), ...(name ? { name } : {}) } as MockInput
-    if (!choice.integration) {
-      if (choice.endpoint || choice.newEndpoint) throw new ValidationError('Pick an integration for the endpoint')
-      return quick
-    }
-    const integration = await this.deps.catalog.getIntegration(choice.integration)
-    let endpoint: Endpoint | null = null
-    if (choice.newEndpoint) endpoint = await this.createEndpoint(item, integration, choice.newEndpoint, actor)
-    else if (choice.endpoint) endpoint = await this.deps.catalog.getEndpoint(integration.key, choice.endpoint)
-    const link = { integration: integration.key, ...(endpoint ? { endpoint: endpoint.key } : {}) }
-    if (endpoint) {
-      const simple = this.endpointStub(item, integration, endpoint, name)
-      if (simple) return simple
-    }
-    return { ...quick, metadata: { wiremockUi: link } }
-  }
-
-  /** An endpoint for the recorded request: its method and exact path under the integration prefix, its body as the example. */
-  private async createEndpoint(item: ReviewItem, integration: Integration, input: { key: string; name: string }, actor: string): Promise<Endpoint> {
-    const path = pathOf(item.stub)
-    const prefix = integration.prefix
-    let relative: string
-    if (prefix === '/') relative = path
-    else if (path.startsWith(`${prefix}/`)) relative = path.slice(prefix.length)
-    else throw new ValidationError(`The request path ${path} is not under the integration prefix ${prefix}; pick another integration`)
-    const contentType = contentTypeOf(item.contentType)
-    const res = item.stub.response
-    // A JSON endpoint only takes JSON examples: a text body under a JSON type is left out.
-    const example =
-      res.jsonBody !== undefined ? JSON.stringify(res.jsonBody, null, 2) : typeof res.body === 'string' && contentType !== 'json' ? res.body : undefined
-    return this.deps.catalog.upsertEndpoint(
-      {
-        integration: integration.key,
-        key: input.key,
-        name: input.name.trim(),
-        method: item.method,
-        path: relative,
-        pathType: 'exact',
-        contentType,
-        exampleResponses: example !== undefined && item.status !== null ? { [String(item.status)]: example } : {},
-        allowedStatuses: [],
-      },
-      actor,
-      { createOnly: true },
-    )
-  }
-
-  /** The Simple editor's default mock for `endpoint`, when the recorded stub says exactly that; null otherwise. */
-  private endpointStub(item: ReviewItem, integration: Integration, endpoint: Endpoint, name: string | undefined): MockInput | null {
-    const { stub } = item
-    const root = integration.prefix === '/' ? '' : integration.prefix
-    const { request, response } = stub
-    if (endpoint.pathType !== 'exact' || !onlyKeys(request, ['method', 'urlPath'])) return null
-    if (request.method !== endpoint.method || request.urlPath !== root + endpoint.path) return null
-    if (!onlyKeys(stub, ['name', 'request', 'response', 'scenarioName', 'requiredScenarioState', 'newScenarioState'])) return null
-    if (!onlyKeys(response, ['status', 'headers', 'body', 'jsonBody']) || typeof response.status !== 'number') return null
-    const headers = response.headers
-    if (!isRecord(headers) || !onlyKeys(headers, ['Content-Type']) || headers['Content-Type'] !== MIME[endpoint.contentType]) return null
-    if (endpoint.allowedStatuses.length > 0 && !endpoint.allowedStatuses.includes(response.status)) return null
-    const json = endpoint.contentType === 'json'
-    if (json ? response.body !== undefined : response.jsonBody !== undefined) return null
-    const input: SimpleMockInput = { isDefault: true, status: response.status, name: name ?? (stub.name as string) }
-    if (json && response.jsonBody !== undefined) input.body = JSON.stringify(response.jsonBody, null, 2)
-    if (!json && typeof response.body === 'string') input.body = response.body
-    if (typeof stub.scenarioName === 'string' && typeof stub.requiredScenarioState === 'string') {
-      input.scenario = {
-        name: stub.scenarioName,
-        requiredState: stub.requiredScenarioState,
-        ...(typeof stub.newScenarioState === 'string' ? { newState: stub.newScenarioState } : {}),
-      }
-    } else if (stub.scenarioName !== undefined) return null
-    return buildStub(integration, endpoint, input)
+    const tags = normaliseTags(choice.tags, 'items.tags')
+    return { ...structuredClone(item.stub), ...(name ? { name } : {}), ...(tags ? { metadata: { wiremockUi: { tags } } } : {}) } as MockInput
   }
 
   /** Deletes in batches of DELETE_BATCH, then retries the failures once; returns the ids still in WireMock. */

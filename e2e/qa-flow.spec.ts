@@ -2,40 +2,42 @@ import { expect, test } from '@playwright/test'
 import { USER_A, wiremockUrl } from './env'
 import { signIn } from './helpers'
 
-const KEY = '7'
+const AUTH = { Authorization: `Basic ${Buffer.from(`${USER_A.username}:${USER_A.password}`).toString('base64')}` }
+let made: string | undefined
+
+test.afterAll(async ({ request }) => {
+  if (!made) return
+  const res = await request.get(`/api/mocks/${made}`, { headers: AUTH })
+  if (!res.ok()) return
+  const version = ((await res.json()) as { metadata: { wiremockUi: { version: number } } }).metadata.wiremockUi.version
+  await request.delete(`/api/mocks/${made}?version=${version}`, { headers: AUTH })
+})
 
 test('a tester mocks creating a post, calls it, and reads why another call missed', async ({ page }) => {
   await signIn(page, USER_A)
 
-  // New mock → Blog API → Create post
+  // New mock → POST /blog/qa-posts, answering Success
   await page.getByRole('link', { name: 'Mocks' }).click()
   await page.getByRole('link', { name: 'New mock' }).first().click()
-  await page.getByPlaceholder('Search by integration, name or path…').fill('create post')
-  await page.getByRole('option', { name: /Create post/ }).click()
-
-  // Key mock answering Success with the catalog example
-  await page.getByLabel('Value of $.userId in the request body').fill(KEY)
+  await page.getByRole('combobox', { name: 'Method' }).click()
+  await page.getByRole('option', { name: 'POST' }).click()
+  await page.getByRole('textbox', { name: 'URL' }).fill('/blog/qa-posts')
   await page.getByRole('radio', { name: 'Success 200' }).click()
   await page.getByRole('button', { name: 'Save mock' }).click()
   await expect(page.getByText('Mock saved')).toBeVisible()
   await expect(page).toHaveURL(/\/mocks\/[0-9a-f-]{36}$/)
+  made = page.url().split('/').pop()!
 
   // WireMock serves it
-  const hit = await fetch(`${wiremockUrl()}/blog/posts`, {
+  const hit = await fetch(`${wiremockUrl()}/blog/qa-posts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: 7, title: 'Hello', body: 'My first post.' }),
+    body: JSON.stringify({ userId: 7, title: 'Hello' }),
   })
   expect(hit.status).toBe(200)
-  expect(await hit.json()).toEqual({ id: 101, userId: 7, title: 'Hello from the mock' })
 
-  // An unknown key misses
-  const miss = await fetch(`${wiremockUrl()}/blog/posts`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: 999, title: 'Hello' }),
-  })
-  expect(miss.status).toBe(404)
+  // A GET to the same URL misses
+  expect((await fetch(`${wiremockUrl()}/blog/qa-posts`)).status).toBe(404)
 
   // The request log shows it with the No match stamp; opening it explains the near miss
   await page.getByRole('link', { name: 'Request log' }).click()
@@ -43,10 +45,10 @@ test('a tester mocks creating a post, calls it, and reads why another call misse
   await expect(stamp).toBeVisible()
   await stamp.click()
 
-  const drawer = page.getByRole('dialog', { name: 'POST /blog/posts' })
+  const drawer = page.getByRole('dialog', { name: 'GET /blog/qa-posts' })
   await expect(drawer).toBeVisible()
-  const bodyRow = drawer.getByRole('row', { name: /^body Mismatch/ })
-  await expect(bodyRow).toBeVisible()
-  await expect(bodyRow.getByRole('cell').nth(1)).toHaveText(`matchesJsonPath $.userId equalTo ${KEY}`)
-  await expect(bodyRow.getByRole('cell').nth(2)).toHaveText('999')
+  const methodRow = drawer.getByRole('row', { name: /^method Mismatch/ })
+  await expect(methodRow).toBeVisible()
+  await expect(methodRow.getByRole('cell').nth(1)).toHaveText('equalTo POST')
+  await expect(methodRow.getByRole('cell').nth(2)).toHaveText('GET')
 })

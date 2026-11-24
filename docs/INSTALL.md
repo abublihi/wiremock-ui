@@ -121,7 +121,7 @@ What you give up, because nothing is stored:
 
 - **One account only**, the `ADMIN_USER` one: the Users page only explains this, and its password is changed by changing `ADMIN_PASSWORD` and restarting.
 - **No history**, so no restore and no Undo after a delete.
-- **Integrations, the audit log (last 500 entries) and sign-in sessions live in memory** and are gone after a restart (everyone signs in again). `SEED_PATH` still loads integrations on every start; its mocks are written into WireMock. `SEED_PRUNE` is ignored (with a warning in the log) and the Import page offers no prune (the API answers 400): the UI never deletes stubs from your WireMock in bulk.
+- **The audit log (last 500 entries) and sign-in sessions live in memory** and are gone after a restart (everyone signs in again). `SEED_PATH` still loads on every start; its mocks are written into WireMock. `SEED_PRUNE` is ignored (with a warning in the log) and the Import page offers no prune (the API answers 400): the UI never deletes stubs from your WireMock in bulk.
 - **Edits made while WireMock is down fail** (there is no copy to fall back to), and a WireMock restart keeps only what WireMock itself persists: a stub that came from WireMock's `mappings` folder stays persistent when you edit it; mocks you create in the UI are not written to WireMock's files.
 - **Two people saving the same mock at the same moment**: the version check catches most conflicts, but two saves within the same instant can both land (the later one wins).
 
@@ -133,7 +133,7 @@ Everything is set through environment variables (empty values count as unset). T
 
 ### How the stores compare
 
-Both stores keep the same data and behave the same: accounts and sessions, the sign-in rate limit, mocks with their history (last 20 versions, kept 7 days after a delete), integrations and the 30-day audit log.
+Both stores keep the same data and behave the same: accounts and sessions, the sign-in rate limit, mocks with their history (last 20 versions, kept 7 days after a delete) and the 30-day audit log.
 
 - **SQLite** uses Node's built-in `node:sqlite` (no native build) in one file in WAL mode. Keep the file on a volume and run **one** UI instance per file.
 - **Redis** lets several UI instances share the data. Run it with persistence (`--appendonly yes`, as `compose.yaml` does).
@@ -177,8 +177,9 @@ Data on the volume is kept. From source: `git pull && npm ci --ignore-scripts &&
 ## Performance
 
 Measured with `scripts/load-test.mjs` on an Apple M1 Pro (10 cores, 16 GB; Docker Desktop VM with 3 CPUs and 9 GB),
-Node 26, WireMock 3.13.1 with default JVM settings. Each run seeds N mocks over N/100 integrations (catalog mocks keyed
-by query, path, JSON body and header; quick URL mocks; one 3-step scenario and two ~45 KB JSON bodies per 100 mocks).
+Node 26, WireMock 3.13.1 with default JVM settings, on the version before tags replaced integrations. Each run seeds N
+mocks in groups of 100 (mocks keyed by query, path, JSON body and header; URL mocks; one 3-step scenario and two ~45 KB
+JSON bodies per 100 mocks). A `tag=` filter reads every mock, like `q=`.
 API figures are p50 / p95 in ms over 20 calls, one user, no other load.
 
 | | SQLite 1,000 | SQLite 10,000 | SQLite 20,000 | Redis 10,000 | WireMock-only 1,000 |
@@ -188,7 +189,6 @@ API figures are p50 / p95 in ms over 20 calls, one user, no other load.
 | WireMock restart until every stub is back | 4.6 s | 9.5 s | 18.7 s | 8.7 s | n/a |
 | `GET /api/mocks?limit=50` (All mocks) | 8 / 8 | 81 / 105 | 149 / 163 | 108 / 117 | 50 / 59 |
 | … with `q=` | 7 / 8 | 74 / 80 | 137 / 145 | 115 / 123 | 35 / 40 |
-| … with `integration=` | 1 / 2 | 1 / 4 | 1 / 2 | 3 / 6 | 32 / 35 |
 | `GET /api/mocks` (no limit) | 10 / 11 | 109 / 119 | 195 / 214 | 143 / 212 | 35 / 39 |
 | `GET /api/scenarios` | 10 / 11 | 92 / 97 | 161 / 294 | 95 / 102 | 36 / 41 |
 | `GET /api/export?format=bundle` | 11 / 12 (1.6 MB) | 111 / 126 (16 MB) | 235 / 268 (32 MB) | 192 / 227 | 36 / 43 |
@@ -203,14 +203,13 @@ API figures are p50 / p95 in ms over 20 calls, one user, no other load.
 ¹ WireMock-only mode: the mocks were loaded straight into WireMock.
 
 In the browser at 20,000 mocks (SQLite): *My mocks* opens in ~0.3 s; *All mocks* in ~0.45 s and each page change takes
-~0.5 s; a search shows its result ~0.5 s after typing stops; the new-mock endpoint picker is ready in ~0.6 s (it asks
-for each integration's endpoints, 200 calls); Scenarios in ~0.7 s; the request log (500 rows) in ~0.7 s.
+~0.5 s; a search shows its result ~0.5 s after typing stops; Scenarios in ~0.7 s; the request log (500 rows) in ~0.7 s.
 
 What this means:
 
-- **Up to ~10,000 mocks** everything answers well under 300 ms. Filtered views (*My mocks*, one integration) stay at a
+- **Up to ~10,000 mocks** everything answers well under 300 ms. *My mocks* stays at a
   few milliseconds at any size.
-- **Past ~10,000**, the views that read every mock (*All mocks*, search, Scenarios, export, scripts calling
+- **Past ~10,000**, the views that read every mock (*All mocks*, search, a tag filter, Scenarios, export, scripts calling
   `GET /api/mocks` without `limit`) cost ~7–10 ms per 1,000 mocks and run one at a time on the server's single thread,
   so concurrent users wait for each other: five people opening *All mocks* at once at 20,000 mocks wait up to ~0.9 s.
   The Scenarios page asks again every 2 s while it is open.

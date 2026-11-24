@@ -125,27 +125,14 @@ test('accept creates mocks through the normal create path (quick form shape, own
   expect((await rt.audit.list({ limit: 5 })).entries.map((e) => e.action)).toContain('recording.accept')
 })
 
-test('accept into a new endpoint builds the Simple editor\'s default mock; an unknown item fails alone', async () => {
-  await rt.catalog.upsertIntegration({ key: 'shop', name: 'Shop', prefix: '/shop' }, 'ui-admin')
+test('accept takes the tags chosen per row (normalised); an unknown item fails alone', async () => {
   await start({ targetUrl: pair.upstreamInternalUrl })
   await fetch(`${W()}/shop/items/1`)
   const rec = (await stop()).body.recording as Recording
-  const res = await accept(rec.id, {
-    items: [
-      { id: rec.items[0].id, integration: 'shop', newEndpoint: { key: 'get-item', name: 'Get item' } },
-      { id: 'nope' },
-    ],
-  })
+  const res = await accept(rec.id, { items: [{ id: rec.items[0].id, tags: ['Shop', 'shop', 'items'] }, { id: 'nope' }] })
   expect(res.body.failed).toEqual([{ id: 'nope', error: 'Not in this review list (accepted or discarded already)' }])
-  const endpoint = await rt.catalog.getEndpoint('shop', 'get-item')
-  expect(endpoint).toMatchObject({ method: 'GET', path: '/items/1', pathType: 'exact', contentType: 'json', exampleResponses: { '200': '{\n  "id": 1,\n  "name": "Lamp"\n}' } })
   const [mock] = await mocks()
-  expect(mock).toMatchObject({
-    priority: 10,
-    request: { method: 'GET', urlPath: '/shop/items/1' },
-    metadata: { wiremockUi: { integration: 'shop', endpoint: 'get-item', source: 'recording' } },
-  })
-  await rt.catalog.deleteEndpoint('shop', 'get-item', 'x').catch(() => {})
+  expect(mock).toMatchObject({ request: { method: 'GET', urlPath: '/shop/items/1' }, metadata: { wiremockUi: { tags: ['shop', 'items'], source: 'recording' } } })
 })
 
 test('start validates the target: http(s) only, never WireMock itself or this app; one recording at a time', async () => {

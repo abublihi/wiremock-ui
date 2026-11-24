@@ -1,13 +1,13 @@
 import { unzipSync } from 'fflate'
 import { byPath, emptyBundle, mergeInto, parseBundle, type Bundle } from '@/server/bundle/shape'
 import type { MessageKey } from '@/ui/i18n'
-import { isPostmanCollection, parsePostman, type PostmanCollection } from './postman'
+import { isPostmanCollection, parsePostman, postmanBundle, type PostmanCollection } from './postman'
 
 /** The server's import limit (POST /api/import); also the limit for a zip and for what it unpacks to. */
 export const MAX_IMPORT_BYTES = 10 * 1024 * 1024
 export const MAX_ZIP_ENTRIES = 2000
 
-export type ImportSummary = { integrations: number; endpoints: number; mocks: number; oidcIdentities: number }
+export type ImportSummary = { mocks: number; oidcIdentities: number }
 /** A message the page translates. */
 export type FileMessage = { key: MessageKey; params: Record<string, string | number> }
 
@@ -15,8 +15,8 @@ export type FileMessage = { key: MessageKey; params: Record<string, string | num
 export type SourceFile = { path: string; text: string }
 
 export type FileResult =
-  /** A Postman collection carries an empty bundle: the Postman preview builds its own. */
-  | { path: string; ok: true; bundle: Bundle; summary: ImportSummary; postman?: PostmanCollection }
+  /** A Postman collection comes as its mocks (`postman`: what the file held, for the file list). */
+  | { path: string; ok: true; bundle: Bundle; summary: ImportSummary; postman?: { collection: PostmanCollection; requests: number; skipped: number } }
   | { path: string; ok: false; error: FileMessage }
 
 /** A whole-input problem (a zip over the limits, a file that is not a zip…). */
@@ -83,8 +83,6 @@ export function readZip(bytes: Uint8Array, zipName: string): { files: SourceFile
 }
 
 const summaryOf = (b: Bundle): ImportSummary => ({
-  integrations: b.integrations.length,
-  endpoints: b.catalog.length,
   mocks: b.mocks.length,
   oidcIdentities: b.oidcIdentities.length,
 })
@@ -105,8 +103,14 @@ export function parseSourceFile(file: SourceFile): FileResult {
       } catch (error) {
         throw new Error(`${file.path}: ${error instanceof Error ? error.message : String(error)}`)
       }
-      const bundle = emptyBundle()
-      return { path: file.path, ok: true, bundle, summary: summaryOf(bundle), postman }
+      const converted = postmanBundle(postman)
+      return {
+        path: file.path,
+        ok: true,
+        bundle: converted.bundle,
+        summary: summaryOf(converted.bundle),
+        postman: { collection: postman, requests: converted.requests, skipped: converted.skipped },
+      }
     }
     const bundle = parseBundle(json, file.path)
     return { path: file.path, ok: true, bundle, summary: summaryOf(bundle) }

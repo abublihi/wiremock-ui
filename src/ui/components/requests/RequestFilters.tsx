@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { SearchIcon } from 'lucide-react'
-import type { Integration } from '@/server/catalog/types'
+import type { TagCount } from '@/ui/api/queries'
 import { Input } from '@/ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
@@ -8,7 +8,8 @@ import { useT } from '@/ui/i18n'
 
 /** The request log's URL state: filters, time range and the open request. */
 export type RequestsSearch = {
-  integration?: string
+  /** Only requests a mock with this tag answered. */
+  tag?: string
   matched?: 'true' | 'false'
   status?: string
   q?: string
@@ -25,11 +26,12 @@ const HAZARD_ON = 'data-[state=on]:border-hazard/50 data-[state=on]:bg-hazard/10
 
 export function RequestFilters({
   search,
-  integrations,
+  tags = [],
   onChange,
 }: {
   search: RequestsSearch
-  integrations: Integration[]
+  /** Tags in use (the Tag filter shows only when there are some, or one is chosen). */
+  tags?: TagCount[]
   onChange: (next: RequestsSearch) => void
 }) {
   const t = useT()
@@ -84,19 +86,22 @@ export function RequestFilters({
         />
       </div>
 
-      <Select value={search.integration ?? ANY} onValueChange={(value) => onChange({ integration: value === ANY ? undefined : value })}>
-        <SelectTrigger aria-label={t('requests.integration')} className="w-52">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ANY}>{t('requests.anyIntegration')}</SelectItem>
-          {integrations.map((i) => (
-            <SelectItem key={i.key} value={i.key}>
-              {i.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {(tags.length > 0 || search.tag) && (
+        <Select value={search.tag ?? ANY} onValueChange={(value) => onChange({ tag: value === ANY ? undefined : value })}>
+          <SelectTrigger aria-label={t('requests.tag')} className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ANY}>{t('requests.anyTag')}</SelectItem>
+            {search.tag && !tags.some((x) => x.tag === search.tag) && <SelectItem value={search.tag}>{search.tag}</SelectItem>}
+            {tags.map((x) => (
+              <SelectItem key={x.tag} value={x.tag}>
+                {x.tag}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       <Select value={search.status ?? ANY} onValueChange={(value) => onChange({ status: value === ANY ? undefined : value })}>
         <SelectTrigger aria-label={t('requests.status')} className="w-40">

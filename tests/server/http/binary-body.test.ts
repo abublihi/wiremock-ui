@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import { createCatalogMock } from '../../../src/server/http/handlers/catalog'
 import { runImport } from '../../../src/server/http/handlers/imports'
-import { createMock, getMock } from '../../../src/server/http/handlers/mocks'
+import { createMock, getMock, previewQuickMock } from '../../../src/server/http/handlers/mocks'
 import { login, req, startTestRuntime } from '../../helpers/http'
 
 // "Upload body from file": a binary file is stored as base64Body and WireMock serves the identical bytes.
@@ -19,15 +18,17 @@ const PNG = Buffer.concat([
 beforeAll(async () => {
   env = await startTestRuntime()
   admin = await login(env.rt, 'ui-admin', 'ui-admin-pass')
-  await env.rt.catalog.upsertIntegration({ key: 'img', name: 'Images', prefix: '/img' }, 'ui-admin')
-  await env.rt.catalog.upsertEndpoint(
-    { integration: 'img', key: 'logo', name: 'Logo', method: 'GET', path: '/logo', pathType: 'exact', contentType: 'json', exampleResponses: {}, allowedStatuses: [] },
-    'ui-admin',
-  )
 }, 120_000)
 afterAll(async () => {
   await env?.stop()
 })
+
+/** The Simple form's save: the quick builder makes the stub (POST /api/mocks/preview), the normal create saves it. */
+async function simpleSave(path: string, input: Record<string, unknown>): Promise<Response> {
+  const built = await previewQuickMock(env.rt, req('/api/mocks/preview', 'POST', { request: { method: 'GET', urlType: 'path', url: path }, ...input }, as()))
+  if (built.status !== 200) return built
+  return createMock(env.rt, req('/api/mocks', 'POST', await built.json(), as()))
+}
 
 const served = async (path: string) => {
   const res = await fetch(`${env.wm.url}${path}`)
@@ -47,8 +48,8 @@ test('Advanced: a PNG as base64Body is served byte for byte', async () => {
 })
 
 test('Simple: base64Body with the file\'s Content-Type is served byte for byte', async () => {
-  const input = { isDefault: true, status: 200, base64Body: PNG.toString('base64'), headers: { 'Content-Type': 'image/png' } }
-  const res = await createCatalogMock(env.rt, req('/api/integrations/img/endpoints/logo/mocks', 'POST', input, as()), { key: 'img', endpoint: 'logo' })
+  const input = { status: 200, base64Body: PNG.toString('base64'), headers: { 'Content-Type': 'image/png' } }
+  const res = await simpleSave('/img/logo', input)
   expect(res.status).toBe(201)
   const got = await served('/img/logo')
   expect(got.type).toBe('image/png')
@@ -74,11 +75,7 @@ test('a 5 MB binary body saves through Advanced, Simple and import, and WireMock
   expect(advanced.status).toBe(201)
   expect((await served('/big/advanced')).bytes.equals(BIG)).toBe(true)
 
-  await env.rt.catalog.upsertEndpoint(
-    { integration: 'img', key: 'big', name: 'Big', method: 'GET', path: '/big', pathType: 'exact', contentType: 'json', exampleResponses: {}, allowedStatuses: [] },
-    'ui-admin',
-  )
-  const simple = await createCatalogMock(env.rt, req('/api/integrations/img/endpoints/big/mocks', 'POST', { isDefault: true, status: 200, base64Body: BIG_B64 }, as()), { key: 'img', endpoint: 'big' })
+  const simple = await simpleSave('/img/big', { status: 200, base64Body: BIG_B64 })
   expect(simple.status).toBe(201)
   expect((await served('/img/big')).bytes.equals(BIG)).toBe(true)
 
@@ -91,7 +88,7 @@ test('a large invalid base64 body is a 400 on every route, not a 500', async () 
   const bad = `${BIG_B64.slice(0, 4000)}=${BIG_B64.slice(4001)}`
   const advanced = await createMock(env.rt, req('/api/mocks', 'POST', { request: { method: 'GET', urlPath: '/big/bad' }, response: { status: 200, base64Body: bad } }, as()))
   expect(advanced.status).toBe(400)
-  const simple = await createCatalogMock(env.rt, req('/api/integrations/img/endpoints/logo/mocks', 'POST', { isDefault: true, status: 200, base64Body: bad }, as()), { key: 'img', endpoint: 'logo' })
+  const simple = await simpleSave('/img/bad', { status: 200, base64Body: bad })
   expect(simple.status).toBe(400)
   const imported = await runImport(env.rt, req('/api/import', 'POST', { mocks: [{ request: { method: 'GET', urlPath: '/big/bad' }, response: { status: 200, base64Body: bad } }] }, as()))
   expect(imported.status).toBe(400)

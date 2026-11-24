@@ -1,9 +1,10 @@
 import type { Bundle } from '@/server/bundle/shape'
 import type { StubMapping } from '@/server/wiremock/types'
 import type { MessageKey } from '@/ui/i18n'
+import { legacyEndpointsOf, migrateLinkedStubs } from '@/server/catalog/migrate'
 
 /*
- * Postman Collection v2.0 / v2.1 → one integration, its endpoints and their mocks, as an import bundle.
+ * Postman Collection v2.0 / v2.1 → mocks tagged with the collection (postmanBundle), as an import bundle.
  * Pure (no DOM, no dependencies): the Import page and the server tests both use it.
  */
 
@@ -757,4 +758,27 @@ export function mockId(integration: string, endpoint: string, example: Pick<PmEx
   // The example's index within its request (`r3e1` → 1) keeps two examples with the same name apart.
   const index = example.id.replace(/^r\d+e/, '')
   return uuidFromName(`wiremock-ui/postman/${integration}/${endpoint}/${index}/${example.name}`)
+}
+
+/**
+ * A collection as an import bundle of plain mocks: each saved example a mock (the request's default example answers
+ * every call to it; the others only the calls their request differs in), tagged with the collection's name and the
+ * request's top folder. Integrations are retired: the plan's catalog only names the tags (src/server/catalog/migrate.ts).
+ */
+export function postmanBundle(c: PostmanCollection): { bundle: Bundle; requests: number; skipped: number } {
+  const key = slugify(c.name, 'postman')
+  const plan = planPostman(c, { integration: { key, name: c.name, prefix: '/' } })
+  const folderTag = new Map(plan.rows.map((r) => [r.key, r.request.folder[0] ? slugify(r.request.folder[0], '') : '']))
+  const mocks = migrateLinkedStubs(plan.bundle.mocks, legacyEndpointsOf(plan.bundle.catalog)).map((stub, i) => {
+    const folder = folderTag.get((plan.bundle.mocks[i]!.metadata?.wiremockUi as { endpoint?: string } | undefined)?.endpoint ?? '')
+    if (!folder) return stub
+    const ui = (stub.metadata?.wiremockUi ?? {}) as Record<string, unknown>
+    const tags = Array.isArray(ui.tags) ? (ui.tags as string[]) : []
+    return { ...stub, metadata: { ...stub.metadata, wiremockUi: { ...ui, tags: tags.includes(folder) ? tags : [...tags, folder] } } } as StubMapping
+  })
+  return {
+    bundle: { integrations: [], catalog: [], mocks, oidcIdentities: [] },
+    requests: plan.rows.length,
+    skipped: plan.rows.reduce((n, r) => n + r.skipped.length, 0) + (c.requests.length - plan.rows.length),
+  }
 }

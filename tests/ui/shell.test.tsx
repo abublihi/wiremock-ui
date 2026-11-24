@@ -55,7 +55,7 @@ describe('HazardStrip', () => {
 describe('AppShell', () => {
   it('shows every nav item to a signed-in user', async () => {
     await renderShell(user())
-    expect(navLabels()).toEqual(['Mocks', 'Scenarios', 'Request log', 'Recording', 'Integrations', 'Import & export', 'Users', 'Audit', 'Guide'])
+    expect(navLabels()).toEqual(['Mocks', 'Scenarios', 'Request log', 'Recording', 'Import & export', 'Users', 'Audit', 'Guide'])
   })
 
   it('groups the nav by how people work: Work, Setup, Admin, then Help (Import is not under Admin)', async () => {
@@ -64,7 +64,7 @@ describe('AppShell', () => {
     const group = (name: string) => within(within(nav).getByRole('group', { name })).getAllByRole('link').map((a) => a.textContent?.trim())
     expect(within(nav).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Work', 'Setup', 'Admin', 'Help'])
     expect(group('Work')).toEqual(['Mocks', 'Scenarios', 'Request log', 'Recording'])
-    expect(group('Setup')).toEqual(['Integrations', 'Import & export'])
+    expect(group('Setup')).toEqual(['Import & export'])
     expect(group('Admin')).toEqual(['Users', 'Audit'])
     expect(group('Help')).toEqual(['Guide'])
     expect(within(nav).getByText('// Help')).toBeTruthy()
@@ -74,8 +74,6 @@ describe('AppShell', () => {
   })
 
   it.each([
-    ['/integrations/blog/endpoints/new', 'Integrations'],
-    ['/integrations', 'Integrations'],
     ['/scenarios/new', 'Scenarios'],
     ['/scenarios/flow/edit', 'Scenarios'],
     ['/mocks/new', 'Mocks'],

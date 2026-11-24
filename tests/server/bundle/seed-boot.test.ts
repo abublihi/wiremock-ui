@@ -20,9 +20,9 @@ test('SEED_PATH folder is imported at boot; a bad seed fails the boot', async ()
   try {
     const rt = await bootRuntime({ ...env, SEED_PATH: resolve('tests/fixtures/bundle') })
     try {
-      expect((await rt.catalog.listEndpoints('seedpay')).map((e) => e.key)).toEqual(['get-charge'])
-      const [mock] = await rt.mocks.list({ integration: 'seedpay' })
-      expect(mock.metadata?.wiremockUi).toMatchObject({ owner: 'baseline', source: 'seed', updatedBy: 'system' })
+      // The seed's integrations and endpoints are retired; its mock is imported as a plain baseline mock.
+      const mock = (await rt.mocks.list()).find((m) => (m.request as { urlPath?: string }).urlPath === '/seedpay/charges/1')
+      expect(mock?.metadata?.wiremockUi).toMatchObject({ owner: 'baseline', source: 'seed', updatedBy: 'system' })
       expect(await (await fetch(`${wm.url}/seedpay/charges/1`)).text()).toBe('seeded')
     } finally {
       rt.reconciler?.stop()
@@ -59,7 +59,7 @@ test('seeding a baseline mock leaves an existing tester mock with the same match
     // The UI restarts with a seed while WireMock keeps its stubs.
     const second = await bootRuntime({ ...env, SEED_PATH: resolve('tests/fixtures/bundle') })
     try {
-      expect((await second.mocks.list({ integration: 'seedpay' })).some((m) => m.metadata?.wiremockUi?.owner === 'baseline')).toBe(true)
+      expect((await second.mocks.list()).some((m) => (m.request as { urlPath?: string }).urlPath === '/seedpay/charges/1' && m.metadata?.wiremockUi?.owner === 'baseline')).toBe(true)
       expect(await (await fetch(`${wm.url}/seedpay/charges/1`)).text()).toBe('mine')
       const hint = warn.mock.calls.find(([, msg]) => String(msg).includes('content-derived'))
       expect(hint?.[0]).toMatchObject({ count: 1 })

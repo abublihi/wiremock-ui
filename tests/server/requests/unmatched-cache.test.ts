@@ -10,7 +10,6 @@ test('the unmatched count reads WireMock once for callers within a few seconds, 
   ])
   const journal = new RequestJournal({
     wiremock: { listUnmatchedRequests, clearRequests: async () => {} } as never,
-    catalog: {} as never,
     audit: { record: async () => {}, list: async () => ({ entries: [], nextCursor: null }) },
   })
   const [a, b] = await Promise.all([journal.countUnmatchedSince(now - 15 * 60_000, 100), journal.countUnmatchedSince(now - 15 * 60_000, 100)])

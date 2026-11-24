@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { Link, createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
-import { AlertCircleIcon, DatabaseIcon, InboxIcon } from 'lucide-react'
-import { useIntegrations, useMockPage, useTags } from '@/ui/api/queries'
+import { AlertCircleIcon, InboxIcon } from 'lucide-react'
+import { useMockPage, useTags } from '@/ui/api/queries'
 import { GettingStartedChecklist } from '@/ui/components/guide/GettingStarted'
 import { WithTerm } from '@/ui/components/guide/Term'
 import { ExportMenu } from '@/ui/components/mocks/ExportMenu'
@@ -33,7 +33,6 @@ const pageOf = (v: unknown) => {
 export const Route = createFileRoute('/_app/mocks/')({
   validateSearch: (raw: Record<string, unknown>): MocksSearch => ({
     owner: str(raw.owner),
-    integration: str(raw.integration),
     status: str(raw.status),
     q: str(raw.q),
     scenarios: raw.scenarios === 'only' ? 'only' : undefined,
@@ -82,7 +81,6 @@ export function MocksPage({
   const mocks = useMockPage(
     {
       owner: owner === 'all' ? undefined : owner,
-      integration: search.integration,
       status: search.status,
       q: search.q,
       scenario: search.scenarios === 'only' ? '*' : undefined,
@@ -93,11 +91,8 @@ export function MocksPage({
   const goTo = (next: number) => (onPageChange ? onPageChange(next) : onSearchChange({ page: next > 1 ? next : undefined }))
   // A filter change starts again at page 1.
   const onFilterChange = useCallback((next: MocksSearch) => onSearchChange({ ...next, page: undefined }), [onSearchChange])
-  const integrations = useIntegrations()
   const tags = useTags()
-  // Nothing to build mocks from yet: the first step is the catalog, not New mock.
-  const noCatalog = integrations.data?.length === 0
-  const filtered = Boolean(search.integration || search.status || search.q || search.scenarios || search.tag || (!wiremockOnly && owner !== 'me' && owner !== 'all'))
+  const filtered = Boolean(search.status || search.q || search.scenarios || search.tag || (!wiremockOnly && owner !== 'me' && owner !== 'all'))
 
   const count = mocks.data?.totalMocks ?? 0
   const baseline = mocks.data?.baseline ?? 0
@@ -106,7 +101,7 @@ export function MocksPage({
   const everyone = useMockPage({}, { limit: 1, offset: 0 }, { enabled: mine && mocks.data !== undefined && count === 0 })
   const shared = mine && count === 0 ? (everyone.data?.totalMocks ?? 0) : 0
   const clearFilters = () =>
-    onSearchChange({ owner: undefined, integration: undefined, status: undefined, q: undefined, scenarios: undefined, tag: undefined, page: undefined })
+    onSearchChange({ owner: undefined, status: undefined, q: undefined, scenarios: undefined, tag: undefined, page: undefined })
   // Past the last page (mocks deleted, an old link): go to the last page that has rows.
   const lastPage = mocks.data ? Math.max(1, Math.ceil(mocks.data.total / size)) : 1
   const pastEnd = Boolean(mocks.data && !mocks.isPlaceholderData && page > lastPage)
@@ -124,7 +119,7 @@ export function MocksPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ExportMenu scope={scopeFromFilter({ owner, integration: search.integration, wiremockOnly })} />
+          <ExportMenu scope={scopeFromFilter({ owner, tag: search.tag, wiremockOnly })} />
           {/* Nothing of yours to reset (known on My mocks only). */}
           {!wiremockOnly && <ResetMineButton disabled={mine && mocks.data !== undefined && count === 0} />}
           <NewMockButton />
@@ -133,7 +128,7 @@ export function MocksPage({
 
       <GettingStartedChecklist />
 
-      <MockFilters search={search} integrations={integrations.data ?? []} tags={tags.data} onChange={onFilterChange} />
+      <MockFilters search={search} tags={tags.data} onChange={onFilterChange} />
 
       {mocks.isError && mocks.data && (
         <p role="alert" className="flex items-center gap-2 text-xs text-mismatch">
@@ -158,26 +153,6 @@ export function MocksPage({
             </Button>
           </AlertDescription>
         </Alert>
-      ) : count === 0 && !filtered && noCatalog ? (
-        <Empty className="rounded-md border border-dashed border-line">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <DatabaseIcon />
-            </EmptyMedia>
-            <EmptyTitle>{t('mocks.startTitle')}</EmptyTitle>
-            <EmptyDescription>{t('mocks.startBody')}</EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent className="flex-row flex-wrap justify-center">
-            <Button asChild>
-              <Link to="/integrations">{t('mocks.openCatalog')}</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link to="/mocks/new" search={{ mode: 'url' }}>
-                {t('editor.mockUrl')}
-              </Link>
-            </Button>
-          </EmptyContent>
-        </Empty>
       ) : count === 0 ? (
         <Empty className="rounded-md border border-dashed border-line">
           <EmptyHeader>
@@ -211,7 +186,7 @@ export function MocksPage({
       ) : (
         <div className="flex flex-col gap-3">
           {/* While a search or filter is set, scenario groups start open so a hit inside one is visible. */}
-          <MockTable mocks={mocks.data.items} expanded={Boolean(search.q || search.status || search.integration || search.tag)} />
+          <MockTable mocks={mocks.data.items} expanded={Boolean(search.q || search.status || search.tag)} />
           <MockPager
             page={page}
             size={size}

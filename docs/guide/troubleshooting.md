@@ -17,11 +17,11 @@ Most of these come down to how WireMock matches: a request must match **every** 
 
 ## How to
 
-**My app gets 404 and the log says No match.** Click the **No match** stamp in the [request log](/requests) and read the highlighted near-miss row. Usual causes: a different key value, a `Content-Type` the mock does not expect, a trailing `/`, a query parameter the mock requires, or the wrong method. See [Request log and near misses](request-log.md).
+**My app gets 404 and the log says No match.** Click the **No match** stamp in the [request log](/requests) and read the highlighted near-miss row. Usual causes: a value no response of the mock is for (add one, or an **Any other** response; see [Tags and several responses](tags.md)), a `Content-Type` the mock does not expect, a trailing `/`, a query parameter the mock requires, or the wrong method. See [Request log and near misses](request-log.md).
 
 **My app never shows up in the request log.** It is not calling WireMock. Check the base URL in your app's settings: it must be WireMock's address (the one in **Copy as curl**), not the real service and not the UI's address.
 
-**Another mock answered (Matched another mock).** Two mocks match the same request. The lower priority number wins (key mocks 5, defaults 10); with equal priorities a person's mock beats a baseline mock and the newest wins. Make the request more specific, or delete the other mock. See [Concepts](concepts.md).
+**Another mock answered (Matched another mock).** Two mocks match the same request. The lower priority number wins (WireMock's default is 5; an **Any other** response is 5 lower than the rest of its mock); with equal priorities a person's mock beats a baseline mock and the newest wins. Make the request more specific, or delete the other mock. See [Concepts](concepts.md).
 
 **A scenario keeps giving the same answer.** It is stuck in a state no next step leaves, or the scenario moved on already. Open [Scenarios](/scenarios), check the live state, and **Reset** it to `Started`.
 

@@ -18,14 +18,10 @@ import { toast } from 'sonner'
 import type { StubMapping } from '@/server/wiremock/types'
 import { ApiError, apiFetch } from '@/ui/api/client'
 import {
-  endpointsQueryOptions,
   queryKeys,
   restoreMock,
-  useCreateCatalogMock,
   useCreateMock,
   useDeleteMock,
-  useEndpoints,
-  useIntegrations,
   useMocks,
   useScenarios,
   useUpdateMock,
@@ -52,7 +48,8 @@ import { Switch } from '@/ui/components/ui/switch'
 import { Textarea } from '@/ui/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useT } from '@/ui/i18n'
-import { STARTED, exampleFor, fromEditable, linkOf, toEditable } from '@/ui/lib/editor-sync'
+import { STARTED, fromEditable, toEditable, withTags } from '@/ui/lib/editor-sync'
+import { tagsOf } from '@/server/mocks/tags'
 import {
   type BuilderDraft,
   type EditChange,
@@ -66,7 +63,6 @@ import {
   loadScenario,
   type BuilderErrors,
   type BuilderStep,
-  type CatalogRequest,
   type Message,
   type MoveTo,
   type StepField,
@@ -83,7 +79,6 @@ import {
 } from '@/ui/lib/scenario-builder'
 import { CodeEditor } from '@/ui/components/editor/CodeEditor'
 import { EditorShell, Eyebrow, backLinkClass } from '@/ui/components/editor/EditorShell'
-import { EndpointPicker, keyLabel } from '@/ui/components/editor/EndpointPicker'
 import { HeaderRows } from '@/ui/components/editor/HeaderRows'
 import { ScenarioRequest } from './ScenarioRequest'
 import { StateMachine } from './StateMachine'
@@ -91,8 +86,6 @@ import { StateMachine } from './StateMachine'
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
 const ON = 'data-[state=on]:border-signal/50 data-[state=on]:bg-signal/10 data-[state=on]:text-signal-fg'
 const messageOf = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback)
-
-type Picked = { integration: string; endpoint: string }
 
 const URL_FIELDS = ['url', 'urlPath', 'urlPathTemplate', 'urlPattern', 'urlPathPattern'] as const
 /** The method and URL a mock matches, as the request summary shows them. */
@@ -103,7 +96,7 @@ function requestOf(stub: StubMapping | undefined): { method?: string; url?: stri
   return { method, url }
 }
 /** The stub as it was saved (to put back when a save is undone). */
-const asSaved = (stub: StubMapping) => fromEditable(toEditable(stub), linkOf(stub))
+const asSaved = (stub: StubMapping) => withTags(fromEditable(toEditable(stub), undefined), tagsOf(stub))
 
 /**
  * The scenario builder. Without `editName`: "New scenario" — one request and an ordered list of steps (state, answer,
@@ -159,7 +152,6 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const scenarios = useScenarios()
-  const createCatalog = useCreateCatalogMock()
   const createFree = useCreateMock()
   const deleteMock = useDeleteMock()
   const updateMock = useUpdateMock()
@@ -171,10 +163,6 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
   const [base, setBase] = useState(edit)
   const [notes, setNotes] = useState<Record<string, RebaseNote>>({})
   const [steps, setSteps] = useState<BuilderStep[]>(() => edit?.steps ?? [newStep('step-1'), newStep('step-2')])
-  const [kind, setKind] = useState<'catalog' | 'free'>('catalog')
-  // Editing: the catalog endpoint of the scenario's first step, for its status and body checks.
-  const [picked, setPicked] = useState<Picked | null>(() => (edit ? (linkOf(edit.steps[0]?.source ?? {}) ?? null) : null))
-  const [key, setKey] = useState({ isDefault: false, keyValue: '' })
   const [free, setFree] = useState({ method: 'GET', url: '' })
   const [touched, setTouched] = useState(false)
   const [attempted, setAttempted] = useState(false)
@@ -184,56 +172,18 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
   // The two cards a move just swapped flash once; `round` restarts the animation on every move.
   const [flash, setFlash] = useState<{ ids: string[]; round: number }>({ ids: [], round: 0 })
 
-  const integrations = useIntegrations()
-  const endpoints = useEndpoints(picked?.integration)
-  const integration = integrations.data?.find((i) => i.key === picked?.integration)
-  const endpoint = endpoints.data?.find((e) => e.key === picked?.endpoint)
-
-  const catalogRequest: CatalogRequest | null =
-    integration && endpoint ? { kind: 'catalog', integration, endpoint, isDefault: key.isDefault || !endpoint.lookup, keyValue: key.keyValue } : null
   const firstRequest = requestOf(edit?.steps[0]?.source)
-  // Editing steps of different requests: each step is checked against its own catalog endpoint.
-  const sourceOf = (i: number) => steps.slice(0, i + 1).reverse().find((s) => s.source)?.source ?? edit?.steps[0]?.source
-  const linkedIntegrations = [...new Set((edit?.steps ?? []).map((s) => linkOf(s.source ?? {})?.integration).filter((k): k is string => Boolean(k)))]
-  const linkedEndpoints = useQueries({ queries: linkedIntegrations.map((key) => endpointsQueryOptions(key)) })
-  const endpointOfStep = (i: number) => {
-    const link = linkOf(sourceOf(i) ?? {})
-    if (!link) return undefined
-    return linkedEndpoints[linkedIntegrations.indexOf(link.integration)]?.data?.find((e) => e.key === link.endpoint)
-  }
   const draft: BuilderDraft = {
     name,
-    request: edit
-      ? { kind: 'existing', ...firstRequest, ...(endpoint ? { endpoint } : {}) }
-      : kind === 'catalog'
-        ? catalogRequest
-        : { kind: 'free', ...free },
+    request: edit ? { kind: 'existing', ...firstRequest } : { kind: 'free', ...free },
     steps,
   }
-  const errors = validateDraft(draft, { keepName: edit?.name, ...(edit && !edit.sameRequest ? { endpointOf: (_step: BuilderStep, i: number) => endpointOfStep(i) } : {}) })
+  const errors = validateDraft(draft, { keepName: edit?.name })
   const shown: BuilderErrors = attempted ? errors : { steps: {}, ...(errors.name?.key === 'builder.nameUnsettable' ? { name: errors.name } : {}) }
   const msg = (m: Message | undefined) => (m ? t(m.key, m.vars) : undefined)
   // Another scenario of that name (editing: renaming onto it would merge the two).
   const existing = scenarios.data?.find((s) => s.name === name.trim() && s.name !== edit?.name)
   const renamedWithKept = edit && edit.kept.length > 0 && name.trim() !== edit.name
-
-  // A newly picked endpoint fills the bodies the user has not written with its examples.
-  const filledFor = useRef<string | null>(null)
-  useEffect(() => {
-    // Editing: loaded bodies are the mocks' own, never replaced by examples.
-    if (!endpoint || edit) return
-    const ref = `${endpoint.integration}/${endpoint.key}`
-    if (filledFor.current === ref) return
-    filledFor.current = ref
-    setKey({ isDefault: !endpoint.lookup, keyValue: '' })
-    setSteps((all) =>
-      all.map((s) => {
-        if (s.body !== '' && !s.bodyFromExample) return s
-        const example = exampleFor(endpoint, Number(s.status))
-        return { ...s, body: example, bodyFromExample: example !== '' }
-      }),
-    )
-  }, [endpoint])
 
   const change = <T,>(set: (v: T) => void) => (v: T) => {
     set(v)
@@ -246,9 +196,7 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
     setFailure(null)
   }
   const onStatus = (step: BuilderStep, status: string) => {
-    const example = endpoint && kind === 'catalog' && !edit ? exampleFor(endpoint, Number(status)) : ''
-    const refill = (step.bodyFromExample || step.body === '') && example !== ''
-    updateStep(step.id, { status, ...(refill ? { body: example, bodyFromExample: true } : {}) })
+    updateStep(step.id, { status })
   }
 
   // Reordering keeps keyboard focus on the button that was used (or its partner when it can't move further).
@@ -289,15 +237,14 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
       requestAnimationFrame(() => document.getElementById(id(`${step.id}-state`))?.focus())
       return
     }
-    const example = endpoint && kind === 'catalog' ? exampleFor(endpoint, 200) : ''
-    setSteps((all) => [...all, { ...step, body: example, bodyFromExample: example !== '' }])
+    setSteps((all) => [...all, step])
     setTouched(true)
     requestAnimationFrame(() => document.getElementById(id(`${step.id}-state`))?.focus())
   }
 
   // Leaving with unsaved steps asks first.
   const dirtyRef = useRef(false)
-  dirtyRef.current = edit ? touched || name !== edit.name : touched || name !== '' || picked !== null
+  dirtyRef.current = edit ? touched || name !== edit.name : touched || name !== '' || free.url !== ''
   const leaving = useRef(false)
   const blocker = useBlocker({
     shouldBlockFn: () => dirtyRef.current && !leaving.current,
@@ -328,7 +275,7 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
     try {
       for (const create of toCreates(draft)) {
         try {
-          created.push(create.kind === 'catalog' ? await createCatalog.mutateAsync(create.args) : await createFree.mutateAsync(create.stub))
+          created.push(await createFree.mutateAsync(create.stub))
         } catch (error) {
           // All or nothing: take back the steps already made, newest first.
           const left: StubMapping[] = []
@@ -388,7 +335,7 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
   /** A deleted mock back under its own id, owner and content (the import path keeps ids; it works without history). */
   const putBack = async (stub: StubMapping) => {
     const ui = stub.metadata?.wiremockUi
-    const meta = { ...stub.metadata, wiremockUi: { ...(ui?.integration ? { integration: ui.integration, endpoint: ui.endpoint } : {}), owner: ui?.owner ?? 'baseline' } }
+    const meta = { ...stub.metadata, wiremockUi: { ...(ui?.tags ? { tags: ui.tags } : {}), owner: ui?.owner ?? 'baseline' } }
     const { uuid: _uuid, ...rest } = stub as StubMapping & { uuid?: unknown }
     await apiFetch('/api/import', { method: 'POST', body: { integrations: [], catalog: [], mocks: [{ ...rest, metadata: meta }], oidcIdentities: [] } })
     await queryClient.invalidateQueries({ queryKey: queryKeys.mocks })
@@ -467,12 +414,23 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
   }
 
   const preview = previewScenario(draft, (n) => t('builder.step', { n }))
-  const bodyLanguage =
-    kind === 'free' || (edit && !endpoint) ? 'json' : endpoint?.contentType === 'json' || endpoint?.contentType === 'xml' ? endpoint.contentType : null
   // Editing steps that match different requests: each step shows its own (a new step uses the one before it).
+  const sourceOf = (i: number) => steps.slice(0, i + 1).reverse().find((s) => s.source)?.source ?? edit?.steps[0]?.source
   const stepRequest = (i: number) => (!edit || edit.sameRequest ? undefined : requestOf(sourceOf(i)))
-  const languageOf = (e: typeof endpoint): 'json' | 'xml' | null => (!e ? 'json' : e.contentType === 'json' || e.contentType === 'xml' ? e.contentType : null)
-  const stepLanguage = (i: number) => (edit && !edit.sameRequest ? languageOf(endpointOfStep(i)) : bodyLanguage)
+  // The body editor follows the step's Content-Type, else the mock it was loaded from (or the step before it): JSON, or
+  // nothing yet, gets the JSON editor; text a textarea. Never what is being typed, so the editor never swaps mid-word.
+  const stepLanguage = (i: number): 'json' | 'xml' | null => {
+    const type = steps[i]?.headers.find((h) => h.name.trim().toLowerCase() === 'content-type')?.value.toLowerCase()
+    if (type) return /json/.test(type) ? 'json' : /xml/.test(type) ? 'xml' : null
+    const response = (sourceOf(i)?.response ?? {}) as Record<string, unknown>
+    if (response.jsonBody !== undefined || typeof response.body !== 'string' || response.body.trim() === '') return 'json'
+    try {
+      JSON.parse(response.body)
+      return 'json'
+    } catch {
+      return response.body.trim().startsWith('<') ? 'xml' : null
+    }
+  }
   // Kept-as-is mocks that use a state this edit renames or removes.
   const lostForKept = base ? keptOnLostStates(base, steps) : { states: [], mocks: [] }
 
@@ -552,9 +510,6 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
               <div className="flex min-w-0 items-center gap-2 rounded-md border border-line bg-surface-2 px-3 py-2.5">
                 {firstRequest.method && <MethodBadge method={firstRequest.method} />}
                 <span className="flex min-w-0 flex-col">
-                  {integration && endpoint && (
-                    <span className="truncate text-sm font-medium">{t('editor.endpointRef', { integration: integration.name, endpoint: endpoint.name })}</span>
-                  )}
                   <span dir="ltr" className="truncate font-mono text-xs text-muted-foreground">
                     {firstRequest.url ?? '—'}
                   </span>
@@ -567,97 +522,6 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
           </Section>
         ) : (
         <Section title={t('builder.section.request')} hint={t('builder.requestHint')}>
-          <FieldSet className="gap-2">
-            <FieldLegend variant="label" id={id('kind-label')}>
-              {t('builder.requestKind')}
-            </FieldLegend>
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              spacing={1}
-              aria-labelledby={id('kind-label')}
-              value={kind}
-              onValueChange={(v) => v && change(setKind)(v as 'catalog' | 'free')}
-              className="flex-wrap"
-            >
-              <ToggleGroupItem value="catalog" className={ON}>
-                {t('builder.kind.catalog')}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="free" className={ON}>
-                {t('builder.kind.free')}
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </FieldSet>
-
-          {kind === 'catalog' ? (
-            !picked ? (
-              <div className="flex flex-col gap-2">
-                <EndpointPicker onPick={(i, e) => change(setPicked)({ integration: i, endpoint: e })} />
-                {shown.request && (
-                  <p role="alert" className="text-xs text-mismatch">
-                    {msg(shown.request)}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line bg-surface-2 px-3 py-2.5">
-                  {endpoint && integration ? (
-                    <span className="flex min-w-0 items-center gap-2">
-                      <MethodBadge method={endpoint.method} />
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate text-sm font-medium">{t('editor.endpointRef', { integration: integration.name, endpoint: endpoint.name })}</span>
-                        <span dir="ltr" className="truncate font-mono text-xs text-muted-foreground">
-                          {(integration.prefix === '/' ? '' : integration.prefix) + endpoint.path}
-                        </span>
-                      </span>
-                    </span>
-                  ) : (
-                    <Spinner />
-                  )}
-                  <Button type="button" variant="outline" size="sm" onClick={() => change(setPicked)(null)}>
-                    <ArrowLeftRightIcon data-icon="inline-start" />
-                    {t('builder.changeEndpoint')}
-                  </Button>
-                </div>
-                {endpoint && (
-                  <>
-                    <Field orientation="horizontal">
-                      <Switch
-                        id={id('default')}
-                        checked={key.isDefault || !endpoint.lookup}
-                        disabled={!endpoint.lookup}
-                        onCheckedChange={(isDefault) => change(setKey)({ ...key, isDefault })}
-                      />
-                      <div className="flex flex-col gap-0.5">
-                        <FieldLabel htmlFor={id('default')}>{t('editor.default')}</FieldLabel>
-                        <FieldDescription className="text-xs">{endpoint.lookup ? t('editor.defaultHint') : t('editor.noLookup')}</FieldDescription>
-                      </div>
-                    </Field>
-                    {!key.isDefault && endpoint.lookup && (
-                      <Field data-invalid={Boolean(shown.request)}>
-                        <FieldLabel htmlFor={id('key')}>{keyLabel(t, endpoint)}</FieldLabel>
-                        <Input
-                          id={id('key')}
-                          dir="ltr"
-                          className="font-mono"
-                          autoComplete="off"
-                          spellCheck={false}
-                          placeholder={t('editor.keyPlaceholder')}
-                          value={key.keyValue}
-                          aria-invalid={Boolean(shown.request)}
-                          aria-describedby={shown.request ? id('request-error') : undefined}
-                          onChange={(e) => change(setKey)({ ...key, keyValue: e.target.value })}
-                        />
-                        {shown.request && <FieldError id={id('request-error')}>{msg(shown.request)}</FieldError>}
-                      </Field>
-                    )}
-                  </>
-                )}
-              </div>
-            )
-          ) : (
             <div className="grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)]">
               <Field>
                 <FieldLabel htmlFor={id('method')}>{t('builder.method')}</FieldLabel>
@@ -694,7 +558,6 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
                 {shown.request && <FieldError id={id('request-error')}>{msg(shown.request)}</FieldError>}
               </Field>
             </div>
-          )}
         </Section>
         )}
 
@@ -719,8 +582,8 @@ function BuilderForm({ edit }: { edit?: LoadedScenario }) {
                 msg={msg}
                 bodyLanguage={stepLanguage(i)}
                 note={notes[step.id]}
-                exampleShown={kind === 'catalog' && step.bodyFromExample && step.body !== ''}
-                catalog={kind === 'catalog' && !edit}
+                exampleShown={false}
+                catalog={false}
                 request={stepRequest(i)}
                 mockId={step.source?.id}
                 onChange={(patch) => updateStep(step.id, patch)}

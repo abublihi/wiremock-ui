@@ -25,10 +25,9 @@ afterAll(async () => {
 
 beforeEach(async () => {
   for (const s of await env.rt.store.listAll()) await env.rt.mocks.deleteImported(s.id)
-  for (const i of await env.rt.catalog.listIntegrations()) await env.rt.stores.catalog.deleteIntegration(i.key)
 })
 
-const deps = () => ({ catalog: env.rt.catalog, mocks: env.rt.mocks, store: env.rt.store, audit: env.rt.audit })
+const deps = () => ({ mocks: env.rt.mocks, store: env.rt.store, audit: env.rt.audit })
 const run = (b: Partial<Bundle>, prune = false, actor = 'ui-admin') =>
   importBundle({ ...emptyBundle(), ...b }, deps(), { actor, prune, source: 'import' })
 const stub = (path: string, extra: Record<string, unknown> = {}) =>
@@ -94,26 +93,35 @@ test('prune removes only baseline mocks missing from the bundle', async () => {
   expect(await env.rt.mocks.list({ owner: 'bob' })).toHaveLength(1)
 })
 
-test('integration guessed from prefix (longest wins)', async () => {
+test('an old bundle with integrations: its mocks get the integration as a tag, an endpoint with a key becomes one mock with several responses', async () => {
+  const id = (n: number) => `00000000-0000-4000-8000-0000000a000${n}`
+  const linked = (n: number, request: Record<string, unknown>, priority: number) =>
+    ({ id: id(n), name: `Get post ${n}`, priority, request, response: { status: 200, body: String(n) }, metadata: { wiremockUi: { integration: 'blog', endpoint: 'get-post' } } }) as unknown as StubMapping
   const r = await run({
-    integrations: [
-      { key: 'pay', name: 'Pay', prefix: '/pay' },
-      { key: 'pay-v2', name: 'Pay v2', prefix: '/pay/v2' },
+    integrations: [{ key: 'blog', name: 'Blog', prefix: '/blog' }],
+    catalog: [{ integration: 'blog', key: 'get-post', name: 'Get post', method: 'GET', path: '/posts/{id}', pathType: 'template', lookup: { location: 'path', expression: 'id' } }],
+    mocks: [
+      linked(1, { method: 'GET', urlPathTemplate: '/blog/posts/{id}', pathParameters: { id: { equalTo: 'p-1' } } }, 5),
+      linked(2, { method: 'GET', urlPathTemplate: '/blog/posts/{id}' }, 10),
+      { ...stub('/blog/other', { id: id(3) }), metadata: { wiremockUi: { integration: 'blog' } } } as StubMapping,
     ],
-    mocks: [stub('/pay/v2/x', { id: '00000000-0000-4000-8000-000000000a01' }), stub('/pay/y', { id: '00000000-0000-4000-8000-000000000a02' })],
   })
-  expect(r).toMatchObject({ integrations: 2, created: 2 })
-  expect((await env.rt.store.get('00000000-0000-4000-8000-000000000a01'))?.metadata?.wiremockUi?.integration).toBe('pay-v2')
-  expect((await env.rt.store.get('00000000-0000-4000-8000-000000000a02'))?.metadata?.wiremockUi?.integration).toBe('pay')
+  expect(r).toMatchObject({ created: 3 })
+  const [one, fallback, other] = await Promise.all([1, 2, 3].map((n) => env.rt.store.get(id(n))))
+  expect(one?.metadata?.wiremockUi).toMatchObject({ tags: ['blog'], group: { id: 'endpoint-blog-get-post', by: { location: 'path', expression: 'id' }, value: 'p-1' } })
+  expect(one?.metadata?.wiremockUi?.integration).toBeUndefined()
+  expect(fallback?.metadata?.wiremockUi?.group).toMatchObject({ id: 'endpoint-blog-get-post' })
+  expect(fallback?.metadata?.wiremockUi?.group?.value).toBeUndefined()
+  expect(other?.metadata?.wiremockUi).toMatchObject({ tags: ['blog'] })
+  expect(other?.metadata?.wiremockUi?.group).toBeUndefined()
+  expect(await serve('/blog/posts/p-1')).toBe('1')
+  expect(await serve('/blog/posts/p-9')).toBe('2')
+  // Importing the same file again changes nothing.
+  expect(await run({ mocks: [linked(1, { method: 'GET', urlPathTemplate: '/blog/posts/{id}', pathParameters: { id: { equalTo: 'p-1' } } }, 5)], catalog: [{ integration: 'blog', key: 'get-post', name: 'Get post', lookup: { location: 'path', expression: 'id' } }] })).toMatchObject({ unchanged: 1 })
 })
 
 test('invalid entries abort before any write', async () => {
-  const good = { key: 'ok1', name: 'Ok', prefix: '/ok' }
-  await expect(
-    run({ integrations: [good, { key: 'BAD KEY', name: 'x', prefix: '/x' }], mocks: [stub('/imp/z')] }),
-  ).rejects.toThrow(/integrations\[1\] \(BAD KEY\)/)
-  await expect(run({ integrations: [good], mocks: [{ request: {}, response: { bodyFileName: 'f' } } as unknown as StubMapping] })).rejects.toThrow(ValidationError)
-  expect(await env.rt.catalog.listIntegrations()).toEqual([])
+  await expect(run({ mocks: [stub('/imp/ok'), { request: {}, response: { bodyFileName: 'f' } } as unknown as StubMapping] })).rejects.toThrow(ValidationError)
   expect(await env.rt.store.listAll()).toEqual([])
 })
 
@@ -124,10 +132,8 @@ test('counts ignored oidc identities and audits one import entry', async () => {
 })
 
 test('metadata that is not an object is rejected before any write', async () => {
-  await expect(
-    run({ integrations: [{ key: 'm1', name: 'M', prefix: '/m' }], mocks: [stub('/imp/m', { metadata: 'x' })] }),
-  ).rejects.toThrow(/mocks\[0\].*metadata must be an object/)
-  expect(await env.rt.catalog.listIntegrations()).toEqual([])
+  await expect(run({ mocks: [stub('/imp/m', { metadata: 'x' })] })).rejects.toThrow(/mocks\[0\].*metadata must be an object/)
+  expect(await env.rt.store.listAll()).toEqual([])
 })
 
 test('prune is skipped when the seed had unreadable entries', async () => {
@@ -135,23 +141,6 @@ test('prune is skipped when the seed had unreadable entries', async () => {
   const r = await importBundle(emptyBundle(), deps(), { actor: 'system', prune: true, source: 'seed', unreadable: 1 })
   expect(r.pruned).toBe(0)
   expect(await env.rt.store.get('00000000-0000-4000-8000-0000000000e1')).not.toBeNull()
-})
-
-test('re-importing the same catalog writes nothing and reports only changed entries', async () => {
-  const integration = { key: 'idem', name: 'Idem', prefix: '/idem' }
-  const endpoint = {
-    integration: 'idem', key: 'get', name: 'Get', method: 'GET', path: '/x', pathType: 'exact',
-    contentType: 'json', exampleResponses: {}, allowedStatuses: [],
-  }
-  expect(await run({ integrations: [integration], catalog: [endpoint] })).toMatchObject({ integrations: 1, endpoints: 1 })
-  const before = (await env.rt.audit.list({ limit: 500 })).entries.filter((e) => e.action.startsWith('catalog.')).length
-  const stored = await env.rt.catalog.getEndpoint('idem', 'get')
-  expect(await run({ integrations: [integration], catalog: [endpoint] }, false, 'someone-else')).toMatchObject({ integrations: 0, endpoints: 0 })
-  const after = (await env.rt.audit.list({ limit: 500 })).entries.filter((e) => e.action.startsWith('catalog.')).length
-  expect(after).toBe(before)
-  expect(await env.rt.catalog.getEndpoint('idem', 'get')).toEqual(stored)
-  expect(await run({ integrations: [integration], catalog: [{ ...endpoint, name: 'Get v2' }] })).toMatchObject({ integrations: 0, endpoints: 1 })
-  expect((await env.rt.catalog.getEndpoint('idem', 'get')).name).toBe('Get v2')
 })
 
 test('a bad webhook in a later mock aborts the import before any mock is written', async () => {

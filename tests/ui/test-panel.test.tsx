@@ -12,7 +12,7 @@ import { toRelayInput } from '@/ui/components/editor/TestPanel'
 import { MockRowActions } from '@/ui/components/mocks/MockActions'
 import { RequestDrawer } from '@/ui/components/requests/RequestDrawer'
 import { ServerConfigProvider } from '@/ui/config'
-import { BASE, CATALOG, endpoint, mockCatalog, stored } from './editor-fixtures'
+import { BASE, mockCatalog, stored } from './editor-fixtures'
 import { renderApp } from './helpers'
 
 const server = setupServer()
@@ -39,13 +39,19 @@ const result = (over: Partial<TestRequestResult> = {}): TestRequestResult => ({
   ...over,
 })
 
-/** The edit page for mock m-1 (a key mock on $.idNo = 42) with a catalog example request, and a relay that records calls. */
+/** One response of a mock with several responses (by $.idNo, this one for 42): what Test and curl start from. */
+const citizen = () =>
+  stored(3, {
+    name: 'Fetch citizen — 42',
+    request: { method: 'POST', urlPath: '/nic/nic-service/get-citizen-info', bodyPatterns: [{ matchesJsonPath: { expression: '$.idNo', equalTo: '42' } }] },
+  })
+
+/** The edit page for that mock (m-1), and a relay that records calls. */
 function editPage(answer: TestRequestResult | { error: string; status: number } = result()) {
   const sent: unknown[] = []
   mockCatalog(server)
   server.use(
-    http.get(CATALOG, () => HttpResponse.json([{ ...endpoint, exampleRequest: '{"idNo": "0", "lang": "en"}' }])),
-    http.get(`${BASE}/api/mocks/m-1`, () => HttpResponse.json(stored())),
+    http.get(`${BASE}/api/mocks/m-1`, () => HttpResponse.json(citizen())),
     http.post(`${BASE}/api/test-request`, async ({ request }) => {
       sent.push(await request.json())
       return 'error' in answer ? HttpResponse.json({ error: answer.error }, { status: answer.status }) : HttpResponse.json(answer)
@@ -63,12 +69,12 @@ async function openPanel() {
 }
 
 describe('test panel from the editor', () => {
-  it('starts from the mock: method, concrete path, the key in the example body, Content-Type', async () => {
+  it('starts from the mock: method, concrete path, the value in the body, Content-Type', async () => {
     editPage()
     const { panel } = await openPanel()
     expect(within(panel).getByRole('combobox', { name: 'Method' }).textContent).toBe('POST')
     expect((within(panel).getByRole('textbox', { name: 'Path' }) as HTMLInputElement).value).toBe('/nic/nic-service/get-citizen-info')
-    expect(JSON.parse((within(panel).getByRole('textbox', { name: 'Body' }) as HTMLTextAreaElement).value)).toEqual({ idNo: '42', lang: 'en' })
+    expect(JSON.parse((within(panel).getByRole('textbox', { name: 'Body' }) as HTMLTextAreaElement).value)).toEqual({ idNo: '42' })
     expect((within(panel).getByRole('textbox', { name: 'Headers: Content-Type' }) as HTMLInputElement).value).toBe('application/json')
   })
 
@@ -82,7 +88,7 @@ describe('test panel from the editor', () => {
         method: 'POST',
         path: '/nic/nic-service/get-citizen-info',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idNo: '42', lang: 'en' }, null, 2),
+        body: JSON.stringify({ idNo: '42' }, null, 2),
       },
     ])
     expect(within(panel).getByText('200')).toBeTruthy()
@@ -180,8 +186,7 @@ describe('copy as curl', () => {
         '  -X POST \\',
         `  -H 'Content-Type: application/json' \\`,
         `  --data-raw '{`,
-        `  "idNo": "42",`,
-        `  "lang": "en"`,
+        `  "idNo": "42"`,
         `}'`,
       ].join('\n'),
     )
@@ -222,13 +227,9 @@ describe('copy as curl', () => {
     expect(writeText.mock.calls[0]![0]).toMatch(new RegExp(`^curl '${PUBLIC}/x' \\\\\n  -X POST`))
   })
 
-  it('the mock list row menu copies a curl, with the catalog example as the body', async () => {
-    server.use(http.get(CATALOG, () => HttpResponse.json([{ ...endpoint, exampleRequest: '{"idNo": "0"}' }])))
-    await renderApp(withConfig(<MockRowActions stub={stored()} />))
+  it('the mock list row menu copies a curl, with the value the mock answers in the body', async () => {
+    await renderApp(withConfig(<MockRowActions stub={citizen()} />))
     const ue = userEvent.setup()
-    // The command still needs the catalog when the item is clicked: it goes to the clipboard as a ClipboardItem
-    // promise, written during the click (Safari only allows that).
-    expect(typeof window.ClipboardItem).toBe('function')
     await ue.click(screen.getByRole('button', { name: 'Actions for Fetch citizen — 42' }))
     await ue.click(await screen.findByRole('menuitem', { name: 'Copy as curl' }))
     expect(await screen.findByText('Copied curl command')).toBeTruthy()
@@ -247,7 +248,7 @@ const loggedEvent: LoggedEvent = {
     loggedDateString: '2026-11-20T10:00:00Z',
   },
   response: { status: 200, headers: {}, body: '{}' },
-  stubMapping: stored(),
+  stubMapping: citizen(),
 }
 
 describe('request log drawer', () => {
@@ -255,7 +256,7 @@ describe('request log drawer', () => {
     const sent: unknown[] = []
     server.use(
       http.get(`${BASE}/api/requests/e-1`, () => HttpResponse.json(loggedEvent)),
-      http.get(`${BASE}/api/mocks/m-1`, () => HttpResponse.json(stored())),
+      http.get(`${BASE}/api/mocks/m-1`, () => HttpResponse.json(citizen())),
       http.post(`${BASE}/api/test-request`, async ({ request }) => {
         sent.push(await request.json())
         return HttpResponse.json(result())

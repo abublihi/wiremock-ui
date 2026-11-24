@@ -256,6 +256,22 @@ export class MockService {
     return previous ? 'updated' : 'created'
   }
 
+  /**
+   * Writes a stub's new shape over the stored one, keeping its owner and source (a version bump with `actor` as the
+   * one who changed it): a data migration, not an edit.
+   */
+  async rewrite(stub: StubMapping, actor: string): Promise<StubMapping> {
+    const previous = await this.get(stub.id)
+    const meta = previous.metadata?.wiremockUi
+    const version = meta?.version ?? 0
+    const { id: _id, ...input } = stub
+    return this.save(stub.id, input as MockInput, version, actor, previous, {
+      owner: meta?.owner ?? 'baseline',
+      version: version + 1,
+      source: meta?.source as CreateSource | undefined,
+    })
+  }
+
   /** What upsertImported would do with `stub`, without writing anything (the import review's dry run). */
   async importOutcome(stub: StubMapping, owner: string): Promise<'created' | 'updated' | 'unchanged'> {
     const incoming = importedStub(stub, owner)

@@ -19,7 +19,7 @@ import {
 
 const REQUEST = { method: 'GET', urlPath: '/orders/42/status' }
 const meta = (version: number, extra: Record<string, unknown> = {}) => ({
-  wiremockUi: { integration: 'shop', endpoint: 'status', owner: 'sara', version, updatedAt: '', updatedBy: 'sara', source: 'ui' },
+  wiremockUi: { tags: ['shop'], owner: 'sara', version, updatedAt: '', updatedBy: 'sara', source: 'ui' },
   ...extra,
 })
 const stub = (id: string, over: Record<string, unknown> = {}): StubMapping =>
@@ -114,7 +114,7 @@ describe('saving an edited scenario', () => {
     expect(editChanges(loaded, draftOf(loaded))).toEqual([])
   })
 
-  it('updates only the edited fields of a step, keeping its body kind, priority, metadata and catalog link', () => {
+  it('updates only the edited fields of a step, keeping its body kind, priority, metadata and tags', () => {
     const loaded = load()
     const steps = loaded.steps.map((s) => (s.id === 'm1' ? { ...s, body: '{"status":"waiting"}' } : s))
     const changes = editChanges(loaded, draftOf(loaded, { steps }))
@@ -131,7 +131,7 @@ describe('saving an edited scenario', () => {
       scenarioName: 'order',
       requiredScenarioState: 'Started',
       newScenarioState: 'paid',
-      metadata: { team: 'qa', wiremockUi: { integration: 'shop', endpoint: 'status' } },
+      metadata: { team: 'qa', wiremockUi: { tags: ['shop'] } },
     })
   })
 
@@ -146,7 +146,7 @@ describe('saving an edited scenario', () => {
     ])
   })
 
-  it('a new step after the last copies the request and link of the step before it; the old last step moves on to it', () => {
+  it('a new step after the last copies the request and tags of the step before it; the old last step moves on to it', () => {
     const loaded = load()
     const steps = [...loaded.steps, newStep('new-1', { state: 'delivered', status: '201', body: '{"status":"delivered"}' })]
     const changes = editChanges(loaded, draftOf(loaded, { steps }))
@@ -163,7 +163,7 @@ describe('saving an edited scenario', () => {
       response: { status: 201, headers: { 'Content-Type': 'application/json' }, body: '{"status":"delivered"}' },
       scenarioName: 'order',
       requiredScenarioState: 'delivered',
-      metadata: { wiremockUi: { integration: 'shop', endpoint: 'status' } },
+      metadata: { wiremockUi: { tags: ['shop'] } },
     })
     const update = changes[1]
     expect(update.kind === 'update' && update.stub.newScenarioState).toBe('delivered')
@@ -256,12 +256,4 @@ describe('after a refused save', () => {
     expect(keptOnLostStates(loaded, loaded.steps).mocks).toEqual([])
   })
 
-  it('checks each step against its own endpoint when asked', () => {
-    const loaded = load()
-    const strict = { allowedStatuses: [201], contentType: 'json' } as unknown as Endpoint
-    const errors = validateDraft(draftOf(loaded), { endpointOf: (_step, i) => (i === 1 ? strict : undefined) })
-    expect(Object.keys(errors.steps)).toEqual(['m2'])
-    expect(errors.steps.m2.status?.key).toBe('builder.statusNotAllowed')
-    expect(errors.steps.m2.body?.key).toBe('builder.bodyJson')
-  })
 })

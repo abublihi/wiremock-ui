@@ -63,7 +63,7 @@ export const discardRecordingItems = withAuth(null, async ({ rt, request, params
   return json({ recording: await rt.recordings.discard(idOf(params), ids, principal.user.username) })
 })
 
-/** POST /api/recordings/:id/accept { items: [{ id, name?, integration?, endpoint?, newEndpoint? }], owner? } → { created, failed, recording }. */
+/** POST /api/recordings/:id/accept { items: [{ id, name?, tags? }], owner? } → { created, failed, recording }. */
 export const acceptRecording = withAuth(null, async ({ rt, request, params, principal }) => {
   requireJson(request)
   const input = parse(acceptSchema, await readJson(request, ACCEPT))

@@ -8,7 +8,6 @@ import type { AuditFilter, AuditViewPage } from '@/server/audit/view'
 import type { ImportReport } from '@/server/bundle/importer'
 import type { PublicConfig } from '@/server/http/handlers/config'
 import type { SetupStatus } from '@/server/http/handlers/setup'
-import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { MockPage } from '@/server/mocks/paging'
 import type { GroupInput } from '@/server/mocks/groups'
 import type { PublicUser } from '@/server/users/types'
@@ -23,14 +22,15 @@ import { SESSION_KEY, apiFetch, type SessionData } from './client'
 
 export type RequestFilter = {
   matched?: 'true' | 'false'
-  integration?: string
+  /** Only requests a mock with this tag answered. */
+  tag?: string
   status?: string
   q?: string
   /** Only requests from the last N minutes. */
   windowMinutes?: number
 }
 /** `scenario`: one scenario's mocks, or `*` for every mock that belongs to a scenario. */
-export type MockFilter = { owner?: string; integration?: string; status?: string; q?: string; scenario?: string; tag?: string }
+export type MockFilter = { owner?: string; status?: string; q?: string; scenario?: string; tag?: string }
 
 /** A tag in use and how many mocks carry it (GET /api/tags). */
 export type TagCount = { tag: string; count: number }
@@ -48,10 +48,8 @@ export const queryKeys = {
   mockPage: (filter: MockFilter, page: MockPageArgs) => ['mocks', 'page', filter, page] as const,
   // Under 'mocks', so every mock change (which invalidates 'mocks') refreshes the counts too.
   tags: ['mocks', 'tags'] as const,
-  integrations: ['integrations'] as const,
   mock: (id: string) => ['mocks', 'detail', id] as const,
   mockGroup: (id: string) => ['mocks', 'group', id] as const,
-  endpoints: (integration: string) => ['integrations', integration, 'endpoints'] as const,
   mockHistory: (id: string) => ['mocks', 'history', id] as const,
   requests: ['requests'] as const,
   requestList: (filter: RequestFilter) => ['requests', 'list', filter] as const,
@@ -172,17 +170,6 @@ export function useTags(options: { enabled?: boolean } = {}) {
   })
 }
 
-export const integrationsQueryOptions = () =>
-  queryOptions({
-    queryKey: queryKeys.integrations,
-    queryFn: () => apiFetch<Integration[]>('/api/integrations'),
-    staleTime: 60_000,
-  })
-
-export function useIntegrations() {
-  return useQuery(integrationsQueryOptions())
-}
-
 export function useDuplicateMock() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -257,50 +244,16 @@ export function useMock(id: string, options: { enabled?: boolean } = {}) {
   })
 }
 
-export const endpointsQueryOptions = (integration: string) =>
-  queryOptions({
-    queryKey: queryKeys.endpoints(integration),
-    queryFn: () => apiFetch<Endpoint[]>(`/api/integrations/${encodeURIComponent(integration)}/endpoints`),
-    staleTime: 60_000,
-  })
-
-export function useEndpoints(integration: string | undefined) {
-  return useQuery({ ...endpointsQueryOptions(integration ?? ''), enabled: Boolean(integration) })
-}
-
-export type CatalogMockInput = { integration: string; endpoint: string; input: SimpleMockInput }
 /** A stub as the builder returns it (no id or server metadata yet). */
 export type BuiltStub = Omit<StubMapping, 'id'>
 
-const catalogMockPath = ({ integration, endpoint }: CatalogMockInput) =>
-  `/api/integrations/${encodeURIComponent(integration)}/endpoints/${encodeURIComponent(endpoint)}`
-
-/** What the Simple form previews: an endpoint mock, or a quick mock of a URL ("Mock a URL directly"). */
-export type PreviewArgs = CatalogMockInput | { quick: QuickMockInput }
+/** What the Simple form previews: a mock of a URL. */
+export type PreviewArgs = { quick: QuickMockInput }
 
 /** Builds the stub for a Simple form on the server without saving it. */
 export function usePreviewMock() {
   return useMutation({
-    mutationFn: (args: PreviewArgs) =>
-      'quick' in args
-        ? apiFetch<BuiltStub>('/api/mocks/preview', { method: 'POST', body: args.quick })
-        : apiFetch<BuiltStub>(`${catalogMockPath(args)}/preview`, { method: 'POST', body: args.input }),
-  })
-}
-
-export function useCreateCatalogMock() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (args: CatalogMockInput) =>
-      apiFetch<StubMapping>(`${catalogMockPath(args)}/mocks`, { method: 'POST', body: args.input }),
-    onSuccess: async (stub) => {
-      queryClient.setQueryData(queryKeys.mock(stub.id), stub)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.mocks, predicate: (q) => q.queryKey[1] !== 'detail' }),
-        // A mock can join, leave or change a scenario.
-        queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
-      ])
-    },
+    mutationFn: (args: PreviewArgs) => apiFetch<BuiltStub>('/api/mocks/preview', { method: 'POST', body: args.quick }),
   })
 }
 
@@ -591,60 +544,7 @@ export function useResetScenarios() {
   })
 }
 
-// ── Catalog management ────────────────────────────────────────────────────────
 
-/** What a PUT carries: the server fills `key` (and `integration`) from the path and stamps updatedAt/updatedBy. */
-export type IntegrationInput = Omit<Integration, 'updatedAt' | 'updatedBy'>
-export type EndpointInput = Omit<Endpoint, 'updatedAt' | 'updatedBy'>
-
-const integrationPath = (key: string) => `/api/integrations/${encodeURIComponent(key)}`
-
-/** `If-None-Match: *` makes the server refuse (409) instead of overwriting an existing key. */
-const createOnlyHeaders = (createOnly?: boolean) => (createOnly ? { 'If-None-Match': '*' } : undefined)
-
-export function useUpsertIntegration({ createOnly }: { createOnly?: boolean } = {}) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ key, ...body }: IntegrationInput) =>
-      apiFetch<Integration>(integrationPath(key), { method: 'PUT', body, headers: createOnlyHeaders(createOnly) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
-  })
-}
-
-/** Deletes an integration. The caller leaves the page first, then calls forgetIntegration (so no "not found" flashes). */
-export function useDeleteIntegration() {
-  return useMutation({
-    mutationFn: (key: string) => apiFetch<void>(integrationPath(key), { method: 'DELETE' }),
-  })
-}
-
-/** Drops a deleted integration's cached endpoints and refreshes the integration list. */
-export function forgetIntegration(queryClient: QueryClient, key: string) {
-  queryClient.removeQueries({ queryKey: queryKeys.endpoints(key) })
-  return queryClient.invalidateQueries({ queryKey: queryKeys.integrations })
-}
-
-export function useUpsertEndpoint({ createOnly }: { createOnly?: boolean } = {}) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ integration, key, ...body }: EndpointInput) =>
-      apiFetch<Endpoint>(`${integrationPath(integration)}/endpoints/${encodeURIComponent(key)}`, {
-        method: 'PUT',
-        body,
-        headers: createOnlyHeaders(createOnly),
-      }),
-    onSuccess: (_endpoint, input) => queryClient.invalidateQueries({ queryKey: queryKeys.endpoints(input.integration) }),
-  })
-}
-
-export function useDeleteEndpoint() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ integration, key }: { integration: string; key: string }) =>
-      apiFetch<void>(`${integrationPath(integration)}/endpoints/${encodeURIComponent(key)}`, { method: 'DELETE' }),
-    onSuccess: (_void, input) => queryClient.invalidateQueries({ queryKey: queryKeys.endpoints(input.integration) }),
-  })
-}
 
 export function useUsers() {
   return useQuery({ queryKey: queryKeys.users, queryFn: () => apiFetch<PublicUser[]>('/api/users') })
@@ -689,16 +589,16 @@ export function useAudit(filter: AuditFilter = {}) {
   })
 }
 
+
 export function useImport() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ bundle, prune }: { bundle: unknown; prune: boolean }) =>
       apiFetch<ImportReport>('/api/import', { method: 'POST', body: bundle, query: { prune: prune ? 'true' : undefined } }),
-    // An import can touch mocks, the catalog and the audit trail.
+    // An import touches mocks and the audit trail.
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
         queryClient.invalidateQueries({ queryKey: queryKeys.audit }),
       ]),
   })
@@ -783,7 +683,6 @@ export function useAcceptRecording() {
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.recordings }),
         queryClient.invalidateQueries({ queryKey: queryKeys.mocks }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.integrations }),
         // Repeated requests are accepted as scenarios.
         queryClient.invalidateQueries({ queryKey: queryKeys.scenarios }),
       ]),

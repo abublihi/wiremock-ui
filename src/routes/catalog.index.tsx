@@ -1,9 +1,8 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { integrationsHref } from '@/ui/lib/legacy-routes'
 
-// "Catalog" is now "Integrations": old links and bookmarks keep working.
+// Integrations (once called Catalog) are retired: mocks carry tags instead. Old links and bookmarks land on the mocks.
 export const Route = createFileRoute('/catalog/')({
-  beforeLoad: ({ location }) => {
-    throw redirect({ href: integrationsHref('', location.searchStr, location.hash), statusCode: 301 })
+  beforeLoad: () => {
+    throw redirect({ to: '/mocks', statusCode: 301 })
   },
 })

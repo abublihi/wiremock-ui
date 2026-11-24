@@ -3,7 +3,7 @@ import { ConfigError, UpstreamError } from './errors'
 import { logger } from './logger'
 import { importBundle } from './bundle/importer'
 import { readBundleFromPath } from './bundle/parse'
-import { CatalogService } from './catalog/service'
+import { legacyEndpoints, migrateCatalogLinks } from './catalog/migrate-store'
 import { RequestJournal } from './requests/journal'
 import { MockService } from './mocks/service'
 import type { AuditLog } from './audit/log'
@@ -27,7 +27,6 @@ export type Runtime = {
   users: UserService
   audit: AuditLog
   mocks: MockService
-  catalog: CatalogService
   requests: RequestJournal
   scenarios: ScenarioService
   /** Recording and snapshots with a review list (spec A12). */
@@ -105,6 +104,8 @@ export async function bootRuntime(
       return candidate
     })
     const store = stores.mocks
+    // The retired catalog: read only, to move old mocks off their integrations (src/server/catalog/migrate-store.ts).
+    const legacyCatalog = stores.catalog
     const audit = stores.audit
     const wiremockOnly = config.storeDriver === 'none'
     const users = new UserService({ users: stores.users, audit, fixedAccounts: wiremockOnly })
@@ -123,13 +124,12 @@ export async function bootRuntime(
       )
     }
     const mocks = new MockService({ wiremock, store, audit, storeIsWireMock: wiremockOnly })
-    const catalog = new CatalogService({ catalog: stores.catalog, audit, mocks: store })
-    const requests = new RequestJournal({ wiremock, catalog, audit })
+    const requests = new RequestJournal({ wiremock, audit })
     const scenarios = new ScenarioService({ wiremock, store, audit })
-    const recordings = new RecordingService({ wiremock, store: stores.recordings, locks: store, mocks, catalog, audit, config })
+    const recordings = new RecordingService({ wiremock, store: stores.recordings, locks: store, mocks, audit, config })
     const reconciler = wiremockOnly
       ? null
-      : new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000, adopt: () => adoptMissing({ wiremock, store, catalog, audit }) })
+      : new Reconciler({ wiremock, store, audit, intervalMs: config.syncIntervalSeconds * 1000, adopt: () => adoptMissing({ wiremock, store, audit }) })
     // Decided (and recorded durably) before the seed writes anything: an empty store takes over what WireMock
     // already serves, and a boot that stops part-way leaves the decision for the next one.
     const adoptionPending = reconciler ? await markAdoptionIfDue(wiremock, store) : false
@@ -149,7 +149,7 @@ export async function bootRuntime(
         if (wiremockOnly && config.seedPrune) logger.warn({ seedPath: config.seedPath }, 'SEED_PRUNE is ignored in WireMock-only mode')
         const report = await importBundle(
           bundle,
-          { catalog, mocks, store, audit, reposition: reconciler ? () => reconciler.repositionPersonMocks() : undefined },
+          { legacyEndpoints: () => legacyEndpoints(legacyCatalog), mocks, store, audit, reposition: reconciler ? () => reconciler.repositionPersonMocks() : undefined },
           { actor: 'system', prune: config.seedPrune && !wiremockOnly, source: 'seed', unreadable: skipped.length },
         )
         logger.info({ report, seedPath: config.seedPath }, 'seed imported')
@@ -157,11 +157,12 @@ export async function bootRuntime(
         throw new ConfigError(`Seed import from ${config.seedPath} failed: ${(err as Error).message}`)
       }
     }
-    // After the seed, so its catalog prefixes can name the integrations; before the first full sync.
-    if (adoptionPending) await adoptMissing({ wiremock, store, catalog, audit })
+    // After the seed and adoption (both may bring mocks still linked to integrations); before the first full sync.
+    if (adoptionPending) await adoptMissing({ wiremock, store, audit })
+    await migrateCatalogLinks({ store, mocks, catalog: legacyCatalog })
     if (reconciler) await reconciler.start()
-    else logger.info({ wiremockUrl: config.wiremockUrl }, 'WireMock-only mode: mocks are read from and written to WireMock; accounts, catalog and audit are kept in memory')
-    return { config, wiremock, store, stores, users, audit, mocks, catalog, requests, scenarios, recordings, reconciler }
+    else logger.info({ wiremockUrl: config.wiremockUrl }, 'WireMock-only mode: mocks are read from and written to WireMock; accounts and audit are kept in memory')
+    return { config, wiremock, store, stores, users, audit, mocks, requests, scenarios, recordings, reconciler }
   } catch (err) {
     await stores?.close().catch(() => {})
     logger.error({ err }, 'runtime boot failed')

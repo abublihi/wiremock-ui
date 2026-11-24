@@ -1,6 +1,4 @@
 import { safeRecord, type AuditLog } from '../audit/log'
-import { guessIntegration } from '../bundle/importer'
-import type { CatalogService } from '../catalog/service'
 import { AppError } from '../errors'
 import { logger } from '../logger'
 import type { MockStore } from '../store/types'
@@ -31,11 +29,11 @@ export async function markAdoptionIfDue(wiremock: WireMockClient, store: MockSto
   return true
 }
 
-type Deps = { wiremock: WireMockClient; store: MockStore; catalog: CatalogService; audit: AuditLog; now?: () => Date }
+type Deps = { wiremock: WireMockClient; store: MockStore; audit: AuditLog; now?: () => Date }
 
 /**
  * Stores every WireMock stub the store does not have yet, with its id (source `adopt`; the owner its wiremock-ui
- * metadata names, else `wiremock`; integration from its metadata or guessed from the catalog prefixes). The stubs
+ * metadata names, else `wiremock`; its tags and group from its metadata). The stubs
  * are already in WireMock, so nothing is written there (their `persistent` setting included). Clears the pending
  * flag when done. Runs under the sync lock: when another instance holds it, that instance adopts (or syncs; the
  * flag keeps its sync from deleting) and this one skips.
@@ -63,7 +61,6 @@ export async function adoptMissing(deps: Deps): Promise<number> {
 }
 
 async function adoptLocked(deps: Deps): Promise<number> {
-  const prefixes = (await deps.catalog.listIntegrations()).map((i) => ({ key: i.key, prefix: i.prefix }))
   const now = (deps.now ?? (() => new Date()))().toISOString()
   let count = 0
   for (const live of await liveStubs(deps.wiremock)) {
@@ -71,8 +68,11 @@ async function adoptLocked(deps: Deps): Promise<number> {
     const { uuid: _uuid, ...stub } = live
     const ui = stub.metadata?.wiremockUi as Partial<WireMockUiMeta> | undefined
     const wiremockUi: WireMockUiMeta = {
-      integration: typeof ui?.integration === 'string' ? ui.integration : guessIntegration(stub as StubMapping, prefixes),
+      // An old link is kept for the start-up migration to turn into tags (src/server/catalog/migrate-store.ts).
+      integration: typeof ui?.integration === 'string' ? ui.integration : undefined,
       endpoint: typeof ui?.endpoint === 'string' ? ui.endpoint : undefined,
+      ...(Array.isArray(ui?.tags) ? { tags: ui.tags.filter((t): t is string => typeof t === 'string') } : {}),
+      ...(ui?.group !== undefined ? { group: ui.group } : {}),
       owner: typeof ui?.owner === 'string' && ui.owner !== '' ? ui.owner : ADOPTED_OWNER,
       version: 1,
       updatedAt: now,

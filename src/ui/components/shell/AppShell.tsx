@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
-import { ArrowDownUpIcon, BookOpenIcon, CircleDotIcon, DatabaseIcon, FileClockIcon, ListIcon, ScrollTextIcon, UsersIcon, WorkflowIcon } from 'lucide-react'
+import { ArrowDownUpIcon, BookOpenIcon, CircleDotIcon, FileClockIcon, ListIcon, ScrollTextIcon, UsersIcon, WorkflowIcon } from 'lucide-react'
 import type { PublicUser } from '@/server/users/types'
 import type { ServerConfig } from '@/ui/api/queries'
 import { useT } from '@/ui/i18n'
@@ -22,7 +22,6 @@ export const APP_NAV: NavItem[] = [
   { to: '/scenarios', label: 'nav.scenarios', icon: WorkflowIcon, group: 'work' },
   { to: '/requests', label: 'nav.requests', icon: ScrollTextIcon, group: 'work' },
   { to: '/recording', label: 'nav.recording', icon: CircleDotIcon, group: 'work' },
-  { to: '/integrations', label: 'nav.integrations', icon: DatabaseIcon, group: 'setup' },
   { to: '/import', label: 'nav.import', icon: ArrowDownUpIcon, group: 'setup' },
   { to: '/users', label: 'nav.users', icon: UsersIcon, group: 'admin' },
   { to: '/audit', label: 'nav.audit', icon: FileClockIcon, group: 'admin' },

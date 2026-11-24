@@ -69,8 +69,8 @@ export function guideSection(slug: string): GuideSection | undefined {
 }
 
 /**
- * The section for a page: the one whose route is the longest prefix of `pathname` (`/integrations/blog/endpoints/new`
- * → Integrations). Undefined when no section names the page.
+ * The section for a page: the one whose route is the longest prefix of `pathname` (`/scenarios/new`
+ * → Scenarios). Undefined when no section names the page.
  */
 export function sectionForPath(pathname: string, sections: GuideSection[] = GUIDE_SECTIONS): GuideSection | undefined {
   let best: { section: GuideSection; length: number } | undefined
@@ -135,7 +135,7 @@ export function filterMenu(query: string, sections: GuideSection[] = GUIDE_SECTI
 }
 
 /**
- * Where a link in the guide goes inside the app: `scenarios.md#steps` → `/guide#scenarios`, `/integrations` → that
+ * Where a link in the guide goes inside the app: `scenarios.md#steps` → `/guide#scenarios`, `/requests` → that
  * page, anything else (http, mailto) stays external. Links are already through react-markdown's URL check, so
  * `javascript:` and friends never get here.
  */

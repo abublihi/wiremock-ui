@@ -6,7 +6,7 @@ const basic = (user: { username: string; password: string }) =>
   `Basic ${Buffer.from(`${user.username}:${user.password}`).toString('base64')}`
 
 const createPost = (userId: number) =>
-  fetch(`${wiremockUrl()}/blog/posts`, {
+  fetch(`${wiremockUrl()}/blog/shared-posts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, title: 'Hello' }),
@@ -14,13 +14,17 @@ const createPost = (userId: number) =>
 
 // No authorization (spec A8): every signed-in user can edit and delete every mock.
 test('one user edits and deletes a mock another user created', async ({ page, request }) => {
-  const created = await request.post('/api/integrations/blog/endpoints/create-post/mocks', {
+  const name = 'Alice’s post'
+  const created = await request.post('/api/mocks', {
     headers: { Authorization: basic(USER_A) },
-    data: { keyValue: '2000000001', status: 200, body: '{"id":201,"title":"Alice’s post"}' },
+    data: {
+      name,
+      request: { method: 'POST', urlPath: '/blog/shared-posts' },
+      response: { status: 200, jsonBody: { id: 201, title: 'Alice’s post' }, headers: { 'Content-Type': 'application/json' } },
+    },
   })
   expect(created.status()).toBe(201)
   const { id } = (await created.json()) as { id: string }
-  const name = 'Create post — 2000000001'
 
   await signIn(page, USER_B)
   await page.goto('/mocks?owner=all')
@@ -78,7 +82,7 @@ test('anyone can edit the baseline mock', async ({ page }) => {
 test('every signed-in user sees the whole navigation', async ({ page }) => {
   await signIn(page, USER_A)
   const nav = page.getByRole('navigation', { name: 'Main navigation' })
-  for (const item of ['Mocks', 'Scenarios', 'Request log', 'Integrations', 'Import & export', 'Users', 'Audit']) {
+  for (const item of ['Mocks', 'Scenarios', 'Request log','Import & export', 'Users', 'Audit']) {
     await expect(nav.getByRole('link', { name: item })).toBeVisible()
   }
   await expect(page.getByRole('link', { name: 'New mock' }).first()).toBeVisible()

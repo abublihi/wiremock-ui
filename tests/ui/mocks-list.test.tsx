@@ -148,22 +148,22 @@ describe('mock list', () => {
     expect(await hrefs()).toEqual(['/api/export?scope=mine&format=bundle', '/api/export?scope=mine&format=mappings'])
   })
 
-  it('Export with an integration filter exports that integration', async () => {
+  it('Export with a tag filter exports the mocks with that tag', async () => {
     mockApi([stub('a')])
-    await renderApp(<Harness initial={{ integration: 'payments' }} />)
+    await renderApp(<Harness initial={{ tag: 'payments' }} />)
     await screen.findByText('Mock a')
     await userEvent.setup().click(screen.getByRole('button', { name: 'Export' }))
-    expect(screen.getByRole('menuitem', { name: /Bundle/ }).getAttribute('href')).toBe('/api/export?scope=integration&integration=payments&format=bundle')
-    expect(screen.getByText('// payments: its mocks and endpoints')).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: /Bundle/ }).getAttribute('href')).toBe('/api/export?scope=tag&tag=payments&format=bundle')
+    expect(screen.getByText('// the mocks tagged payments')).toBeTruthy()
   })
 
   it('maps the text and status filters to query parameters (text debounced)', async () => {
     const seen = mockApi([stub('a')])
-    await renderApp(<Harness initial={{ status: '404', integration: 'payments' }} />)
+    await renderApp(<Harness initial={{ status: '404', tag: 'payments' }} />)
     await screen.findByText('Mock a')
     const first = seen[0]!.url.searchParams
     expect(first.get('status')).toBe('404')
-    expect(first.get('integration')).toBe('payments')
+    expect(first.get('tag')).toBe('payments')
     await userEvent.setup().type(screen.getByRole('searchbox', { name: 'Search mocks' }), 'refund')
     expect(seen.every((s) => s.url.searchParams.get('q') === null)).toBe(true)
     await waitFor(() => expect(seen.at(-1)!.url.searchParams.get('q')).toBe('refund'))
@@ -413,16 +413,6 @@ describe('mock list', () => {
     expect(screen.getAllByRole('link', { name: 'New mock' }).length).toBeGreaterThan(0)
   })
 
-  it('empty state with an empty catalog starts with describing an endpoint', async () => {
-    server.use(
-      http.get(`${BASE}/api/integrations`, () => HttpResponse.json([])),
-      http.get(`${BASE}/api/mocks`, ({ request }) => listOrPage(new URL(request.url), [])),
-    )
-    await renderApp(<Harness />)
-    await screen.findByText('Start by describing an endpoint')
-    expect(screen.getByRole('link', { name: 'Open integrations' }).getAttribute('href')).toBe('/integrations')
-  })
-
   it('empty state with filters offers Clear filters', async () => {
     mockApi([])
     await renderApp(<Harness initial={{ status: '500' }} />)
@@ -449,8 +439,8 @@ describe('mocks route search', () => {
   const validate = Route.options.validateSearch as (raw: Record<string, unknown>) => MocksSearch
 
   it('coerces numbers and strings, ignores everything else', () => {
-    expect(validate({ status: 404, q: 2024, integration: 123, owner: 'all' })).toEqual({ status: '404', q: '2024', integration: '123', owner: 'all' })
-    expect(validate({ status: [404], q: { a: 1 }, integration: null, owner: true })).toEqual({})
+    expect(validate({ status: 404, q: 2024, tag: 123, owner: 'all' })).toEqual({ status: '404', q: '2024', tag: '123', owner: 'all' })
+    expect(validate({ status: [404], q: { a: 1 }, tag: null, owner: true })).toEqual({})
     expect(validate({ status: Number.NaN, q: '' })).toEqual({})
     expect(validate({ page: 3 })).toEqual({ page: 3 })
     expect(validate({ page: '4' })).toEqual({ page: 4 })

@@ -1,13 +1,13 @@
 import { cn } from '@/ui/lib/utils'
 
 // The only place palette colours (not tokens) are allowed: the HTTP method colours are a convention
-// people read at a glance. Light uses the -700 shade for 4.5:1 text contrast; dark the -400.
+// people read at a glance. Light uses the -800 shade for 4.5:1 text contrast (also on tinted and hovered rows); dark the -400.
 const METHOD_CLASS: Record<string, string> = {
-  GET: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-400',
-  POST: 'bg-blue-500/15 text-blue-700 border-blue-500/30 dark:text-blue-400',
-  PUT: 'bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-400',
-  PATCH: 'bg-purple-500/15 text-purple-700 border-purple-500/30 dark:text-purple-400',
-  DELETE: 'bg-red-500/15 text-red-700 border-red-500/30 dark:text-red-400',
+  GET: 'bg-emerald-500/15 text-emerald-800 border-emerald-500/30 dark:text-emerald-400',
+  POST: 'bg-blue-500/15 text-blue-800 border-blue-500/30 dark:text-blue-400',
+  PUT: 'bg-amber-500/15 text-amber-800 border-amber-500/30 dark:text-amber-400',
+  PATCH: 'bg-purple-500/15 text-purple-800 border-purple-500/30 dark:text-purple-400',
+  DELETE: 'bg-red-500/15 text-red-800 border-red-500/30 dark:text-red-400',
 }
 const MUTED = 'bg-muted text-muted-foreground border-border'
 

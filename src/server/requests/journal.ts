@@ -1,6 +1,6 @@
 import { safeRecord, type AuditLog } from '../audit/log'
-import { longestPrefixMatch } from '../catalog/prefix'
-import type { CatalogService } from '../catalog/service'
+import { groupOf } from '../mocks/groups'
+import { tagsOf } from '../mocks/tags'
 import { NotFoundError, ValidationError } from '../errors'
 import { isRecordingProxy } from '../recording/proxy'
 import { MARKER_ID } from '../sync/marker'
@@ -17,7 +17,8 @@ export type RequestSummary = {
   matched: boolean
   stubId: string | null
   stubName: string | null
-  integration: string | null
+  /** The matched mock's tags (empty for an unmatched request). */
+  tags: string[]
   durationMs: number | null
   /** The matched mock forwards (a proxy): where to. */
   forwardedTo: string | null
@@ -26,9 +27,9 @@ export type RequestSummary = {
 }
 
 export type NearMissView = {
-  stub: { id: string; name: string | null; owner: string | null; integration: string | null; endpoint: string | null }
-  /** For an endpoint mock: the value this request has where the endpoint keeps its key (null when none or unreadable). */
-  keyValue: string | null
+  stub: { id: string; name: string | null; owner: string | null }
+  /** For one response of a mock with several responses: this request's value where the mock looks (null when unreadable). */
+  group: { id: string; by: { location: string; expression: string }; keyValue: string | null } | null
   distance: number
   diffs: FieldDiff[]
 }
@@ -37,7 +38,8 @@ export type RequestFilter = {
   limit?: number
   since?: string
   matched?: boolean
-  integration?: string
+  /** Only requests a mock with this tag answered. */
+  tag?: string
   status?: number
   q?: string
 }
@@ -67,7 +69,7 @@ function isMarker(e: LoggedEvent): boolean {
 }
 
 export class RequestJournal {
-  constructor(private readonly deps: { wiremock: WireMockClient; catalog: CatalogService; audit: AuditLog }) {}
+  constructor(private readonly deps: { wiremock: WireMockClient; audit: AuditLog }) {}
 
   /**
    * Newest first. `limit` bounds the events fetched from WireMock; filters (and marker removal) are applied
@@ -119,14 +121,12 @@ export class RequestJournal {
 
   /** The filter as a function: the row's summary when it passes, else null (the marker's requests never do). */
   private async matcher(filter: RequestFilter): Promise<(e: LoggedEvent) => RequestSummary | null> {
-    const integrations = await this.deps.catalog.listIntegrations()
-    const prefixes = integrations.map((i) => ({ key: i.key, prefix: i.prefix }))
     const q = filter.q?.toLowerCase()
     return (e) => {
       if (isMarker(e)) return null
-      const summary = summarize(e, longestPrefixMatch([e.request.url], prefixes) ?? null)
+      const summary = summarize(e)
       if (filter.matched !== undefined && summary.matched !== filter.matched) return null
-      if (filter.integration !== undefined && summary.integration !== filter.integration) return null
+      if (filter.tag !== undefined && !summary.tags.includes(filter.tag)) return null
       if (filter.status !== undefined && summary.status !== filter.status) return null
       // Body text only: bodyAsBase64 can be large and binary.
       if (q && !e.request.url.toLowerCase().includes(q) && !(e.request.body ?? '').toLowerCase().includes(q)) return null
@@ -149,33 +149,18 @@ export class RequestJournal {
       .filter((m) => m.stubMapping.id !== MARKER_ID)
       .sort((a, b) => a.matchResult.distance - b.matchResult.distance)
       .slice(0, NEAR_MISS_LIMIT)
-    return Promise.all(
-      closest.map(async (m) => {
-        const meta = m.stubMapping.metadata?.wiremockUi
-        const integration = meta?.integration ?? null
-        const linked = integration && meta?.endpoint ? await this.endpointKey(integration, meta.endpoint, event) : null
-        return {
-          stub: { id: m.stubMapping.id, name: m.stubMapping.name ?? null, owner: meta?.owner ?? null, integration, endpoint: linked?.endpoint ?? null },
-          keyValue: linked?.keyValue ?? null,
-          distance: m.matchResult.distance,
-          diffs: explainMismatch(m.stubMapping, event.request),
-        }
-      }),
-    )
-  }
-
-  /**
-   * A near miss's catalog endpoint (null when it no longer exists) and the request's value for its key (null when the
-   * endpoint has no key or the value can't be read).
-   */
-  private async endpointKey(integration: string, endpoint: string, event: LoggedEvent): Promise<{ endpoint: string; keyValue: string | null } | null> {
-    try {
-      const [i, e] = await Promise.all([this.deps.catalog.getIntegration(integration), this.deps.catalog.getEndpoint(integration, endpoint)])
-      const root = i.prefix === '/' ? '' : i.prefix
-      return { endpoint, keyValue: e.lookup ? requestKeyValue(e.lookup, root + e.path, event.request) : null }
-    } catch {
-      return null
-    }
+    return closest.map((m) => {
+      const meta = m.stubMapping.metadata?.wiremockUi
+      const group = groupOf(m.stubMapping)
+      const req = m.stubMapping.request
+      const template = typeof req.urlPathTemplate === 'string' ? req.urlPathTemplate : typeof req.urlPath === 'string' ? req.urlPath : ''
+      return {
+        stub: { id: m.stubMapping.id, name: m.stubMapping.name ?? null, owner: meta?.owner ?? null },
+        group: group ? { id: group.id, by: group.by, keyValue: requestKeyValue(group.by, template, event.request) } : null,
+        distance: m.matchResult.distance,
+        diffs: explainMismatch(m.stubMapping, event.request),
+      }
+    })
   }
 
   async clear(actor: string): Promise<void> {
@@ -258,7 +243,7 @@ export function parseRequestCursor(raw: string): { at: number; id: string } {
 const loggedMs = (e: LoggedEvent) =>
   typeof e.request.loggedDate === 'number' ? e.request.loggedDate : Date.parse(e.request.loggedDateString ?? '')
 
-function summarize(e: LoggedEvent, integration: string | null): RequestSummary {
+function summarize(e: LoggedEvent): RequestSummary {
   const matchedStub = e.wasMatched ? e.stubMapping : undefined
   const logged = e.request.loggedDate
   return {
@@ -271,7 +256,7 @@ function summarize(e: LoggedEvent, integration: string | null): RequestSummary {
     // Unmatched events carry a synthetic stubMapping, so only trust it when the request matched.
     stubId: e.wasMatched ? (e.stubMapping?.id ?? null) : null,
     stubName: e.wasMatched ? (e.stubMapping?.name ?? null) : null,
-    integration,
+    tags: e.wasMatched && e.stubMapping ? tagsOf(e.stubMapping) : [],
     durationMs: typeof e.timing?.totalTime === 'number' ? e.timing.totalTime : null,
     forwardedTo: matchedStub && typeof matchedStub.response?.proxyBaseUrl === 'string' ? matchedStub.response.proxyBaseUrl : null,
     recordingProxy: matchedStub ? isRecordingProxy(matchedStub) : false,

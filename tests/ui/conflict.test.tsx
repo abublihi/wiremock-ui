@@ -93,12 +93,12 @@ describe('save conflict', () => {
     )
     await renderApp(<EditMockPage id="m-1" />)
     const ue = userEvent.setup()
-    const key = (await screen.findByLabelText('Value of $.idNo in the request body')) as HTMLInputElement
+    const key = (await screen.findByRole('textbox', { name: 'URL' })) as HTMLInputElement
     await ue.type(key, '9')
     await ue.click(screen.getByRole('button', { name: 'Save mock' }))
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('Someone changed this mock since you opened it.')
     expect(within(alert).getByRole('button', { name: 'Reload' })).toBeTruthy()
-    expect(key.value).toBe('429')
+    expect(key.value).toBe('/orders/find9')
   })
 })

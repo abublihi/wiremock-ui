@@ -59,10 +59,10 @@ test('a method a route has no handler for, and an /api URL no route matches, ans
   const routes = await apiRoutes()
   const withoutAny = routes.filter((r) => !routes.some((o) => o.path === r.path && o.method === 'ANY'))
   expect(withoutAny.map((r) => `${r.method} ${r.path}`)).toEqual([])
-  const any = routes.find((r) => r.path === '/api/integrations' && r.method === 'ANY')!
-  const res = await any.handler({ request: new Request('http://ui.test/api/integrations/', { method: 'PUT' }), params: {} })
+  const any = routes.find((r) => r.path === '/api/mock-groups' && r.method === 'ANY')!
+  const res = await any.handler({ request: new Request('http://ui.test/api/mock-groups/', { method: 'PUT' }), params: {} })
   expect(res.status).toBe(405)
-  expect(await res.json()).toEqual({ error: 'PUT /api/integrations/ is not supported. Part of the URL is empty: an ID may be missing.' })
+  expect(await res.json()).toEqual({ error: 'PUT /api/mock-groups/ is not supported. Part of the URL is empty: an ID may be missing.' })
   const splat = routes.find((r) => r.path === '/api/$')!
   const missing = await splat.handler({ request: new Request('http://ui.test/api/nope'), params: {} })
   expect(missing.status).toBe(404)

@@ -65,7 +65,7 @@ describe('Advanced mode', () => {
     await waitFor(() => expect(save.disabled).toBe(false))
   })
 
-  it('saves with PUT { stub, version }, putting the catalog link back', async () => {
+  it('saves with PUT { stub, version }; the UI metadata never comes from the JSON', async () => {
     const calls: Call[] = []
     mockCatalog(server, calls)
     server.use(
@@ -85,7 +85,6 @@ describe('Advanced mode', () => {
         name: 'mine',
         request: { method: 'GET', urlPath: '/x' },
         response: { status: 204 },
-        metadata: { wiremockUi: { integration: 'nic', endpoint: 'get-citizen-info' } },
       },
       version: 3,
     })
@@ -127,17 +126,17 @@ describe('Simple ↔ Advanced', () => {
     server.use(http.get(`${BASE}/api/mocks/m-1`, () => HttpResponse.json(stored())))
     await renderApp(<EditMockPage id="m-1" />)
     const ue = userEvent.setup()
-    const key = (await screen.findByLabelText('Value of $.idNo in the request body')) as HTMLInputElement
-    await ue.clear(key)
-    await ue.type(key, '77')
+    const url = (await screen.findByRole('textbox', { name: 'URL' })) as HTMLInputElement
+    await ue.clear(url)
+    await ue.type(url, '/orders/77')
 
     await ue.click(screen.getByRole('tab', { name: 'Advanced' }))
-    await waitFor(() => expect(jsonText()).toContain('"equalTo": "77"'))
-    expect(calls.at(-1)).toMatchObject({ path: 'preview', body: { keyValue: '77', status: 404 } })
+    await waitFor(() => expect(jsonText()).toContain('"urlPath": "/orders/77"'))
+    expect(calls.at(-1)).toMatchObject({ path: 'preview', body: { request: { url: '/orders/77' }, status: 404 } })
 
-    setJson(jsonText().replace('"equalTo": "77"', '"equalTo": "78"'))
+    setJson(jsonText().replace('"/orders/77"', '"/orders/78"'))
     await ue.click(screen.getByRole('tab', { name: 'Simple' }))
-    expect(((await screen.findByLabelText('Value of $.idNo in the request body')) as HTMLInputElement).value).toBe('78')
+    expect(((await screen.findByRole('textbox', { name: 'URL' })) as HTMLInputElement).value).toBe('/orders/78')
   })
 
   it('refuses a lossy round-trip: a headers matcher added in JSON disables Simple mode', async () => {
@@ -145,9 +144,9 @@ describe('Simple ↔ Advanced', () => {
     server.use(http.get(`${BASE}/api/mocks/m-1`, () => HttpResponse.json(stored())))
     await renderApp(<EditMockPage id="m-1" />)
     const ue = userEvent.setup()
-    await screen.findByLabelText('Value of $.idNo in the request body')
+    await screen.findByRole('textbox', { name: 'URL' })
     await ue.click(screen.getByRole('tab', { name: 'Advanced' }))
-    await waitFor(() => expect(jsonText()).toContain('"equalTo": "42"'))
+    await waitFor(() => expect(jsonText()).toContain('"urlPath": "/orders/find"'))
 
     const edited = JSON.parse(jsonText())
     edited.request.headers = { 'X-Trace': { equalTo: '1' } }
@@ -155,7 +154,7 @@ describe('Simple ↔ Advanced', () => {
     await ue.click(screen.getByRole('tab', { name: 'Simple' }))
 
     expect(await screen.findByText('This mock uses options Simple mode can’t show.')).toBeTruthy()
-    expect(screen.queryByLabelText('Value of $.idNo in the request body')).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'URL' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Save mock' })).toBeNull()
 
     // Nothing was dropped: back in Advanced the headers matcher is still there.
@@ -235,7 +234,7 @@ describe('unsaved changes', () => {
     server.use(http.get(`${BASE}/api/mocks/m-1`, () => HttpResponse.json(stored())))
     const { router } = await renderApp(<EditMockPage id="m-1" />)
     const ue = userEvent.setup()
-    await ue.type(await screen.findByLabelText('Value of $.idNo in the request body'), '0')
+    await ue.type(await screen.findByRole('textbox', { name: 'URL' }), '0')
     router.history.push('/mocks')
     expect(await screen.findByRole('alertdialog', { name: 'Leave without saving?' })).toBeTruthy()
   })

@@ -10,10 +10,8 @@ const hit = (path: string, init?: RequestInit) => fetch(`${env.wm.url}${path}`, 
 beforeAll(async () => {
   env = await startTestRuntime()
   rt = env.rt
-  await rt.catalog.upsertIntegration({ key: 'pay', name: 'Payments', prefix: '/pay' }, 'ui-admin')
-  await rt.catalog.upsertIntegration({ key: 'payv2', name: 'Payments v2', prefix: '/pay/v2' }, 'ui-admin')
   await rt.mocks.create(
-    { request: { method: 'POST', urlPath: '/pay/charge' }, response: { status: 201, body: 'charged' }, name: 'charge' } as never,
+    { request: { method: 'POST', urlPath: '/pay/charge' }, response: { status: 201, body: 'charged' }, name: 'charge', metadata: { wiremockUi: { tags: ['pay'] } } } as never,
     (await rt.users.list()).find((u) => u.username === 'ui-admin')!,
   )
 }, 120_000)
@@ -33,20 +31,20 @@ test('list maps matched and unmatched requests, newest first', async () => {
   const rows = await rt.requests.list({})
   expect(rows.map((r) => r.url)).toEqual(['/payments/x', '/pay/v2/other', '/pay/charge'])
   const [pays, v2, charge] = rows
-  expect(charge).toMatchObject({ method: 'POST', status: 201, matched: true, stubName: 'charge', integration: 'pay' })
+  expect(charge).toMatchObject({ method: 'POST', status: 201, matched: true, stubName: 'charge', tags: ['pay'] })
   expect(charge.stubId).toMatch(/^[0-9a-f-]{36}$/)
   expect(charge.durationMs).toEqual(expect.any(Number))
   expect(Number.isNaN(Date.parse(charge.loggedAt))).toBe(false)
-  expect(v2).toMatchObject({ status: 404, matched: false, stubId: null, stubName: null, integration: 'payv2' })
-  // path-boundary rule: /payments does not belong to /pay
-  expect(pays.integration).toBeNull()
+  expect(v2).toMatchObject({ status: 404, matched: false, stubId: null, stubName: null, tags: [] })
+  expect(pays.tags).toEqual([])
 })
 
 test('filters narrow the list', async () => {
   await traffic()
   expect((await rt.requests.list({ matched: true })).map((r) => r.url)).toEqual(['/pay/charge'])
   expect(await rt.requests.list({ matched: false })).toHaveLength(2)
-  expect((await rt.requests.list({ integration: 'payv2' })).map((r) => r.url)).toEqual(['/pay/v2/other'])
+  expect((await rt.requests.list({ tag: 'pay' })).map((r) => r.url)).toEqual(['/pay/charge'])
+  expect(await rt.requests.list({ tag: 'nope' })).toEqual([])
   expect((await rt.requests.list({ status: 201 })).map((r) => r.url)).toEqual(['/pay/charge'])
   expect(await rt.requests.list({ status: 404 })).toHaveLength(2)
   expect((await rt.requests.list({ q: 'PAYMENTS' })).map((r) => r.url)).toEqual(['/payments/x'])

@@ -9,7 +9,7 @@ summary: Let a mock pass the request on to a real service and return its answer 
 
 ## What it is
 
-A mock can **forward** the request to a real service instead of answering itself. Typical use: mock a few key values and forward every other one to a test instance of the real service.
+A mock can **forward** the request to a real service instead of answering itself. Typical use: mock a few requests and forward every other one to a test instance of the real service, with a catch-all proxy mock at a lower priority (a higher number) than your other mocks.
 
 ## What it does in WireMock
 
@@ -17,9 +17,9 @@ WireMock's proxy response: `response.proxyBaseUrl` (plus optional headers to add
 
 ```stub
 {
-  "name": "List posts — default",
+  "name": "ANY /blog/.*",
   "priority": 10,
-  "request": { "method": "GET", "urlPath": "/blog/posts" },
+  "request": { "method": "ANY", "urlPathPattern": "/blog/.*" },
   "response": {
     "proxyBaseUrl": "https://blog.test.example",
     "proxyUrlPrefixToRemove": "/blog",
@@ -30,10 +30,10 @@ WireMock's proxy response: `response.proxyBaseUrl` (plus optional headers to add
 
 ## How to
 
-1. Open or create a mock in Simple mode, for example the default mock of **Blog API → List posts**.
+1. Open or create a mock in Simple mode, for example [New mock →](/mocks/new) with **Method** `ANY`, **URL match** **Regex**, **URL** `/blog/.*` and **Priority** `10`.
 2. **Answer with** → **Forward to a real service**.
 3. **Service base URL** `https://blog.test.example`: the request goes there plus its path.
-4. **Remove path prefix** `/blog` (optional): cut from the path first, so `/blog/posts` goes to `https://blog.test.example/posts`. **Use /blog** fills in the integration's prefix; the line below shows the route.
+4. **Remove path prefix** `/blog` (optional): cut from the path first, so `/blog/posts` goes to `https://blog.test.example/posts`. The line below shows the route.
 5. **Headers to add** and **Headers to remove** (for example `Cookie`), then **Save mock**.
 
 ## Tips and limits

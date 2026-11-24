@@ -1,17 +1,9 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import { buildStub } from '../../../src/server/catalog/build'
-import type { Endpoint, Integration } from '../../../src/server/catalog/types'
 import { NotFoundError } from '../../../src/server/errors'
 import { login, req, startTestRuntime } from '../../helpers/http'
 import { nearMisses } from '../../../src/server/http/handlers/requests'
 
 let env: Awaited<ReturnType<typeof startTestRuntime>>
-const integration: Integration = { key: 'nic', name: 'NIC', prefix: '/nic', updatedAt: '', updatedBy: '' }
-const endpoint: Endpoint = {
-  integration: 'nic', key: 'cit', name: 'Citizen', method: 'POST', path: '/get-citizen-info', pathType: 'exact', contentType: 'json',
-  exampleResponses: {}, allowedStatuses: [], updatedAt: '', updatedBy: '',
-  lookup: { location: 'jsonPath', expression: '$.idNo' },
-}
 const post = (path: string, body: unknown) =>
   fetch(`${env.wm.url}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
@@ -23,11 +15,16 @@ async function lastId() {
 beforeAll(async () => {
   env = await startTestRuntime()
   const admin = (await env.rt.users.list()).find((u) => u.username === 'ui-admin')!
-  await env.rt.catalog.upsertIntegration({ key: 'nic', name: 'NIC', prefix: '/nic' }, 'ui-admin')
-  const { updatedAt: _a, updatedBy: _b, ...input } = endpoint
-  await env.rt.catalog.upsertEndpoint(input, 'ui-admin')
-  await env.rt.mocks.create(
-    buildStub(integration, endpoint, { keyValue: '1012345678', status: 200, body: '{"name":"Ali"}' }),
+  // A mock with several responses, by the JSON body field $.idNo (one response so far).
+  await env.rt.mocks.saveGroup(
+    undefined,
+    {
+      name: 'Citizen',
+      request: { method: 'POST', urlType: 'path', url: '/nic/get-citizen-info' },
+      by: { location: 'jsonPath', expression: '$.idNo' },
+      responses: [{ value: '1012345678', response: { status: 200, headers: { 'Content-Type': 'application/json' }, body: '{"name":"Ali"}' } }],
+    },
+    {},
     admin,
   )
 }, 120_000)
@@ -42,9 +39,9 @@ test('an unmatched request explains the closest stub field by field', async () =
   expect(misses.length).toBeGreaterThan(0)
   expect(misses.length).toBeLessThanOrEqual(3)
   const [first] = misses
-  expect(first.stub).toMatchObject({ owner: 'ui-admin', integration: 'nic', endpoint: 'cit' })
-  // The value this request has where the endpoint keeps its key: what "Make a mock for 999" fills in.
-  expect(first.keyValue).toBe('999')
+  expect(first.stub).toMatchObject({ owner: 'ui-admin', name: 'Citizen' })
+  // The value this request has where the mock looks: what "Add a response for 999" fills in.
+  expect(first.group).toMatchObject({ by: { location: 'jsonPath', expression: '$.idNo' }, keyValue: '999' })
   expect(first.diffs.find((d) => d.field === 'method')).toMatchObject({ matched: true })
   expect(first.diffs.find((d) => d.field === 'urlPath')).toMatchObject({ matched: true })
   expect(first.diffs.find((d) => d.field === 'body')).toEqual({

@@ -35,10 +35,12 @@ describe('detecting a collection', () => {
     expect(isPostmanCollection([])).toBe(false)
   })
 
-  it('a picked file that is a collection carries it (and an empty bundle)', () => {
+  it('a picked file that is a collection comes as its mocks, tagged with the collection', () => {
     const r = parseSourceFile({ path: 'shop.postman_collection.json', text: fixture('shop-v2.1.json') })
-    expect(r.ok && r.postman?.name).toBe('Shop API')
-    expect(r.ok && r.summary).toEqual({ integrations: 0, endpoints: 0, mocks: 0, oidcIdentities: 0 })
+    expect(r.ok && r.postman?.collection.name).toBe('Shop API')
+    expect(r.ok && r.summary.mocks).toBeGreaterThan(0)
+    expect(r.ok && r.bundle.mocks.every((m) => (m.metadata?.wiremockUi?.tags ?? []).includes('shop-api'))).toBe(true)
+    expect(r.ok && r.bundle.integrations).toEqual([])
     const plain = parseSourceFile({ path: 'a.json', text: JSON.stringify({ mappings: [] }) })
     expect(plain.ok && plain.postman).toBeUndefined()
   })

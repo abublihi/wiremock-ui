@@ -123,8 +123,7 @@ test('only the bootstrap account exists; creating, changing or deleting accounts
   }
 })
 
-test('the catalog is seeded from SEED_PATH into memory; healthz is up without a sync time', async () => {
-  expect((await rt.catalog.listIntegrations()).map((i) => i.key)).toEqual(['seedpay'])
+test('healthz is up without a sync time', async () => {
   const res = await healthz(rt, new Request('http://ui.test/healthz'))
   expect(res.status).toBe(200)
   expect(await res.json()).toMatchObject({ store: 'ok', wiremock: 'ok', lastSyncAt: null, lastSyncError: null })

@@ -15,12 +15,12 @@ Short definitions of the words the UI and WireMock use. The same definitions app
 
 | Term | Meaning |
 |---|---|
-| **Stub** / **stub mapping** / **mapping** | WireMock's word for a mock: a request pattern plus the response to send. wiremock-ui stores one per mock. |
+| **Stub** / **stub mapping** / **mapping** | WireMock's word for a mock: a request pattern plus the response to send. wiremock-ui stores one per mock (one per response for a mock with several responses). |
 | **Matcher** | One rule in a stub's request pattern, such as `equalTo`, `matches` (regex), `equalToJson` or `matchesJsonPath`. A request must pass every matcher. |
-| **Priority** | A number on a stub; when several stubs match, the lowest wins. Key mocks use 5, default mocks 10. |
+| **Priority** | A number on a stub; when several stubs match, the lowest wins. WireMock's default is 5. |
 | **Journal** / **request log** | WireMock's in-memory list of the requests it received. |
 | **Near miss** | A stub that almost matched an unmatched request, with the fields that differed. |
-| **No match** | WireMock found no stub for a request and answered 404. A catch-all default or proxy mock is a match, so requests it answers are not "no match". |
+| **No match** | WireMock found no stub for a request and answered 404. A catch-all or proxy mock is a match, so requests it answers are not "no match". |
 | **Scenario** | Several stubs sharing a `scenarioName`, answering in turn as the scenario's state changes. |
 | **Scenario state** | Where a scenario is now. Every scenario starts in `Started`; a stub can require a state and move the scenario to a new one. |
 | **Proxy** | A stub that forwards the request to a real service (`proxyBaseUrl`) and returns its answer. |
@@ -31,18 +31,16 @@ Short definitions of the words the UI and WireMock use. The same definitions app
 
 | wiremock-ui term | Meaning |
 |---|---|
-| **Integration** | One external system your app calls, with its URL prefix (Blog API, `/blog`). |
-| **Endpoint** | One operation of an integration (Get post, `GET /blog/posts/{id}`), with where its key is. |
-| **Key** | The value in a request that tells one mock of an endpoint from another (the post `id`). |
-| **Default mock** | The answer for every key no other mock has (priority 10). |
+| **Tag** | A free-form label on a mock (`blog`, `sprint-42`); a mock can have several. Filter the list, the request log and exports by tag; import suggests them. |
+| **Several responses** / **response by value** | One mock answering differently by a value in the request (`id = 42`, `id = 404`, any other `id`). In WireMock: one stub per value, sharing `metadata.wiremockUi.group`. |
+| **Any other** | The response of a mock with several responses for every value without a row of its own. It sits 5 priority numbers lower, so the rows always win. |
 | **Baseline** | Mocks owned by nobody: they came from an import or a seed. A person's mock beats a baseline mock. |
 | **Owner** | Who made a mock ("My mocks"). Everyone can still edit everything. |
-| **Several responses** | One mock answering differently by a value in the request (`seq = 1`, `seq = 2`, any other). In WireMock: one stub per value, sharing `metadata.wiremockUi.group`. |
-| **Tag** | A free-form label on a mock (`qiwa`, `sprint-42`); a mock can have several. Filter the list by tag; import suggests them. |
 | **Review list** | Recorded requests waiting to be accepted as mocks (kept 24 hours). |
 | **Marker stub** | The hidden stub the UI uses to notice a WireMock restart. |
 | **Adoption** | Taking over the stubs a WireMock already had, on the first start with an empty store. |
 | **WireMock-only mode** | Running without a store (`STORE_DRIVER=none`): WireMock's stubs are the list. |
+| **Integration** (older versions) | How older versions grouped mocks by system. Migrated on start-up and import: the integration's key became a tag, and an endpoint's mocks became one mock with several responses. |
 
 ## How to
 

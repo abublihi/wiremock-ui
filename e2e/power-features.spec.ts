@@ -5,7 +5,7 @@ import { signIn } from './helpers'
 
 const AUTH = { Authorization: `Basic ${Buffer.from(`${USER_A.username}:${USER_A.password}`).toString('base64')}` }
 
-// Mocks made here are deleted after each test, so later specs see the seed catalog's mocks only.
+// Mocks made here are deleted after each test, so later specs see the seed's mocks only.
 let made: string[] = []
 const remember = (id: string) => (made.push(id), id)
 test.afterEach(async ({ request }) => {
@@ -26,39 +26,28 @@ async function createStub(request: APIRequestContext, stub: Record<string, unkno
 
 test('the test panel matches a mock and its curl command works in a shell', async ({ page, context, request }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-  const created = await request.post('/api/integrations/blog/endpoints/create-post/mocks', {
-    headers: AUTH,
-    data: { keyValue: '3000000003', status: 200, body: '{"id":303,"title":"Curl post"}' },
+  const id = await createStub(request, {
+    name: 'Curl post',
+    request: { method: 'POST', urlPath: '/blog/curl-posts' },
+    response: { status: 200, jsonBody: { id: 303, title: 'Curl post' }, headers: { 'Content-Type': 'application/json' } },
   })
-  expect(created.status()).toBe(201)
-  const id = remember(((await created.json()) as { id: string }).id)
 
   await signIn(page, USER_A)
   await page.goto(`/mocks/${id}`)
   await page.getByRole('button', { name: 'Test', exact: true }).click()
   const panel = page.getByRole('dialog', { name: 'Test this mock' })
-  await expect(panel.getByRole('textbox', { name: 'Path' })).toHaveValue('/blog/posts')
+  await expect(panel.getByRole('textbox', { name: 'Path' })).toHaveValue('/blog/curl-posts')
   await panel.getByRole('button', { name: 'Send' }).click()
   await expect(panel.getByText('Matched this mock')).toBeVisible()
-  await expect(panel.getByText('Curl post')).toBeVisible()
+  await expect(panel.locator('pre[aria-label="Body"]')).toContainText('Curl post')
 
   await panel.getByRole('button', { name: 'Copy as curl' }).click()
   await expect(page.getByText('Copied curl command')).toBeVisible()
   const command = await page.evaluate(() => navigator.clipboard.readText())
-  expect(command).toContain(`${wiremockUrl()}/blog/posts`)
+  expect(command).toContain(`${wiremockUrl()}/blog/curl-posts`)
   // The command runs as is in a POSIX shell and gets the mock's answer.
   const output = execFileSync('sh', ['-c', `${command} -s`], { encoding: 'utf8' })
   expect(JSON.parse(output)).toEqual({ id: 303, title: 'Curl post' })
-})
-
-test('Try it on an integration endpoint sends its example request', async ({ page }) => {
-  await signIn(page, USER_A)
-  await page.goto('/integrations/blog')
-  await page.getByRole('button', { name: 'Try it: Create post' }).click()
-  const panel = page.getByRole('dialog', { name: 'Try this endpoint' })
-  await expect(panel.getByRole('textbox', { name: 'Body' })).toHaveValue('{"userId":7,"title":"Hello","body":"My first post."}')
-  await panel.getByRole('button', { name: 'Send' }).click()
-  await expect(panel.getByText(/Matched by|No match/).first()).toBeVisible()
 })
 
 test('a scenario answers pending then shipped, and the page shows and resets the live state', async ({ page, request }) => {
@@ -103,12 +92,14 @@ test('the scenario builder makes a 2-step scenario that the test panel runs step
   await expect(page.getByText(/A scenario is a set of mocks for the same request/)).toBeVisible()
 
   await page.getByLabel('Scenario name').fill(scenario)
-  await page.getByRole('option', { name: /Create post/ }).click()
-  await page.getByLabel('Value of $.userId in the request body').fill('6000000006')
-  // Step 1 answers 200 with the catalog example; step 2 answers 400 with that status's example.
+  await page.getByRole('combobox', { name: 'Method' }).click()
+  await page.getByRole('option', { name: 'POST' }).click()
+  await page.getByRole('textbox', { name: 'URL' }).fill('/blog/builder-posts')
+  // Step 1 answers 200; step 2 answers 400.
+  await page.getByRole('textbox', { name: 'Step 1 response body' }).fill('Hello from the mock')
   await page.getByRole('textbox', { name: 'Step 2 state' }).fill('gone')
   await page.getByRole('spinbutton', { name: 'Step 2 response status' }).fill('400')
-  await expect(page.getByRole('textbox', { name: 'Step 2 response body' })).toContainText('title is required')
+  await page.getByRole('textbox', { name: 'Step 2 response body' }).fill('title is required')
   await page.getByRole('button', { name: 'Create scenario' }).click()
 
   await expect(page.getByText(`Scenario ${scenario} created with 2 steps`)).toBeVisible()
@@ -135,12 +126,14 @@ test('editing a scenario as one unit: add a step after the last, save, and WireM
     ['Started', 'checked', '{"step":"one"}'],
     ['checked', undefined, '{"step":"two"}'],
   ] as const) {
-    const res = await request.post('/api/integrations/blog/endpoints/create-post/mocks', {
-      headers: AUTH,
-      data: { keyValue: '7000000007', status: 200, body, name: `${scenario} — ${requiredState}`, scenario: { name: scenario, requiredState, ...(newState ? { newState } : {}) } },
+    await createStub(request, {
+      name: `${scenario} — ${requiredState}`,
+      request: { method: 'POST', urlPath: '/blog/edit-posts' },
+      response: { status: 200, jsonBody: JSON.parse(body), headers: { 'Content-Type': 'application/json' } },
+      scenarioName: scenario,
+      requiredScenarioState: requiredState,
+      ...(newState ? { newScenarioState: newState } : {}),
     })
-    expect(res.status(), await res.text()).toBe(201)
-    remember(((await res.json()) as { id: string }).id)
   }
 
   await signIn(page, USER_A)
@@ -161,7 +154,7 @@ test('editing a scenario as one unit: add a step after the last, save, and WireM
   await request.post('/api/scenarios/reset', { headers: AUTH, data: { name: scenario } })
 
   const call = () =>
-    fetch(`${wiremockUrl()}/blog/posts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: 7000000007, title: 'Hello' }) })
+    fetch(`${wiremockUrl()}/blog/edit-posts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Hello' }) })
   expect(await (await call()).json()).toEqual({ step: 'one' })
   expect(await (await call()).json()).toEqual({ step: 'two' })
   const third = await call()
@@ -173,15 +166,17 @@ test('a proxy mock made in Simple mode forwards to the real service', async ({ p
   // The "real service" is WireMock itself, as seen from inside its container.
   await createStub(request, {
     name: 'Upstream blog service',
-    request: { method: 'POST', urlPath: '/upstream/posts' },
+    request: { method: 'POST', urlPath: '/upstream/proxy-posts' },
     response: { status: 200, jsonBody: { from: 'upstream' } },
   })
 
   await signIn(page, USER_A)
-  await page.goto('/mocks/new?integration=blog&endpoint=create-post')
-  await page.getByLabel('Value of $.userId in the request body').fill('4000000004')
+  await page.goto('/mocks/new')
+  await page.getByRole('combobox', { name: 'Method' }).click()
+  await page.getByRole('option', { name: 'POST' }).click()
+  await page.getByRole('textbox', { name: 'URL' }).fill('/blog/proxy-posts')
   await page.getByRole('radio', { name: 'Forward to a real service' }).click()
-  // /blog/posts → strip /blog → http://localhost:8080/upstream/posts
+  // /blog/proxy-posts → strip /blog → http://localhost:8080/upstream/proxy-posts
   await page.getByLabel('Service base URL').fill('http://localhost:8080/upstream')
   await page.getByLabel('Remove path prefix').fill('/blog')
   await page.getByRole('button', { name: 'Save mock' }).click()
@@ -189,39 +184,55 @@ test('a proxy mock made in Simple mode forwards to the real service', async ({ p
   await expect(page).toHaveURL(/\/mocks\/[0-9a-f-]{36}$/)
   remember(page.url().split('/').pop()!)
 
-  const hit = await fetch(`${wiremockUrl()}/blog/posts`, {
+  const hit = await fetch(`${wiremockUrl()}/blog/proxy-posts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: 4000000004, title: 'Hello' }),
+    body: JSON.stringify({ title: 'Hello' }),
   })
   expect(hit.status).toBe(200)
   expect(await hit.json()).toEqual({ from: 'upstream' })
 
   await page.goto('/mocks?owner=all')
-  await expect(page.getByRole('row', { name: /Create post — 4000000004/ })).toContainText('Proxy')
+  await expect(page.getByRole('row', { name: /POST \/blog\/proxy-posts/ })).toContainText('Proxy')
 })
 
-test('an endpoint added on its own page is ready for a new mock', async ({ page, request }) => {
-  await signIn(page, USER_A)
-  await page.goto('/integrations/blog')
-  await page.getByRole('link', { name: 'Add endpoint' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Add endpoint' })).toBeVisible()
-  await page.getByLabel('Name').fill('Post comments')
-  await page.getByLabel('Endpoint ID').fill('post-comments')
-  await page.getByLabel('Path', { exact: true }).fill('/posts/{id}/comments')
-  await page.getByRole('radio', { name: 'Template' }).click()
-  await page.getByRole('combobox', { name: 'Where the key is' }).click()
-  await page.getByRole('option', { name: 'Path variable' }).click()
-  // The path's only variable is picked already.
-  await expect(page.getByRole('combobox', { name: 'Variable name' })).toContainText('id')
-  const preview = page.getByRole('region', { name: 'How testers will see this' })
-  await expect(preview).toContainText('Post comments')
-  await expect(preview).toContainText('Value of path parameter id')
-  await page.getByRole('button', { name: 'Save endpoint' }).click()
-  await expect(page).toHaveURL(/\/integrations\/blog$/)
-  await page.getByRole('button', { name: 'New mock from this endpoint' }).click()
-  await expect(page).toHaveURL(/\/mocks\/new\?.*endpoint=post-comments/)
-  await expect(page.getByLabel('Value of path parameter id')).toBeVisible()
-  const removed = await request.delete('/api/integrations/blog/endpoints/post-comments', { headers: AUTH })
-  expect(removed.status()).toBe(204)
+test('a mock with several responses: a near miss adds a response for the value that missed', async ({ page, request }) => {
+  const made = await request.post('/api/mock-groups', {
+    headers: AUTH,
+    data: {
+      input: {
+        name: 'Posts by user',
+        request: { method: 'POST', urlType: 'path', url: '/blog/by-user' },
+        by: { location: 'jsonPath', expression: '$.userId' },
+        responses: [{ value: '7', response: { status: 200, body: '{"user":7}', headers: { 'Content-Type': 'application/json' } } }],
+      },
+    },
+  })
+  expect(made.status(), await made.text()).toBe(201)
+  const stubs = (await made.json()) as { id: string; metadata: { wiremockUi: { group: { id: string } } } }[]
+  const groupId = stubs[0]!.metadata.wiremockUi.group.id
+  const post = (userId: number) =>
+    fetch(`${wiremockUrl()}/blog/by-user`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) })
+  try {
+    expect((await post(7)).status).toBe(200)
+    expect((await post(999)).status).toBe(404)
+
+    await signIn(page, USER_A)
+    await page.goto('/requests')
+    await page.getByRole('button', { name: 'No match — see why' }).first().click()
+    const drawer = page.getByRole('dialog', { name: 'POST /blog/by-user' })
+    await drawer.getByRole('link', { name: 'Add a response for 999' }).click()
+    // The router keeps a number-like value a string by quoting it: ?add=%22999%22.
+    await expect(page).toHaveURL(/\/mocks\/[^/?]+\?add=(999|%22999%22)$/)
+    await expect(page.getByText('Responses · 2 (by $.userId)')).toBeVisible()
+    await page.getByRole('button', { name: 'Save mock' }).click()
+    await expect(page.getByText('Mock saved')).toBeVisible()
+    await expect.poll(async () => (await post(999)).status).toBe(200)
+
+    // The list shows the mock once, with both responses.
+    await page.goto('/mocks?owner=all')
+    await expect(page.getByRole('button', { name: 'Show the responses of Posts by user' })).toHaveCount(1)
+  } finally {
+    await request.delete(`/api/mock-groups/${groupId}`, { headers: AUTH })
+  }
 })

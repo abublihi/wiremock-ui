@@ -19,18 +19,12 @@ beforeAll(async () => {
   const { rt } = env
   admin = await login(rt, 'ui-admin', 'ui-admin-pass')
   tess = await signIn(rt, 'tess')
-  await rt.catalog.upsertIntegration({ key: 'pay', name: 'Payments', prefix: '/pay' }, 'ui-admin')
-  await rt.catalog.upsertIntegration({ key: 'nic', name: 'NIC', prefix: '/nic' }, 'ui-admin')
-  await rt.catalog.upsertEndpoint(
-    { integration: 'pay', key: 'charge', name: 'Charge', method: 'POST', path: '/charge', pathType: 'exact', contentType: 'json', exampleResponses: { '200': '{}' }, allowedStatuses: [200] },
-    'ui-admin',
-  )
   const user = (username: string) => ({ id: username, username, displayName: username, disabled: false, createdAt: '', updatedAt: '' })
   const tessUser = user(tess.username)
   const adminUser = user('ui-admin')
-  await rt.mocks.create({ name: 'Charge ok', request: { method: 'POST', urlPath: '/pay/charge' }, response: { status: 200, jsonBody: { ok: true } }, metadata: { wiremockUi: { integration: 'pay', endpoint: 'charge' } } }, adminUser)
-  await rt.mocks.create({ name: 'Logo / PNG', request: { method: 'GET', urlPath: '/pay/logo' }, response: { status: 200, base64Body: 'iVBORw0KGgo=', headers: { 'Content-Type': 'image/png' } }, metadata: { wiremockUi: { integration: 'pay' } } }, tessUser)
-  await rt.mocks.create({ name: 'Citizen', request: { method: 'GET', urlPath: '/nic/citizen' }, response: { status: 404 }, metadata: { wiremockUi: { integration: 'nic' } } }, adminUser)
+  await rt.mocks.create({ name: 'Charge ok', request: { method: 'POST', urlPath: '/pay/charge' }, response: { status: 200, jsonBody: { ok: true } }, metadata: { wiremockUi: { tags: ['pay'] } } }, adminUser)
+  await rt.mocks.create({ name: 'Logo / PNG', request: { method: 'GET', urlPath: '/pay/logo' }, response: { status: 200, base64Body: 'iVBORw0KGgo=', headers: { 'Content-Type': 'image/png' } }, metadata: { wiremockUi: { tags: ['pay', 'assets'] } } }, tessUser)
+  await rt.mocks.create({ name: 'Citizen', request: { method: 'GET', urlPath: '/nic/citizen' }, response: { status: 404 }, metadata: { wiremockUi: { tags: ['nic'] } } }, adminUser)
 }, 120_000)
 afterAll(async () => {
   await fresh?.stop()
@@ -40,7 +34,7 @@ afterAll(async () => {
 const get = (query: string, s: Session = admin) => exportMocks(env.rt, req(`/api/export${query}`, 'GET', undefined, as(s)))
 const names = (stubs: StubMapping[]) => stubs.map((s) => s.name).sort()
 
-test('a bundle of everything: integrations, catalog and mocks, as a JSON attachment', async () => {
+test('a bundle of everything: the mocks (with their tags), as a JSON attachment', async () => {
   const res = await get('')
   expect(res.status).toBe(200)
   expect(res.headers.get('content-type')).toContain('application/json')
@@ -48,33 +42,29 @@ test('a bundle of everything: integrations, catalog and mocks, as a JSON attachm
   const bundle = await res.json()
   expect(Object.keys(bundle).sort()).toEqual(['catalog', 'integrations', 'mocks', 'oidcIdentities'])
   expect(bundle.oidcIdentities).toEqual([])
-  // Catalog entries without the server-owned fields, so they import as they are.
-  expect(bundle.integrations).toEqual(expect.arrayContaining([{ key: 'pay', name: 'Payments', prefix: '/pay' }, { key: 'nic', name: 'NIC', prefix: '/nic' }]))
-  expect(bundle.catalog).toEqual([expect.objectContaining({ integration: 'pay', key: 'charge' })])
-  expect(bundle.catalog[0]).not.toHaveProperty('updatedAt')
+  expect(bundle.integrations).toEqual([])
+  expect(bundle.catalog).toEqual([])
   expect(names(bundle.mocks)).toEqual(expect.arrayContaining(['Charge ok', 'Citizen', 'Logo / PNG']))
 })
 
-test('scope=integration keeps that integration, its endpoints and its mocks', async () => {
-  const res = await get('?scope=integration&integration=nic')
+test('scope=tag keeps the mocks with that tag', async () => {
+  const res = await get('?scope=tag&tag=nic')
   expect(res.headers.get('content-disposition')).toMatch(/filename="wiremock-ui-nic-\d{8}-\d{4}\.json"/)
-  const bundle = await res.json()
-  expect(bundle.integrations).toEqual([{ key: 'nic', name: 'NIC', prefix: '/nic' }])
-  expect(bundle.catalog).toEqual([])
-  expect(names(bundle.mocks)).toEqual(['Citizen'])
+  expect(names((await res.json()).mocks)).toEqual(['Citizen'])
+  expect(names((await (await get('?scope=tag&tag=PAY')).json()).mocks)).toEqual(['Charge ok', 'Logo / PNG'])
 })
 
-test('scope=mine keeps the caller\'s mocks and the catalog they link to', async () => {
+test('scope=mine keeps the caller\'s mocks', async () => {
   const bundle = await (await get('?scope=mine', tess)).json()
   expect(names(bundle.mocks)).toEqual(STORELESS ? ['Charge ok', 'Citizen', 'Logo / PNG'] : ['Logo / PNG'])
-  expect(bundle.integrations.map((i: { key: string }) => i.key)).toContain('pay')
 })
 
-test('bad parameters are 400; an unknown integration is 404', async () => {
+test('bad parameters are 400; an unknown tag is an empty export', async () => {
   expect((await get('?scope=everything')).status).toBe(400)
   expect((await get('?format=tar')).status).toBe(400)
-  expect((await get('?scope=integration')).status).toBe(400)
-  expect((await get('?scope=integration&integration=nope')).status).toBe(404)
+  expect((await get('?scope=tag')).status).toBe(400)
+  expect((await get('?scope=integration&integration=pay')).status).toBe(400)
+  expect((await (await get('?scope=tag&tag=nope')).json()).mocks).toEqual([])
 })
 
 test('format=mappings is a zip of mappings/<name>-<id>.json files WireMock can load', async () => {
@@ -100,11 +90,9 @@ test('round trip: export → import into an empty store → the same mocks', asy
   const essence = (stubs: StubMapping[]) =>
     stubs
       .filter((s) => s.metadata?.wiremockUi)
-      .map((s) => ({ id: s.id, name: s.name, request: s.request, response: s.response, owner: s.metadata!.wiremockUi!.owner, integration: s.metadata!.wiremockUi!.integration, endpoint: s.metadata!.wiremockUi!.endpoint }))
+      .map((s) => ({ id: s.id, name: s.name, request: s.request, response: s.response, owner: s.metadata!.wiremockUi!.owner, tags: s.metadata!.wiremockUi!.tags }))
       .sort((a, b) => a.id.localeCompare(b.id))
   expect(essence(await fresh.rt.store.listAll())).toEqual(essence(await env.rt.store.listAll()))
-  expect((await fresh.rt.catalog.listIntegrations()).map((i) => i.key).sort()).toEqual(['nic', 'pay'])
-  expect(await fresh.rt.catalog.findEndpoint('pay', 'charge')).not.toBeNull()
   // WireMock serves the imported binary body.
   const logo = await fetch(`${fresh.wm.url}/pay/logo`)
   expect(Buffer.from(await logo.arrayBuffer()).toString('base64')).toBe('iVBORw0KGgo=')

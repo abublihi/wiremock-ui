@@ -1,6 +1,7 @@
 import { AppError, ValidationError } from '../../errors'
 import { importBundle } from '../../bundle/importer'
 import { parseBundle } from '../../bundle/parse'
+import { legacyEndpoints } from '../../catalog/migrate-store'
 import { json, requireJson, withAuth } from '../wrap'
 
 export const MAX_IMPORT_BYTES = 10 * 1024 * 1024
@@ -31,7 +32,7 @@ export const runImport = withAuth('import.run', async ({ rt, request, principal 
   // Spec A10: never delete stubs from the user's own WireMock.
   if (prune && rt.config.storeDriver === 'none') throw new ValidationError('Prune is not available in WireMock-only mode')
   const report = await importBundle(bundle, {
-    catalog: rt.catalog,
+    legacyEndpoints: () => legacyEndpoints(rt.stores.catalog),
     mocks: rt.mocks,
     store: rt.store,
     audit: rt.audit,

@@ -3,6 +3,7 @@ import { ValidationError } from '../../errors'
 import { MAX_PAGE_LIMIT } from '../../mocks/paging'
 import type { MockInput } from '../../mocks/service'
 import { idOf, json, parse, readJson, requireJson, withAuth } from '../wrap'
+import { buildQuickStub, quickMockSchema } from '../../catalog/build'
 
 const object = (field: string) =>
   z.record(z.string(), z.unknown(), { error: `${field} must be an object` }).refine((v) => !Array.isArray(v), {
@@ -65,6 +66,7 @@ export const listMocks = withAuth('mocks.read', async ({ rt, request, principal 
   const q = new URL(request.url).searchParams
   const owner = q.get('owner') || undefined
   const filter = {
+    // Older stores only: metadata.wiremockUi.integration (the startup migration turns it into a tag).
     integration: q.get('integration') || undefined,
     owner: owner === 'me' ? principal.user.username : owner,
     status: parseStatus(q.get('status')),
@@ -112,4 +114,10 @@ export const restoreMock = withAuth('mocks.editOwn', async ({ rt, request, param
   requireJson(request)
   const body = parse(restoreBody, await readJson(request))
   return json(await rt.mocks.restore(idOf(params), body.version, principal.user))
+})
+
+/** "Mock a URL directly": the stub the quick form builds (saved like any other mock, with POST/PUT /api/mocks). */
+export const previewQuickMock = withAuth('mocks.read', async ({ request }) => {
+  requireJson(request)
+  return json(buildQuickStub(parse(quickMockSchema, await readJson(request))))
 })

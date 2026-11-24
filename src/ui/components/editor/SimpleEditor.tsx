@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import type { Endpoint, Integration } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
 import { ApiError } from '@/ui/api/client'
-import { type BuiltStub, type PreviewArgs, useCreateCatalogMock, useCreateMock, usePreviewMock, useScenarios, useUpdateMock } from '@/ui/api/queries'
+import { type BuiltStub, type PreviewArgs, useCreateMock, usePreviewMock, useScenarios, useUpdateMock } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/ui/components/ui/field'
@@ -28,12 +28,10 @@ import {
   emptyForm,
   emptyQuickForm,
   exampleFor,
-  generatedName,
   isHttpUrl,
   quickEndpoint,
   quickMockName,
   seedScenario,
-  withKey,
   toQuickInput,
   toSimpleInput,
 } from '@/ui/lib/editor-sync'
@@ -52,7 +50,6 @@ import { type BodyFile, formatSize } from '@/ui/lib/body-file'
 import { BodyFileButton } from './BodyFileButton'
 import { CodeEditor } from './CodeEditor'
 import { Eyebrow } from './EditorShell'
-import { keyLabel } from './EndpointPicker'
 import { HeaderRows, hasUnnamedRow } from './HeaderRows'
 import { ProxySection } from './ProxySection'
 import { QuickRequestFields, quickRequestErrors } from './QuickRequestFields'
@@ -145,11 +142,8 @@ const ON = 'data-[state=on]:border-signal/50 data-[state=on]:bg-signal/10 data-[
  * `onConflict` takes over a 409 (default: an inline message).
  */
 export function SimpleEditor({
-  integration: catalogIntegration,
-  endpoint: catalogEndpoint,
   initial,
   mock,
-  keyValue,
   scenarioSeed,
   tags = [],
   onChange,
@@ -157,12 +151,8 @@ export function SimpleEditor({
   onConflict,
   growButton,
 }: {
-  integration?: Integration
-  endpoint?: Endpoint
   initial?: SimpleForm
   mock?: StubMapping
-  /** A new endpoint mock's key value (when `initial` is not given). */
-  keyValue?: string
   /** A new mock's scenario (when `initial` is not given): the Scenario section starts on and filled in. */
   scenarioSeed?: ScenarioSeed
   /** The mock's tags (edited above the tabs); saved with the stub. */
@@ -178,17 +168,16 @@ export function SimpleEditor({
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
 
-  const catalog = catalogIntegration && catalogEndpoint ? { integration: catalogIntegration, endpoint: catalogEndpoint } : undefined
   const [form, setForm] = useState<SimpleForm>(
-    () => initial ?? (catalog ? seedScenario(withKey(emptyForm(catalog.endpoint), catalog.endpoint, keyValue), scenarioSeed) : emptyQuickForm(scenarioSeed)),
+    () => initial ?? emptyQuickForm(scenarioSeed),
   )
   // A quick mock: its request (method, URL, …) is part of the form and stands in for the endpoint below.
   const quick = form.quick
-  const endpoint = catalog?.endpoint ?? quickEndpoint(quick!)
-  const integration = catalog?.integration ?? QUICK_INTEGRATION
+  const endpoint = quickEndpoint(quick!)
+  const integration = QUICK_INTEGRATION
   // An existing mock's body is the user's; a new form's body follows the example until the user types (a quick
   // mock has no examples).
-  const [bodyTouched, setBodyTouched] = useState(Boolean(initial) || !catalog)
+  const [bodyTouched, setBodyTouched] = useState(true)
   // The status whose catalog example is in the body (shown in the "prefilled from" caption).
   const [exampleStatus, setExampleStatus] = useState(form.status)
   const [customText, setCustomText] = useState(String(form.status))
@@ -201,7 +190,6 @@ export function SimpleEditor({
 
   const scenarios = useScenarios({ enabled: form.scenario.enabled, live: true })
   const previewMock = usePreviewMock()
-  const createMock = useCreateCatalogMock()
   const createFreeMock = useCreateMock()
   const updateMock = useUpdateMock()
   const [saving, setSaving] = useState(false)
@@ -249,7 +237,6 @@ export function SimpleEditor({
     }
   }
   if (form.scenario.enabled && attempted && form.scenario.name.trim() === '') clientErrors.scenarioName = t('editor.scenario.nameRequired')
-  if (!quick && attempted && !form.isDefault && endpoint.lookup && form.keyValue.trim() === '') clientErrors.keyValue = t('editor.keyRequired')
   if (quick) {
     Object.assign(clientErrors, quickRequestErrors(t, quick, attempted))
     if (!proxied && !broken && hasUnnamedRow(quick.responseHeaders)) clientErrors.headers = t('editor.headers.unnamed')
@@ -324,10 +311,7 @@ export function SimpleEditor({
     else setFormError({ title, message })
   }
   const withTagList = <T extends object>(input: T): T => (tags.length > 0 ? { ...input, tags } : input)
-  const args = (): PreviewArgs =>
-    quick
-      ? { quick: withTagList(toQuickInput(form)) }
-      : { integration: integration.key, endpoint: endpoint.key, input: withTagList(toSimpleInput(form)) }
+  const args = (): PreviewArgs => ({ quick: withTagList(toQuickInput(form)) })
   const blocked = Object.keys(clientErrors).length > 0
   const reset = () => {
     setServerErrors({})
@@ -367,10 +351,10 @@ export function SimpleEditor({
         // The server's builder stays the single source of the stub; the PUT carries the version we opened.
         const stub = await previewMock.mutateAsync(args())
         saved = await updateMock.mutateAsync({ id: mock.id, stub, version: mock.metadata?.wiremockUi?.version ?? 0 })
-      } else if (quick) {
-        // Free-form: the quick builder makes the stub, the normal create checks and saves it.
+      } else {
+        // The quick builder makes the stub, the normal create checks and saves it.
         saved = await createFreeMock.mutateAsync(await previewMock.mutateAsync(args()))
-      } else saved = await createMock.mutateAsync({ integration: integration.key, endpoint: endpoint.key, input: withTagList(toSimpleInput(form)) })
+      }
       toast.success(t('editor.saved'))
       if (onSaved) await onSaved(saved)
       else await navigate({ to: '/mocks/$id', params: { id: saved.id } })
@@ -387,11 +371,7 @@ export function SimpleEditor({
     errors[field] ? <FieldError id={id(`${field}-error`)}>{errors[field]}</FieldError> : null
 
   const bodyLanguage = endpoint.contentType === 'json' || endpoint.contentType === 'xml' ? endpoint.contentType : null
-  const namePlaceholder = quick
-    ? quickMockName(quick)
-    : form.isDefault || form.keyValue.trim()
-      ? generatedName(endpoint, form)
-      : `${endpoint.name} — …`
+  const namePlaceholder = quickMockName(quick!)
 
   return (
     <form noValidate onSubmit={onSave} className="flex flex-col gap-4">
@@ -404,48 +384,11 @@ export function SimpleEditor({
       )}
 
       <Section title={t('editor.section.match')}>
-        {quick ? (
-          <QuickRequestFields
-            quick={quick}
-            errors={{ url: errors.url, query: errors.query, priority: errors.priority }}
-            onChange={updateQuick}
-          />
-        ) : (
-          <>
-            <Field orientation="horizontal">
-              <Switch
-                id={id('default')}
-                checked={form.isDefault}
-                disabled={!endpoint.lookup}
-                onCheckedChange={(isDefault) => update({ isDefault }, ['keyValue'])}
-              />
-              <div className="flex flex-col gap-0.5">
-                <FieldLabel htmlFor={id('default')}>{t('editor.default')}</FieldLabel>
-                <FieldDescription className="text-xs">
-                  {endpoint.lookup ? t('editor.defaultHint') : t('editor.noLookup')}
-                </FieldDescription>
-              </div>
-            </Field>
-            {!form.isDefault && endpoint.lookup && (
-              <Field data-invalid={Boolean(errors.keyValue)}>
-                <FieldLabel htmlFor={id('key')}>{keyLabel(t, endpoint)}</FieldLabel>
-                <Input
-                  id={id('key')}
-                  dir="ltr"
-                  className="font-mono"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder={t('editor.keyPlaceholder')}
-                  value={form.keyValue}
-                  aria-invalid={Boolean(errors.keyValue)}
-                  aria-describedby={described('keyValue')}
-                  onChange={(e) => update({ keyValue: e.target.value }, ['keyValue'])}
-                />
-                {fieldError('keyValue')}
-              </Field>
-            )}
-          </>
-        )}
+        <QuickRequestFields
+          quick={quick!}
+          errors={{ url: errors.url, query: errors.query, priority: errors.priority }}
+          onChange={updateQuick}
+        />
       </Section>
 
       <Section title={t('editor.section.respond')}>

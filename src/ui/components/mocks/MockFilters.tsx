@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { SearchIcon, WorkflowIcon } from 'lucide-react'
-import type { Integration } from '@/server/catalog/types'
 import { Input } from '@/ui/components/ui/input'
 import { Toggle } from '@/ui/components/ui/toggle'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
@@ -10,7 +9,7 @@ import { useT } from '@/ui/i18n'
 import type { TagCount } from '@/ui/api/queries'
 
 /** `scenarios: 'only'`: only mocks that belong to a scenario (the "Scenario mocks" chip). `page`: the list page, from 1. */
-export type MocksSearch = { owner?: string; integration?: string; status?: string; q?: string; scenarios?: 'only'; tag?: string; page?: number }
+export type MocksSearch = { owner?: string; status?: string; q?: string; scenarios?: 'only'; tag?: string; page?: number }
 
 /** The owner filter when the URL names none: everyone's mocks ('me' narrows to your own). */
 export const DEFAULT_OWNER = 'all'
@@ -22,12 +21,10 @@ const ON = "data-[state=on]:border-signal/40 data-[state=on]:bg-signal/10 data-[
 
 export function MockFilters({
   search,
-  integrations,
   tags = [],
   onChange,
 }: {
   search: MocksSearch
-  integrations: Integration[]
   /** Tags in use (the Tag filter shows only when there are some, or one is chosen). */
   tags?: TagCount[]
   onChange: (next: MocksSearch) => void
@@ -82,23 +79,6 @@ export function MockFilters({
           onChange={(e) => setText(e.target.value)}
         />
       </div>
-
-      <Select
-        value={search.integration ?? ANY}
-        onValueChange={(value) => onChange({ integration: value === ANY ? undefined : value })}
-      >
-        <SelectTrigger aria-label={t('mocks.integration')} className="w-52">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ANY}>{t('mocks.anyIntegration')}</SelectItem>
-          {integrations.map((i) => (
-            <SelectItem key={i.key} value={i.key}>
-              {i.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
 
       {(tags.length > 0 || search.tag) && (
         <Select value={search.tag ?? ANY} onValueChange={(value) => onChange({ tag: value === ANY ? undefined : value })}>

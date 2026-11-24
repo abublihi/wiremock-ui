@@ -1,9 +1,9 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { ArrowRightIcon, CheckIcon, CircleIcon, XIcon } from 'lucide-react'
 import { apiFetch } from '@/ui/api/client'
-import { endpointsQueryOptions, queryKeys, useIntegrations, useSession } from '@/ui/api/queries'
+import { queryKeys, useSession } from '@/ui/api/queries'
 import { Button } from '@/ui/components/ui/button'
 import { useWireMockOnly, useWiremockPublicUrl } from '@/ui/config'
 import { useT, type MessageKey } from '@/ui/i18n'
@@ -76,13 +76,9 @@ export function markRequestLogSeen(userId: string | undefined): void {
 
 type Step = { id: string; label: MessageKey; hint: MessageKey; done: boolean; to: string; search?: Record<string, string>; action: MessageKey }
 
-/** How many integrations' endpoint lists the checklist looks at per round (it only needs one that has an endpoint). */
-const ENDPOINT_PROBE = 10
-
 /**
- * First-run "Getting started" on the Mocks page: five steps from an integration to the request log, each ticked from
- * real data (an integration exists, an endpoint exists, a mock exists, WireMock has received a request, the request
- * log was opened). Dismissed per browser and user; the Guide shows it again.
+ * First-run "Getting started" on the Mocks page: three steps from a first mock to the request log, each ticked from
+ * real data (a mock exists, WireMock has received a request, the request log was opened). Dismissed per browser and user; the Guide shows it again.
  */
 export function GettingStartedChecklist() {
   const t = useT()
@@ -98,20 +94,7 @@ export function GettingStartedChecklist() {
   const wiremockOnly = useWireMockOnly()
   const user = useSession().data?.user.username
   const me = wiremockOnly ? undefined : user
-  const integrations = useIntegrations()
   const publicUrl = useWiremockPublicUrl() ?? 'WireMock'
-  const all = integrations.data ?? []
-  // Endpoint lists, ten integrations at a time, until one has an endpoint.
-  const [rounds, setRounds] = useState(1)
-  const probe = all.slice(0, ENDPOINT_PROBE * rounds)
-  const endpoints = useQueries({
-    queries: probe.map((i) => ({ ...endpointsQueryOptions(i.key), enabled: !hidden })),
-  })
-  const hasEndpoint = endpoints.some((q) => (q.data?.length ?? 0) > 0)
-  const probed = endpoints.length > 0 && endpoints.every((q) => q.isSuccess)
-  useEffect(() => {
-    if (!hidden && probed && !hasEndpoint && probe.length < all.length) setRounds((r) => r + 1)
-  }, [hidden, probed, hasEndpoint, probe.length, all.length])
   // The mock step counts the user's own mocks: someone new on a busy install still has that step to do.
   const mocks = useQuery({
     queryKey: [...queryKeys.mocks, 'any', me],
@@ -129,30 +112,13 @@ export function GettingStartedChecklist() {
   useEffect(() => {
     if (hasRequest && !sent && userId) setFlag(checklistKey('requestSent', userId), true)
   }, [hasRequest, sent, userId])
-  const doneNow = all.length > 0 && hasEndpoint && (mocks.data ?? 0) > 0 && hasRequest && seenLog
+  const doneNow = (mocks.data ?? 0) > 0 && hasRequest && seenLog
   useEffect(() => {
     if (doneNow && !hidden && userId) setFlag(checklistKey('done', userId), true)
   }, [doneNow, hidden, userId])
   if (hidden) return null
 
-  const firstIntegration = integrations.data?.[0]?.key
   const steps: Step[] = [
-    {
-      id: 'integration',
-      label: 'checklist.integration',
-      hint: 'checklist.integrationHint',
-      done: (integrations.data?.length ?? 0) > 0,
-      to: '/integrations',
-      action: 'checklist.integrationAction',
-    },
-    {
-      id: 'endpoint',
-      label: 'checklist.endpoint',
-      hint: 'checklist.endpointHint',
-      done: hasEndpoint,
-      to: firstIntegration ? `/integrations/${encodeURIComponent(firstIntegration)}` : '/integrations',
-      action: 'checklist.endpointAction',
-    },
     {
       id: 'mock',
       label: 'checklist.mock',
@@ -224,7 +190,7 @@ export function GettingStartedChecklist() {
       >
         <div className="h-full bg-signal transition-[width] duration-300" style={{ width: `${(doneCount / steps.length) * 100}%` }} />
       </div>
-      <ol className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      <ol className="mt-3 grid gap-2 sm:grid-cols-3">
         {steps.map((step, i) => {
           const current = step === next
           return (

@@ -21,14 +21,9 @@ const STATE_TEXT: Record<FieldState, string> = {
 }
 const STATE_LABEL = { match: 'near.match', mismatch: 'near.mismatch', unchecked: 'near.unchecked' } as const
 
-/**
- * Where "Create mock from this request" goes: Simple mode on the closest near miss's endpoint, its key filled in from
- * this request, when that mock belongs to an endpoint; otherwise the quick URL form prefilled from the request.
- */
-export function createMockSearch(requestId: string, closest: NearMissView | undefined): NewMockSearch {
-  const miss = closest?.stub.integration && closest.stub.endpoint ? closest : undefined
-  if (!miss) return { from: requestId }
-  return { integration: miss.stub.integration!, endpoint: miss.stub.endpoint!, ...(miss.keyValue !== null ? { key: miss.keyValue } : {}) }
+/** Where "Create mock from this request" goes: the URL form prefilled from the request. */
+export function createMockSearch(requestId: string): NewMockSearch {
+  return { from: requestId }
 }
 
 /** Up to three closest mocks for an unmatched request, each explained field by field. */
@@ -95,8 +90,8 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
   const nearness = miss.distance < 0.1 ? t('near.closest') : miss.distance < 0.3 ? t('near.close') : t('near.far')
   // The first difference in one plain sentence, above the table.
   const first = rows.find((r) => r.state === 'mismatch')
-  // "Make a mock for p-2": a mock of the same endpoint for the key this request had.
-  const makeFor = miss.stub.endpoint && miss.keyValue !== null ? createMockSearch('', miss) : undefined
+  // "Add a response for p-2": the closest mock answers by a value, and this request had another one.
+  const addFor = miss.group?.keyValue ?? null
 
   return (
     <article aria-labelledby={titleId} className="glow-border overflow-hidden rounded-md border border-line bg-surface">
@@ -118,12 +113,6 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
                   <dd className="text-foreground">{miss.stub.owner}</dd>
                 </div>
               )}
-              {miss.stub.integration && (
-                <div className="flex gap-1">
-                  <dt>{t('near.integration')}</dt>
-                  <dd className="text-foreground">{miss.stub.integration}</dd>
-                </div>
-              )}
             </dl>
           </div>
         </div>
@@ -139,7 +128,7 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
           </span>
         </div>
       </header>
-      {(first || makeFor) && (
+      {(first || addFor !== null) && (
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-3 py-2">
           {first && (
             <p className="min-w-0 text-xs">
@@ -148,11 +137,11 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
                 : t('near.oneLine', { field: first.field, expected: first.expected, actual: first.actual })}
             </p>
           )}
-          {makeFor && (
+          {addFor !== null && (
             <Button asChild size="sm" variant="outline" className="ms-auto">
-              <Link to="/mocks/new" search={makeFor}>
+              <Link to="/mocks/$id" params={{ id: miss.stub.id }} search={{ add: addFor }}>
                 <PlusIcon data-icon="inline-start" />
-                <span className="min-w-0 truncate">{t('near.makeFor', { value: miss.keyValue! })}</span>
+                <span className="min-w-0 truncate">{t('near.addFor', { value: addFor })}</span>
               </Link>
             </Button>
           )}

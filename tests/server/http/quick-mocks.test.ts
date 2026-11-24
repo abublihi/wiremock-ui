@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import { previewQuickMock } from '../../../src/server/http/handlers/catalog'
-import { createMock, getMock } from '../../../src/server/http/handlers/mocks'
+import { createMock, getMock, previewQuickMock } from '../../../src/server/http/handlers/mocks'
 import { login, req, startTestRuntime } from '../../helpers/http'
 
 // "Mock a URL directly": the quick form's stub is built (and checked) by the server, saved like any mock and served.

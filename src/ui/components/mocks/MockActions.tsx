@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { StubMapping } from '@/server/wiremock/types'
-import { endpointsQueryOptions, useDeleteMock, useDuplicateMock, useMocks, useResetMine, restoreMock } from '@/ui/api/queries'
+import { useDeleteMock, useDuplicateMock, useMocks, useResetMine, restoreMock } from '@/ui/api/queries'
 import { copyCurl } from '@/ui/components/editor/TestPanel'
 import {
   AlertDialog,
@@ -59,19 +59,7 @@ export function MockRowActions({ stub }: { stub: StubMapping }) {
   const name = mockName(stub)
   const publicUrl = useWiremockPublicUrl()
 
-  // The catalog example request fills the body; without it (no link, catalog unreachable) the curl still works.
-  // The clipboard write starts during the click (Safari needs that), with the command still being worked out.
-  const onCopyCurl = () => {
-    if (publicUrl === undefined) return void copyCurl(undefined, t)
-    const link = stub.metadata?.wiremockUi
-    const command = (async () => {
-      const endpoints = link?.integration && link.endpoint
-        ? await queryClient.fetchQuery(endpointsQueryOptions(link.integration)).catch(() => undefined)
-        : undefined
-      return curlFromStub(stub, endpoints?.find((e) => e.key === link?.endpoint), publicUrl)
-    })()
-    void copyCurl(command, t)
-  }
+  const onCopyCurl = () => void copyCurl(publicUrl === undefined ? undefined : curlFromStub(stub, undefined, publicUrl), t)
 
   const onDelete = () => {
     const version = mockVersion(stub)

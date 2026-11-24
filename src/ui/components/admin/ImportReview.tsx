@@ -32,7 +32,7 @@ const OUTCOME_STYLE: Record<ImportItem['outcome'], string> = {
   created: 'bg-match/10 text-match',
   updated: 'bg-hazard/10 text-hazard-fg',
   unchanged: 'bg-surface-2 text-muted-foreground',
-  skipped: 'bg-mismatch/10 text-mismatch',
+  skipped: 'bg-mismatch/10 text-mismatch-fg',
 }
 
 /**

@@ -233,7 +233,7 @@ describe('audit page: sentences and filters', () => {
     { at, actor: 'sara', action: 'mock.update', target: 'm-1', subject: { kind: 'mock', name: 'Refund ok' } },
     { at, actor: 'sara', action: 'mock.delete', target: 'm-2', subject: { kind: 'mock', name: null } },
     { at, actor: 'sara', action: 'mock.update', target: 'm-3', subject: { kind: 'mock', name: null } },
-    { at, actor: 'omar', action: 'catalog.integration.upsert', target: 'pay', subject: { kind: 'integration', name: 'Payments' } },
+    { at, actor: 'omar', action: 'catalog.integration.upsert', target: 'pay', subject: { kind: 'integration', name: null } },
     { at, actor: 'omar', action: 'scenario.set-state', target: 'checkout', details: { state: 'paid' } },
     { at, actor: 'system', action: 'sync', details: { stubs: 12 } },
   ]
@@ -247,7 +247,8 @@ describe('audit page: sentences and filters', () => {
     expect(within(table).getAllByText((_, el) => el?.tagName === 'P' && el.textContent === 'sara deleted a mock')).toHaveLength(1)
     // Edited, then deleted later: the name went with it.
     expect(within(table).getByText('deleted mock')).toBeTruthy()
-    expect(within(table).getByRole('link', { name: 'Payments' }).getAttribute('href')).toBe('/integrations/pay')
+    // A retired integration's old entry is named by its key, with nothing to link to.
+    expect(within(table).queryByRole('link', { name: 'pay' })).toBeNull()
     expect(within(table).getByRole('link', { name: 'checkout' }).getAttribute('href')).toBe('/scenarios?scenario=checkout')
     expect(within(table).getAllByText((_, el) => el?.tagName === 'P' && el.textContent === 'system synced 12 mocks to WireMock')).toHaveLength(1)
     // Details as key: value.
@@ -287,7 +288,7 @@ describe('audit page: sentences and filters', () => {
 })
 
 describe('import page', () => {
-  const report: ImportReport = { integrations: 1, endpoints: 2, created: 3, updated: 1, unchanged: 4, skipped: [{ id: 'bad-1', reason: 'invalid stub' }], pruned: 2, ignoredOidcIdentities: 1 }
+  const report: ImportReport = { created: 3, updated: 1, unchanged: 4, skipped: [{ id: 'bad-1', reason: 'invalid stub' }], pruned: 2, ignoredOidcIdentities: 1 }
   function mockImport() {
     const calls: Call[] = []
     server.use(
@@ -317,7 +318,7 @@ describe('import page', () => {
     expect(within(list).getByText(/big\.json is 10\.0 MB\. The limit is 10 MB\./)).toBeTruthy()
     expect(within(list).getByText(/bad\.json is not valid JSON/)).toBeTruthy()
     expect(within(list).getByText(/odd\.json: unrecognised bundle shape/)).toBeTruthy()
-    expect(within(list).getByText('1 integration · 2 endpoints · 3 mocks')).toBeTruthy()
+    expect(within(list).getByText('3 mocks')).toBeTruthy()
     expect(screen.getByText('Remove the files marked with an error (or fix them and choose again) to import the rest.')).toBeTruthy()
     expect((screen.getByRole('button', { name: IMPORT }) as HTMLButtonElement).disabled).toBe(true)
     for (const name of ['notes.txt', 'big.json', 'bad.json', 'odd.json']) await ue.click(screen.getByRole('button', { name: `Remove ${name}` }))
@@ -331,8 +332,6 @@ describe('import page', () => {
     const ue = userEvent.setup({ applyAccept: false })
     await ue.upload(screen.getByLabelText('Choose files'), file(bundle))
     const summary = await screen.findByRole('region', { name: /In bundle\.json/ })
-    expect(within(summary).getByText('Integrations').nextSibling?.textContent).toBe('1')
-    expect(within(summary).getByText('Endpoints').nextSibling?.textContent).toBe('2')
     expect(within(summary).getByText('Mocks').nextSibling?.textContent).toBe('3')
     expect(calls).toHaveLength(0)
     await ue.click(screen.getByRole('button', { name: IMPORT }))

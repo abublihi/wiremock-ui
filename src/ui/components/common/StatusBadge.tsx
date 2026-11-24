@@ -4,7 +4,7 @@ function statusClass(status: number): string {
   if (status >= 200 && status < 300) return 'bg-signal/10 text-signal-fg border-signal/30'
   if (status >= 300 && status < 400) return 'bg-blue-500/15 text-blue-700 border-blue-500/30 dark:text-blue-400'
   if (status >= 400 && status < 500) return 'bg-hazard/15 text-hazard-fg border-hazard/35'
-  if (status >= 500 && status < 600) return 'bg-mismatch/10 text-mismatch border-mismatch/30'
+  if (status >= 500 && status < 600) return 'bg-mismatch/10 text-mismatch-fg border-mismatch/30'
   return 'bg-muted text-muted-foreground border-border'
 }
 

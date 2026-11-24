@@ -1,9 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import { createCatalogMock } from '../../../src/server/http/handlers/catalog'
 import { createMock, deleteMock, listMocks, updateMock } from '../../../src/server/http/handlers/mocks'
 import { listScenarios, resetScenarios } from '../../../src/server/http/handlers/scenarios'
 import type { StubMapping } from '../../../src/server/wiremock/types'
-import type { Endpoint, Integration } from '../../../src/server/catalog/types'
 import {
   type BuilderDraft,
   editChanges,
@@ -24,28 +22,9 @@ let env: Awaited<ReturnType<typeof startTestRuntime>>
 let admin: { cookie: string; csrf: string }
 const as = () => ({ Cookie: admin.cookie, 'X-CSRF-Token': admin.csrf })
 
-let integration: Integration
-let endpoint: Endpoint
-
 beforeAll(async () => {
   env = await startTestRuntime()
   admin = await login(env.rt, 'ui-admin', 'ui-admin-pass')
-  integration = await env.rt.catalog.upsertIntegration({ key: 'shop', name: 'Shop', prefix: '/shop' }, 'ui-admin')
-  endpoint = await env.rt.catalog.upsertEndpoint(
-    {
-      integration: 'shop',
-      key: 'order-status',
-      name: 'Order status',
-      method: 'GET',
-      path: '/orders/status',
-      pathType: 'exact',
-      lookup: { location: 'query', expression: 'id' },
-      contentType: 'json',
-      exampleResponses: {},
-      allowedStatuses: [],
-    },
-    'ui-admin',
-  )
 }, 120_000)
 afterAll(async () => {
   await env?.stop()
@@ -55,14 +34,7 @@ afterAll(async () => {
 async function save(draft: BuilderDraft): Promise<number[]> {
   const statuses: number[] = []
   for (const create of toCreates(draft)) {
-    const res =
-      create.kind === 'catalog'
-        ? await createCatalogMock(
-            env.rt,
-            req(`/api/integrations/${create.args.integration}/endpoints/${create.args.endpoint}/mocks`, 'POST', create.args.input, as()),
-            { key: create.args.integration, endpoint: create.args.endpoint },
-          )
-        : await createMock(env.rt, req('/api/mocks', 'POST', create.stub, as()))
+    const res = await createMock(env.rt, req('/api/mocks', 'POST', create.stub, as()))
     statuses.push(res.status)
   }
   return statuses
@@ -73,10 +45,10 @@ const call = async (path: string) => {
   return { status: res.status, body: await res.text() }
 }
 
-test('a catalog request: call 1 gets step 1, call 2 step 2, and the last step stays', async () => {
+test('a request with a query: call 1 gets step 1, call 2 step 2, and the last step stays', async () => {
   const draft: BuilderDraft = {
     name: 'order-status',
-    request: { kind: 'catalog', integration, endpoint, isDefault: false, keyValue: '42' },
+    request: { kind: 'free', method: 'GET', url: '/shop/orders/status?id=42' },
     steps: [
       newStep('a', { body: '{"status":"pending"}' }),
       newStep('b', { state: 'approved', body: '{"status":"approved"}' }),
@@ -116,7 +88,7 @@ test('method and URL: statuses, headers and a move back to step 1 behave as the 
 })
 
 test('a step added after the last one: the old last step answers first, then moves the scenario on to the new step', async () => {
-  const request = { kind: 'catalog' as const, integration, endpoint, isDefault: false, keyValue: '77' }
+  const request = { kind: 'free' as const, method: 'GET', url: '/shop/orders/status?id=77' }
   const draft: BuilderDraft = {
     name: 'refund',
     request,
@@ -124,15 +96,14 @@ test('a step added after the last one: the old last step answers first, then mov
   }
   expect(await save(draft)).toEqual([201, 201])
 
-  // "Add a mock to this scenario": a new state after the last one (approved), saved through the catalog create path.
+  // "Add a mock to this scenario": a new state after the last one (approved), saved through the normal create.
   const listed = (await env.rt.scenarios.list()).find((s) => s.name === 'refund')!
   const after = listed.possibleStates.at(-1)!
   const next = nextStateName(listed.possibleStates)
   expect([after, next]).toEqual(['approved', 'step-3'])
-  const res = await createCatalogMock(
+  const res = await createMock(
     env.rt,
-    req('/api/integrations/shop/endpoints/order-status/mocks', 'POST', { keyValue: '77', status: 200, body: '{"status":"paid out"}', scenario: { name: 'refund', requiredState: next } }, as()),
-    { key: 'shop', endpoint: 'order-status' },
+    req('/api/mocks', 'POST', { request: { method: 'GET', url: '/shop/orders/status?id=77' }, response: { status: 200, body: '{"status":"paid out"}' }, scenarioName: 'refund', requiredScenarioState: next }, as()),
   )
   expect(res.status).toBe(201)
   const added = (await res.json()) as StubMapping
@@ -175,7 +146,7 @@ async function editScenario(name: string, edit: (draft: BuilderDraft) => Builder
 test('editing a scenario as one unit: WireMock answers as edited (changed body, added step, rename, removed step)', async () => {
   const draft: BuilderDraft = {
     name: 'shipment',
-    request: { kind: 'catalog', integration, endpoint, isDefault: false, keyValue: '55' },
+    request: { kind: 'free', method: 'GET', url: '/shop/orders/status?id=55' },
     steps: [newStep('a', { body: '{"status":"packed"}' }), newStep('b', { state: 'transit', body: '{"status":"moving"}' })],
   }
   expect(await save(draft)).toEqual([201, 201])
@@ -200,9 +171,9 @@ test('editing a scenario as one unit: WireMock answers as edited (changed body, 
   const scenarios = await env.rt.scenarios.list()
   expect(scenarios.find((s) => s.name === 'shipment')).toBeUndefined()
   expect(scenarios.find((s) => s.name === 'shipment-v2')!.possibleStates).toEqual(['Started', 'transit', 'delivered'])
-  // The new step kept the catalog link of the step before it.
+  // The new step matches the same request as the step before it.
   const mocks = (await (await listMocks(env.rt, req('/api/mocks?scenario=shipment-v2', 'GET', undefined, as()))).json()) as StubMapping[]
-  expect(mocks.map((m) => m.metadata?.wiremockUi?.endpoint)).toEqual(['order-status', 'order-status', 'order-status'])
+  expect(new Set(mocks.map((m) => JSON.stringify(m.request))).size).toBe(1)
 
   // Step 2 removed: step 1 now moves straight to delivered (1 update + 1 delete).
   const transit = (await editScenario('shipment-v2', (d) => ({ ...d, steps: removeStep(d.steps, d.steps[1].id) })))

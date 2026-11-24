@@ -4,7 +4,6 @@ import { ValidationError } from '../errors'
 import { assertBase64Body, assertHttpUrl, assertWebhook } from '../mocks/power-fields'
 import { trimTrailingSlashes } from '../url'
 import type { MockInput } from '../mocks/service'
-import type { Endpoint, Integration } from './types'
 
 const FAULTS = ['EMPTY_RESPONSE', 'MALFORMED_RESPONSE_CHUNK', 'RANDOM_DATA_THEN_CLOSE', 'CONNECTION_RESET_BY_PEER'] as const
 
@@ -101,38 +100,8 @@ export const simpleMockSchema = z.strictObject(
 
 export type SimpleMockInput = z.infer<typeof simpleMockSchema>
 
-/** The Content-Type the Simple form writes for each endpoint content type. */
-export const MIME: Record<Endpoint['contentType'], string> = {
-  json: 'application/json',
-  xml: 'application/xml',
-  text: 'text/plain; charset=utf-8',
-  html: 'text/html; charset=utf-8',
-}
-
 /** A binary body whose type is not known. */
 export const BINARY_MIME = 'application/octet-stream'
-
-export const escapeRegex = (s: string) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')
-
-function requestFor(integration: Integration, endpoint: Endpoint, keyValue: string | undefined): Record<string, unknown> {
-  const root = integration.prefix === '/' ? '' : integration.prefix
-  const request: Record<string, unknown> = { method: endpoint.method }
-  if (endpoint.pathType === 'exact') request.urlPath = root + endpoint.path
-  else if (endpoint.pathType === 'template') request.urlPathTemplate = root + endpoint.path
-  else request.urlPathPattern = escapeRegex(root) + endpoint.path
-
-  if (keyValue !== undefined && endpoint.lookup) {
-    const { location, expression } = endpoint.lookup
-    const match = { equalTo: keyValue }
-    if (location === 'jsonPath') request.bodyPatterns = [{ matchesJsonPath: { expression, ...match } }]
-    else if (location === 'xPath') request.bodyPatterns = [{ matchesXPath: { expression, ...match } }]
-    else if (location === 'query') request.queryParameters = { [expression]: match }
-    else if (location === 'path') request.pathParameters = { [expression]: match }
-    else if (location === 'header') request.headers = { [expression]: match }
-    else request.formParameters = { [expression]: match }
-  }
-  return request
-}
 
 /** A proxied mock's response: WireMock forwards, so there is no status, header or body of ours. */
 function proxyResponse(proxy: NonNullable<SimpleMockInput['proxy']>): Record<string, unknown> {
@@ -179,71 +148,6 @@ function scenarioFields(scenario: NonNullable<SimpleMockInput['scenario']>): Sce
     scenarioName: name,
     requiredScenarioState: scenario.requiredState?.trim() || SCENARIO_STARTED,
     ...(newState ? { newScenarioState: newState } : {}),
-  }
-}
-
-/** A status with the endpoint's content type (or the file's, for a binary body), extra headers and an optional body. */
-function mockResponse(endpoint: Endpoint, input: SimpleMockInput): Record<string, unknown> {
-  const response: Record<string, unknown> = { status: input.status }
-  if (input.base64Body !== undefined) {
-    if (input.body) throw new ValidationError('body and base64Body cannot be combined')
-    assertBase64Body(input.base64Body, 'base64Body')
-  }
-  const headers: Record<string, string> = { 'Content-Type': input.base64Body !== undefined ? BINARY_MIME : MIME[endpoint.contentType] }
-  if (Object.keys(input.headers ?? {}).some((h) => h.toLowerCase() === 'content-type')) delete headers['Content-Type']
-  response.headers = { ...headers, ...input.headers }
-  if (input.base64Body !== undefined) response.base64Body = input.base64Body
-  else if (input.body) {
-    if (endpoint.contentType === 'json') {
-      try {
-        response.jsonBody = JSON.parse(input.body)
-      } catch {
-        throw new ValidationError('body is not valid JSON')
-      }
-    } else response.body = input.body
-  }
-  return response
-}
-
-function responseFor(endpoint: Endpoint, input: SimpleMockInput): Record<string, unknown> {
-  // A proxied mock answers with the real service's status, headers and body; a fault sends none.
-  const response = input.proxy ? proxyResponse(input.proxy) : input.fault ? { fault: input.fault } : mockResponse(endpoint, input)
-  if (input.delayMs !== undefined) response.fixedDelayMilliseconds = input.delayMs
-  return response
-}
-
-/** Turns a catalog endpoint plus a simple form into a WireMock stub definition. */
-export function buildStub(
-  integration: Integration,
-  endpoint: Endpoint,
-  input: SimpleMockInput,
-): MockInput & { serveEventListeners?: WebhookListener[] } & Partial<ScenarioFields> {
-  const isDefault = input.isDefault === true
-  const keyValue = isDefault ? undefined : input.keyValue?.trim()
-  const name = input.name?.trim()
-  if (!isDefault) {
-    if (!endpoint.lookup) throw new ValidationError('this endpoint has no lookup; only a default mock can be created')
-    if (!keyValue) throw new ValidationError('keyValue is required')
-  }
-  if (name === '') throw new ValidationError('name must not be empty')
-  if (input.proxy && input.fault) {
-    throw new ValidationError("proxy and fault cannot be combined: a proxied mock answers with the real service's response")
-  }
-  // A fault or proxied mock sends no status of ours, so neither the status nor the allowed list applies to it.
-  if (!input.fault && !input.proxy) {
-    if (input.status === undefined) throw new ValidationError('status is required')
-    if (endpoint.allowedStatuses.length > 0 && !endpoint.allowedStatuses.includes(input.status)) {
-      throw new ValidationError(`status ${input.status} is not allowed for this endpoint`)
-    }
-  }
-  return {
-    name: name ?? `${endpoint.name} — ${isDefault ? 'default' : keyValue}`,
-    priority: isDefault ? 10 : 5,
-    request: requestFor(integration, endpoint, keyValue),
-    response: responseFor(endpoint, input),
-    ...(input.webhook ? { serveEventListeners: [webhookListener(input.webhook)] } : {}),
-    ...(input.scenario ? scenarioFields(input.scenario) : {}),
-    metadata: { wiremockUi: { integration: integration.key, endpoint: endpoint.key, ...tagsFor(input.tags) } },
   }
 }
 

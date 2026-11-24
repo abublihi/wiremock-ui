@@ -7,7 +7,6 @@ import { logger } from '../../../src/server/logger'
 import { bootRuntime, type Runtime } from '../../../src/server/runtime'
 import { createStores } from '../../../src/server/store'
 import { MARKER_ID } from '../../../src/server/sync/marker'
-import { CatalogService } from '../../../src/server/catalog/service'
 import { adoptMissing, markAdoptionIfDue } from '../../../src/server/sync/adopt'
 import { ADOPTION_PENDING, Reconciler, SYNC_LOCK } from '../../../src/server/sync/reconciler'
 import type { Stores } from '../../../src/server/store'
@@ -88,14 +87,10 @@ describe.each(drivers)('adopting existing WireMock stubs (%s)', (_name, setup) =
   })
 
   test('an empty store adopts the stubs WireMock already has instead of deleting them', async () => {
-    // A catalog entry from before (the store has no mocks yet) lets adoption guess the integration.
-    const pre = createStores(loadConfig(env))
-    await pre.catalog.putIntegration({ key: 'pay', name: 'Payments', prefix: '/pay', updatedAt: '2026-01-01T00:00:00.000Z', updatedBy: 'x' })
-    await pre.close()
-
     await client.importStubs(
       [
-        existing(1, '/pay/charges'),
+        // A stub an older UI linked to an integration: the start-up migration turns the link into a tag.
+        existing(1, '/pay/charges', { metadata: { wiremockUi: { integration: 'pay' } as never } }),
         // A stub a store-backed UI made earlier keeps the owner it names.
         existing(2, '/orders/1', { persistent: true, metadata: { wiremockUi: { owner: 'sara' } as never } }),
         existing(3, '/hello', { metadata: { team: 'qa' } }),
@@ -108,10 +103,11 @@ describe.each(drivers)('adopting existing WireMock stubs (%s)', (_name, setup) =
     const adopted = await rt.store.listAll()
     expect(adopted.map((s) => s.id).sort()).toEqual([uid(1), uid(2), uid(3)])
     for (const stub of adopted) {
-      expect(stub.metadata?.wiremockUi).toMatchObject({ owner: stub.id === uid(2) ? 'sara' : 'wiremock', source: 'adopt', version: 1, updatedBy: 'system' })
+      expect(stub.metadata?.wiremockUi).toMatchObject({ owner: stub.id === uid(2) ? 'sara' : 'wiremock', source: 'adopt', version: stub.id === uid(1) ? 2 : 1, updatedBy: 'system' })
     }
-    expect((await rt.store.get(uid(1)))?.metadata?.wiremockUi?.integration).toBe('pay')
-    expect((await rt.store.get(uid(2)))?.metadata?.wiremockUi?.integration).toBeUndefined()
+    expect((await rt.store.get(uid(1)))?.metadata?.wiremockUi).toMatchObject({ tags: ['pay'] })
+    expect((await rt.store.get(uid(1)))?.metadata?.wiremockUi?.integration).toBeUndefined()
+    expect((await rt.store.get(uid(2)))?.metadata?.wiremockUi?.tags).toBeUndefined()
     expect((await rt.store.get(uid(3)))?.metadata).toMatchObject({ team: 'qa' })
 
     // The first full sync ran and kept them: still served, plus the marker.
@@ -215,8 +211,7 @@ test('adoption takes the sync lock: of two concurrent adoptions one adopts, the 
   try {
     await rig.client.importStubs([existing(21, '/a'), existing(22, '/b')], { deleteAllNotInImport: false })
     const store = stores.mocks
-    const catalog = new CatalogService({ catalog: stores.catalog, audit: stores.audit, mocks: store })
-    const deps = { wiremock: rig.client, store, catalog, audit: stores.audit }
+    const deps = { wiremock: rig.client, store, audit: stores.audit }
     const info = vi.spyOn(logger, 'info')
     expect(await markAdoptionIfDue(rig.client, store)).toBe(true)
     expect(await store.getFlag(ADOPTION_PENDING)).toBe(true)
@@ -304,11 +299,10 @@ test('a full sync retries a pending adoption (one that failed or was left by a d
   try {
     await rig.client.importStubs([existing(51, '/r1'), existing(52, '/r2')], { deleteAllNotInImport: false })
     await stores.mocks.setFlag(ADOPTION_PENDING, true)
-    const catalog = new CatalogService({ catalog: stores.catalog, audit: stores.audit, mocks: stores.mocks })
     let tries = 0
     const adopt = async () => {
       if (++tries === 1) throw new Error('store hiccup')
-      return adoptMissing({ wiremock: rig.client, store: stores.mocks, catalog, audit: stores.audit })
+      return adoptMissing({ wiremock: rig.client, store: stores.mocks, audit: stores.audit })
     }
     const reconciler = new Reconciler({ wiremock: rig.client, store: stores.mocks, intervalMs: 60_000, adopt })
     // The first try fails: the sync still runs and deletes nothing.

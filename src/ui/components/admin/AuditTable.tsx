@@ -146,21 +146,7 @@ function Target({ entry }: { entry: AuditView }) {
         </Link>
       )
     }
-    if (subject.kind === 'integration') {
-      return (
-        <Link to="/integrations/$key" params={{ key: target }} className={LINK}>
-          {subject.name}
-        </Link>
-      )
-    }
-    if (subject.kind === 'endpoint') {
-      const [key, endpoint] = target.split('/')
-      return (
-        <Link to="/integrations/$key/endpoints/$endpoint/edit" params={{ key: key!, endpoint: endpoint! }} className={LINK}>
-          {subject.name}
-        </Link>
-      )
-    }
+    // Retired integrations and endpoints (old entries) are named by their key, without a page to link to.
     return <span className="font-medium">{subject.name}</span>
   }
   if (entry.action === 'scenario.set-state') {

@@ -5,7 +5,6 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { toast } from 'sonner'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import type { Endpoint, Integration } from '@/server/catalog/types'
 import { summaryOf, type Recording } from '@/server/recording/types'
 import { RecordingPage } from '@/routes/_app/recording'
 import { APP_NAV, navFor } from '@/ui/components/shell/AppShell'
@@ -25,11 +24,6 @@ const BASE = 'http://localhost:3000'
 const config = (recordingAllowed = true) => ({ storeDriver: 'sqlite' as const, wiremockPublicUrl: 'http://wiremock.test:8080', recordingAllowed, seedPrune: false })
 const withConfig = (ui: ReactNode, allowed = true) => <ServerConfigProvider config={config(allowed)}>{ui}</ServerConfigProvider>
 
-const shop: Integration = { key: 'shop', name: 'Shop', prefix: '/shop', updatedAt: '', updatedBy: '' }
-const getItem: Endpoint = {
-  integration: 'shop', key: 'get-item', name: 'Get item', method: 'GET', path: '/items/1', pathType: 'exact', contentType: 'json',
-  exampleResponses: {}, allowedStatuses: [], updatedAt: '', updatedBy: '',
-}
 
 const review = (over: Partial<Recording> = {}): Recording => ({
   id: 'rec-1',
@@ -60,11 +54,9 @@ const review = (over: Partial<Recording> = {}): Recording => ({
   ...over,
 })
 
+/** Tags in use (the review rows suggest from them as well). */
 function catalog() {
-  server.use(
-    http.get(`${BASE}/api/integrations`, () => HttpResponse.json([shop])),
-    http.get(`${BASE}/api/integrations/shop/endpoints`, () => HttpResponse.json([getItem])),
-  )
+  server.use(http.get(`${BASE}/api/tags`, () => HttpResponse.json([{ tag: 'shop', count: 2 }])))
 }
 
 describe('nav', () => {
@@ -200,7 +192,7 @@ describe('Record tab', () => {
 })
 
 describe('review list', () => {
-  it('warns about real data, shows each row with its flags, preselects the useful rows and suggests the catalog link', async () => {
+  it('warns about real data, shows each row with its flags, preselects the useful rows and suggests a tag', async () => {
     catalog()
     server.use(http.get(`${BASE}/api/recordings`, () => HttpResponse.json({ recordings: [summaryOf(review())] })),
       http.get(`${BASE}/api/recordings/rec-1`, () => HttpResponse.json(review())), http.get(`${BASE}/api/recordings/status`, () => HttpResponse.json({ status: 'idle' })))
@@ -218,14 +210,13 @@ describe('review list', () => {
     expect(screen.queryByText(/secret-123/)).toBeNull()
     await userEvent.setup().click(screen.getAllByText(/Show recorded answer/)[0])
     expect(screen.getByText(/secret-123/)).toBeTruthy()
+    // Each row suggests the first part of its path as a tag.
     const first = screen.getByText('/shop/items/1').closest('li')!
-    await waitFor(() => expect(within(first).getByRole('combobox', { name: 'Endpoint' }).textContent).toContain('Get item'))
-    expect(within(first).getByRole('combobox', { name: 'Integration' }).textContent).toContain('Shop')
-    const second = screen.getByText('/shop/orders').closest('li')!
-    expect(within(second).getByRole('combobox', { name: 'Endpoint' }).textContent).toContain('New endpoint: POST /orders')
+    expect(within(first).getByText('shop')).toBeTruthy()
+    expect(within(screen.getByText('/hello').closest('li')!).getByText('hello')).toBeTruthy()
   })
 
-  it('accepts the selected rows with their names, links and owner; one mock opens in the editor', async () => {
+  it('accepts the selected rows with their names, tags and owner; one mock opens in the editor', async () => {
     catalog()
     const bodies: unknown[] = []
     server.use(
@@ -243,10 +234,11 @@ describe('review list', () => {
     await ue.click(screen.getByRole('checkbox', { name: 'Select GET /shop/items/1' }))
     const second = screen.getByText('/shop/orders').closest('li')!
     await ue.type(within(second).getByLabelText('Name'), 'Place order')
+    await ue.type(within(second).getByRole('textbox', { name: 'Tags' }), 'Orders{Enter}')
     await ue.click(screen.getByRole('radio', { name: 'Baseline (shared)' }))
     await ue.click(screen.getByRole('button', { name: 'Accept 1 selected' }))
     await waitFor(() => expect(bodies).toHaveLength(1))
-    expect(bodies[0]).toEqual({ owner: 'baseline', items: [{ id: 'i2', name: 'Place order', integration: 'shop', newEndpoint: { key: 'post-orders', name: 'POST /orders' } }] })
+    expect(bodies[0]).toEqual({ owner: 'baseline', items: [{ id: 'i2', name: 'Place order', tags: ['shop', 'orders'] }] })
     await waitFor(() => expect(router.state.location.pathname).toBe('/mocks/m-new'))
   })
 

@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { PlayIcon, TerminalIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { StubMapping } from '@/server/wiremock/types'
 import { apiFetch } from '@/ui/api/client'
-import { endpointsQueryOptions } from '@/ui/api/queries'
 import { MethodBadge } from '@/ui/components/common/MethodBadge'
 import { TestPanel, copyCurl } from '@/ui/components/editor/TestPanel'
 import { Button } from '@/ui/components/ui/button'
@@ -33,16 +31,13 @@ export function scenarioRequests(mocks: { id: string; method?: string; url?: str
  */
 export function ScenarioRequest({ line, stub: given, toolsOnly = false }: { line: ScenarioRequestLine; stub?: StubMapping; toolsOnly?: boolean }) {
   const t = useT()
-  const queryClient = useQueryClient()
   const publicUrl = useWiremockPublicUrl()
   const [trying, setTrying] = useState<StubDraft | null>(null)
   const [busy, setBusy] = useState(false)
 
   const load = async () => {
     const stub = given ?? (await apiFetch<StubMapping>(`/api/mocks/${encodeURIComponent(line.mockId)}`))
-    const link = stub.metadata?.wiremockUi
-    const endpoints = link?.integration && link.endpoint ? await queryClient.fetchQuery(endpointsQueryOptions(link.integration)).catch(() => undefined) : undefined
-    return { stub, endpoint: endpoints?.find((e) => e.key === link?.endpoint) }
+    return { stub, endpoint: undefined }
   }
   // The clipboard write starts during the click (Safari needs that), with the command still being worked out.
   const onCopy = () => {

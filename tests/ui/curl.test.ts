@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { buildStub } from '@/server/catalog/build'
-import type { Endpoint, Integration, KeyLocation } from '@/server/catalog/types'
+import { buildQuickStub } from '@/server/catalog/build'
+import { buildGroupStubs } from '@/server/mocks/groups'
+import type { Endpoint, KeyLocation } from '@/server/catalog/types'
 import type { LoggedEvent, StubMapping } from '@/server/wiremock/types'
 import { buildCurl, curlFromLoggedRequest, curlFromStub, joinUrl, shellQuote } from '@/ui/lib/curl'
 import { draftFromEndpoint, draftFromLoggedRequest, draftFromStub, samplePath } from '@/ui/lib/test-request'
@@ -103,7 +104,6 @@ describe('buildCurl edge cases', () => {
 
 // ── Stub → request ───────────────────────────────────────────────────────────
 
-const integration: Integration = { key: 'nic', name: 'NIC', prefix: '/nic', updatedAt: '', updatedBy: '' }
 const endpoint = (over: Partial<Endpoint> = {}): Endpoint => ({
   integration: 'nic',
   key: 'citizen',
@@ -120,8 +120,13 @@ const endpoint = (over: Partial<Endpoint> = {}): Endpoint => ({
   updatedBy: '',
   ...over,
 })
-const stubFor = (e: Endpoint, keyValue?: string) =>
-  ({ id: 'm-1', ...buildStub(integration, e, keyValue === undefined ? { isDefault: true, status: 200 } : { keyValue, status: 200 }) }) as StubMapping
+/** The stub a mock of this shape has: one response of a mock with several responses (its "any other" one without a value). */
+const stubFor = (e: Endpoint, keyValue?: string): StubMapping => {
+  const request = { method: e.method as 'GET', urlType: (e.pathType === 'exact' ? 'path' : e.pathType) as 'path', url: `/nic${e.path}` }
+  if (!e.lookup) return { id: 'm-1', ...buildQuickStub({ request, status: 200 }) } as StubMapping
+  const stubs = buildGroupStubs({ request, by: e.lookup, responses: [{ value: keyValue ?? 'other', response: { status: 200 } }], fallback: { response: { status: 200 } } }, 'g')
+  return { id: 'm-1', ...(keyValue === undefined ? stubs[1] : stubs[0]) } as StubMapping
+}
 
 describe('draftFromStub — key location', () => {
   it('jsonPath: the catalog example with the key set at the path', () => {
@@ -197,9 +202,9 @@ describe('draftFromStub — path type', () => {
     const e = endpoint({ method: 'GET', path: '/(a|b)/x', pathType: 'regex', lookup: undefined, exampleRequest: undefined })
     const result = draftFromStub(stubFor(e), e)
     expect(result.pathIsPattern).toBe(true)
-    expect(result.draft.path).toBe('\\/nic/(a|b)/x') // the builder escapes the prefix
+    expect(result.draft.path).toBe('/nic/(a|b)/x')
     const cmd = curlFromStub(stubFor(e), e, PUBLIC)
-    expect(cmd.split('\n')[0]).toBe('# edit the path: this mock matches the pattern \\/nic/(a|b)/x')
+    expect(cmd.split('\n')[0]).toBe('# edit the path: this mock matches the pattern /nic/(a|b)/x')
   })
 
   it('url (exact, with query) is split into path and query; ANY becomes GET', () => {

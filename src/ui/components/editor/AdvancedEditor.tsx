@@ -21,8 +21,6 @@ export function AdvancedEditor({
   text,
   onTextChange,
   mock,
-  endpointLabel,
-  jsonEndpoint,
   saving,
   error,
   onSave,
@@ -31,10 +29,6 @@ export function AdvancedEditor({
   onTextChange: (text: string) => void
   /** The saved version this draft started from; undefined for a new mock. */
   mock?: StubMapping
-  /** "Blog API → Get post" when the mock belongs to a catalog endpoint. */
-  endpointLabel?: string
-  /** The mock's endpoint answers JSON: a text file that parses goes in as jsonBody. */
-  jsonEndpoint?: boolean
   saving: boolean
   error: { title: string; message: string } | null
   onSave: (stub: EditableStub) => void
@@ -47,7 +41,7 @@ export function AdvancedEditor({
     // Read the editor's current text, not a stale parse: the file goes into what is on screen.
     const current = parseStubJson(text)
     if (!current.ok) return setFileError(t('editor.bodyFile.fixJson'))
-    onTextChange(JSON.stringify(applyBodyFile(current.value, file, { json: jsonEndpoint }), null, 2))
+    onTextChange(JSON.stringify(applyBodyFile(current.value, file, { json: false }), null, 2))
   }
   const problem = parsed.ok
     ? null
@@ -74,7 +68,7 @@ export function AdvancedEditor({
         </Alert>
       )}
 
-      <ServerFields mock={mock} endpointLabel={endpointLabel} />
+      <ServerFields mock={mock} />
 
       <section className="glow-border flex flex-col gap-3 rounded-md border border-line bg-surface p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -118,12 +112,11 @@ export function AdvancedEditor({
 }
 
 /** id, owner, version and last update: kept by the server, so shown but never edited. */
-function ServerFields({ mock, endpointLabel }: { mock?: StubMapping; endpointLabel?: string }) {
+function ServerFields({ mock }: { mock?: StubMapping }) {
   const t = useT()
   const meta = mock?.metadata?.wiremockUi
   const rows: [string, React.ReactNode][] = [
     [t('editor.field.id'), mock?.id ?? <span className="text-muted-foreground">{t('editor.field.assigned')}</span>],
-    [t('editor.field.endpoint'), endpointLabel ?? <span className="text-muted-foreground">{t('editor.field.none')}</span>],
   ]
   if (meta) {
     rows.push(
