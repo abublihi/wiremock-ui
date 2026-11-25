@@ -184,7 +184,7 @@ export async function retire(previous: Promise<Runtime> | undefined): Promise<vo
   if (!previous) return
   const old = await previous.catch(() => undefined)
   if (!old) return
-  old.reconciler?.stop()
+  await old.reconciler?.stop()
   await old.stores?.close().catch((err: unknown) => logger.warn({ err }, 'closing the previous runtime failed'))
 }
 

@@ -53,6 +53,8 @@ export class Reconciler {
   private readonly adopt?: () => Promise<number>
   private timers: NodeJS.Timeout[] = []
   private busy = false
+  /** The tick running now, so stop() can wait for it. */
+  private running: Promise<void> | null = null
 
   constructor(deps: Deps) {
     this.wiremock = deps.wiremock
@@ -177,13 +179,17 @@ export class Reconciler {
     const guarded = (fn: () => Promise<unknown>) => async () => {
       if (this.busy) return
       this.busy = true
-      try {
-        await fn()
-      } catch (err) {
-        logger.error({ err }, 'reconcile tick failed')
-      } finally {
-        this.busy = false
-      }
+      this.running = (async () => {
+        try {
+          await fn()
+        } catch (err) {
+          logger.error({ err }, 'reconcile tick failed')
+        } finally {
+          this.busy = false
+          this.running = null
+        }
+      })()
+      await this.running
     }
     this.timers.push(
       setInterval(guarded(() => this.check()), this.intervalMs).unref(),
@@ -193,8 +199,10 @@ export class Reconciler {
     await guarded(() => this.fullSync({ audit: true }))()
   }
 
-  stop(): void {
+  /** Stops the timers; resolves once a sync already running has finished (it is not cut short). */
+  stop(): Promise<void> {
     for (const t of this.timers) clearInterval(t)
     this.timers = []
+    return this.running ?? Promise.resolve()
   }
 }

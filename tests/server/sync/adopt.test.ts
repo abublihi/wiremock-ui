@@ -60,7 +60,7 @@ describe.each(drivers)('adopting existing WireMock stubs (%s)', (_name, setup) =
     return rt
   }
   const shutdown = async (rt: Runtime) => {
-    rt.reconciler?.stop()
+    await rt.reconciler?.stop()
     await rt.stores.close()
   }
 
@@ -155,13 +155,13 @@ test('the marker alone is nothing to adopt, and a bodyFileName stub is adopted r
   try {
     // First boot on an empty WireMock leaves only the marker behind; a second boot on a fresh store adopts nothing.
     const first = await bootRuntime(env)
-    first.reconciler?.stop()
+    await first.reconciler?.stop()
     await first.stores.close()
     rmSync(join(dir, 'ui.db'))
     const second = await bootRuntime(env)
     expect(await second.store.listAll()).toEqual([])
     expect((await second.audit.list()).entries.filter((e) => e.action === 'adopt')).toEqual([])
-    second.reconciler?.stop()
+    await second.reconciler?.stop()
     await second.stores.close()
     rmSync(join(dir, 'ui.db'))
 
@@ -169,7 +169,7 @@ test('the marker alone is nothing to adopt, and a bodyFileName stub is adopted r
     const third = await bootRuntime(env)
     expect((await third.store.get(uid(5)))?.response).toEqual({ status: 200, bodyFileName: 'missing.json' })
     expect(await client.getStub(uid(5))).not.toBeNull()
-    third.reconciler?.stop()
+    await third.reconciler?.stop()
     await third.stores.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -266,7 +266,7 @@ test('a boot that stops part-way through adoption leaves it pending: the next bo
       for (const n of [1, 2, 3]) expect(await (await fetch(`${rig.wm.url}/p${n}`)).text()).toBe(`existing-3${n}`)
       expect((await rig.client.listStubIds()).sort()).toEqual([uid(31), uid(32), uid(33), MARKER_ID].sort())
     } finally {
-      rt.reconciler?.stop()
+      await rt.reconciler?.stop()
       await rt.stores.close()
     }
   } finally {

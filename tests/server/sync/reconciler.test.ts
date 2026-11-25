@@ -74,8 +74,9 @@ beforeEach(async () => {
   await wm.restart()
 })
 
-afterEach(() => {
-  while (reconcilers.length) reconcilers.pop()!.stop()
+afterEach(async () => {
+  // Waits for a sync still running: finishing after the next test's WireMock restart, it would write the marker there.
+  await Promise.all(reconcilers.splice(0).map((r) => r.stop()))
 })
 
 test('markerStub has the fixed shape', () => {
@@ -197,7 +198,7 @@ test('start() syncs immediately and restores after restart within 3 intervals', 
   expect(await client.getStub(MARKER_ID)).not.toBeNull()
   await wm.restart()
   expect(await until(async () => (await client.getStub(uuid(3))) !== null, 3000)).toBe(true)
-  rec.stop()
+  await rec.stop()
 })
 
 test('start() survives a failing first sync and recovers on a later tick', async () => {
@@ -214,6 +215,28 @@ test('start() survives a failing first sync and recovers on a later tick', async
   expect(await client.getStub(MARKER_ID)).toBeNull()
   fault = false
   expect(await until(async () => rec.lastError === null && rec.lastSyncAt !== null, 3000)).toBe(true)
+  expect(await client.getStub(MARKER_ID)).not.toBeNull()
+})
+
+test('stop() waits for a sync already running, so it cannot write to WireMock afterwards', async () => {
+  await fill(3)
+  let release!: () => void
+  const gate = new Promise<void>((r) => (release = r))
+  const slow = Object.create(client) as WireMockClient
+  slow.importStubs = async (stubs, o) => {
+    await gate
+    return client.importStubs(stubs, o)
+  }
+  const rec = mk({ wiremock: slow })
+  const starting = rec.start()
+  let stopped = false
+  const stopping = rec.stop().then(() => (stopped = true))
+  await new Promise((r) => setTimeout(r, 200))
+  expect(stopped).toBe(false)
+  release()
+  await stopping
+  await starting
+  // Everything the sync writes is in WireMock by the time stop() resolves.
   expect(await client.getStub(MARKER_ID)).not.toBeNull()
 })
 
