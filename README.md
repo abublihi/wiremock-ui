@@ -72,16 +72,17 @@ Other ways to run it (the one-container image's settings, with Redis, from sourc
 
 | | |
 | --- | --- |
-| ![Mocks](docs/screenshots/mocks-dark.png) **The Mocks list**, filtered by owner, tag or status. | ![New mock](docs/screenshots/quick-mock-dark.png) **New mock**: a method, a URL and the answer. |
-| ![Simple editor](docs/screenshots/editor-dark.png) **Simple mode**: status, body and behaviour. | ![Advanced editor](docs/screenshots/advanced-dark.png) **Advanced mode**: the full stub JSON. |
-| ![Test panel](docs/screenshots/test-panel-dark.png) **Test a mock** and see which mock answered. | ![Proxy and webhook](docs/screenshots/proxy-webhook-dark.png) **Proxy** to a real service and **call back** afterwards. |
-| ![Body from a file](docs/screenshots/body-file-dark.png) **A response body from a file**, binary included. | ![Request log](docs/screenshots/requests-dark.png) **The request log**, live. |
-| ![Near misses](docs/screenshots/near-miss-dark.png) **Why a request matched nothing**, field by field. | ![Scenarios](docs/screenshots/scenarios-dark.png) **Scenarios** with their live state. |
-| ![Scenario builder](docs/screenshots/scenario-builder-dark.png) **The scenario builder**. | ![Edit a scenario](docs/screenshots/scenario-edit-dark.png) **Edit a scenario** as one unit. |
-| ![Recording](docs/screenshots/recording-dark.png) **Record** a real service's answers. | ![Import](docs/screenshots/import-dark.png) **Import** files, folders and zips. |
-| ![Postman import](docs/screenshots/postman-import-dark.png) **Import a Postman collection** with a preview. | ![Export](docs/screenshots/export-dark.png) **Export** a bundle or WireMock mappings. |
-| ![Users](docs/screenshots/users-dark.png) **Users**. | ![Audit](docs/screenshots/audit-dark.png) **Audit log**. |
-| ![Guide](docs/screenshots/guide-dark.png) **The guide**, in the app. | ![Help panel](docs/screenshots/help-panel-dark.png) **How this works** on every page. |
+| ![Mocks](docs/screenshots/mocks-dark.png) **The Mocks list**, filtered by owner, tag or status; a mock with several responses is one row. | ![Several responses](docs/screenshots/several-responses-dark.png) **One mock, several responses**, chosen by a value in the request. |
+| ![New mock](docs/screenshots/quick-mock-dark.png) **New mock**: a method, a URL and the answer. | ![Simple editor](docs/screenshots/editor-dark.png) **Simple mode**: status, body and behaviour. |
+| ![Advanced editor](docs/screenshots/advanced-dark.png) **Advanced mode**: the full stub JSON. | ![Test panel](docs/screenshots/test-panel-dark.png) **Test a mock** and see which mock answered. |
+| ![Proxy and webhook](docs/screenshots/proxy-webhook-dark.png) **Proxy** to a real service and **call back** afterwards. | ![Body from a file](docs/screenshots/body-file-dark.png) **A response body from a file**, binary included. |
+| ![Request log](docs/screenshots/requests-dark.png) **The request log**, live. | ![Near misses](docs/screenshots/near-miss-dark.png) **Why a request matched nothing**, field by field. |
+| ![Scenarios](docs/screenshots/scenarios-dark.png) **Scenarios** with their live state. | ![Scenario builder](docs/screenshots/scenario-builder-dark.png) **The scenario builder**. |
+| ![Edit a scenario](docs/screenshots/scenario-edit-dark.png) **Edit a scenario** as one unit. | ![Recording](docs/screenshots/recording-dark.png) **Record** a real service's answers. |
+| ![Import](docs/screenshots/import-dark.png) **Import** files, folders and zips, with a review that suggests tags. | ![Postman import](docs/screenshots/postman-import-dark.png) **Import a Postman collection** as tagged mocks. |
+| ![Export](docs/screenshots/export-dark.png) **Export** a bundle or WireMock mappings. | ![Users](docs/screenshots/users-dark.png) **Users**. |
+| ![Audit](docs/screenshots/audit-dark.png) **Audit log**. | ![Guide](docs/screenshots/guide-dark.png) **The guide**, in the app. |
+| ![Help panel](docs/screenshots/help-panel-dark.png) **How this works** on every page. |  |
 
 ## Architecture
 

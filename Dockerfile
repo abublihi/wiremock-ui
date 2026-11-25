@@ -59,7 +59,7 @@ WORKDIR /app
 ENV NODE_ENV=production PORT=3000 SQLITE_PATH=/data/wiremock-ui.db
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json server.mjs ./
-# The example integrations and mocks: SEED_PATH=/app/examples/seed.json to try the app with something in it.
+# The example mocks: SEED_PATH=/app/examples/seed.json to try the app with something in it.
 COPY examples ./examples
 COPY --from=build /app/dist ./dist
 # The account command: docker exec -it <container> wiremock-ui create-admin

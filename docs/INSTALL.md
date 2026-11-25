@@ -177,47 +177,50 @@ Data on the volume is kept. From source: `git pull && npm ci --ignore-scripts &&
 ## Performance
 
 Measured with `scripts/load-test.mjs` on an Apple M1 Pro (10 cores, 16 GB; Docker Desktop VM with 3 CPUs and 9 GB),
-Node 26, WireMock 3.13.1 with default JVM settings, on the version before tags replaced integrations. Each run seeds N
-mocks in groups of 100 (mocks keyed by query, path, JSON body and header; URL mocks; one 3-step scenario and two ~45 KB
-JSON bodies per 100 mocks). A `tag=` filter reads every mock, like `q=`.
-API figures are p50 / p95 in ms over 20 calls, one user, no other load.
+Node 26, WireMock 3.13.1 with default JVM settings. Each run seeds N stubs in systems of 100, each system a tag: per
+100, six mocks with several responses (87 stubs, chosen by a query parameter, path, JSON body field or header; two
+with ~45 KB JSON bodies), 10 URL mocks and one 3-step scenario. API figures are p50 / p95 in ms over 20 calls, one
+user, no other load.
 
 | | SQLite 1,000 | SQLite 10,000 | SQLite 20,000 | Redis 10,000 | WireMock-only 1,000 |
 |---|---:|---:|---:|---:|---:|
-| Import the seed (`POST /api/import`) | 1.9 s | 17.6 s | 54.9 s | 43.9 s | 0.3 s ¹ |
-| Cold boot until the first sync | 0.7 s | 4.3 s | 14.0 s | 5.2 s | 0.6 s |
-| WireMock restart until every stub is back | 4.6 s | 9.5 s | 18.7 s | 8.7 s | n/a |
-| `GET /api/mocks?limit=50` (All mocks) | 8 / 8 | 81 / 105 | 149 / 163 | 108 / 117 | 50 / 59 |
-| … with `q=` | 7 / 8 | 74 / 80 | 137 / 145 | 115 / 123 | 35 / 40 |
-| `GET /api/mocks` (no limit) | 10 / 11 | 109 / 119 | 195 / 214 | 143 / 212 | 35 / 39 |
-| `GET /api/scenarios` | 10 / 11 | 92 / 97 | 161 / 294 | 95 / 102 | 36 / 41 |
-| `GET /api/export?format=bundle` | 11 / 12 (1.6 MB) | 111 / 126 (16 MB) | 235 / 268 (32 MB) | 192 / 227 | 36 / 43 |
-| Save a new mock (`POST /api/mocks`) | 3 / 7 | 4 / 5 | 5 / 8 | 7 / 8 | 4 / 6 |
-| Save an edit (`PUT /api/mocks/:id`) | 3 / 3 | 2 / 3 | 2 / 3 | 5 / 10 | 4 / 6 |
-| `GET /api/requests?limit=500` | 61 / 106 | 65 / 89 | 55 / 139 | 42 / 67 | 42 / 62 |
-| WireMock: matched request | 2 / 5 | 7 / 11 | 12 / 20 | 7 / 12 | 2 / 4 |
-| WireMock: unmatched request | 7 / 12 | 49 / 79 | 94 / 141 | 48 / 67 | 7 / 10 |
-| UI process RSS (end of run / peak) | 259 / 273 MB | 291 / 626 MB | 262 / 1,009 MB | 214 / 826 MB | 293 / 293 MB |
-| WireMock container memory | 0.9 GB | 2.3 GB | 2.4 GB | 2.4 GB | 0.9 GB |
+| Import the seed (`POST /api/import`) | 2.2 s | 19.8 s | 61.5 s | 49.5 s | 0.3 s ¹ |
+| Cold boot until the first sync | 0.7 s | 5.5 s | 18.3 s | 5.9 s | 0.8 s |
+| WireMock restart until every stub is back | 4.8 s | 9.0 s | 17.5 s | 8.6 s | n/a |
+| `GET /api/mocks?limit=50` (All mocks) | 11 / 15 | 85 / 99 | 174 / 199 | 115 / 134 | 59 / 80 |
+| … with `q=` | 8 / 9 | 78 / 86 | 153 / 167 | 121 / 137 | 35 / 41 |
+| … with `tag=` | 9 / 10 | 83 / 110 | 149 / 180 | 115 / 167 | 33 / 41 |
+| `GET /api/mocks` (no limit) | 11 / 14 | 115 / 126 | 232 / 319 | 147 / 160 | 35 / 41 |
+| `GET /api/scenarios` | 12 / 19 | 97 / 117 | 173 / 189 | 94 / 108 | 36 / 50 |
+| `GET /api/tags` | 7 / 8 | 77 / 93 | 153 / 221 | 105 / 113 | 33 / 42 |
+| Open a mock with several responses (`GET /api/mock-groups/:id`, 16 responses) | 7 / 8 | 75 / 87 | 150 / 204 | 107 / 115 | 31 / 37 |
+| `GET /api/export?format=bundle` | 10 / 12 (1.7 MB) | 112 / 186 (17 MB) | 209 / 237 (33 MB) | 140 / 150 | 33 / 37 |
+| Save a new mock (`POST /api/mocks`) | 3 / 6 | 5 / 7 | 7 / 9 | 10 / 12 | 3 / 5 |
+| Save an edit (`PUT /api/mocks/:id`) | 3 / 6 | 2 / 4 | 2 / 3 | 8 / 10 | 4 / 4 |
+| `GET /api/requests?limit=500` | 70 / 224 | 48 / 102 | 66 / 111 | 86 / 147 | 47 / 139 |
+| WireMock: matched request | 3 / 7 | 8 / 14 | 13 / 26 | 7 / 15 | 2 / 6 |
+| WireMock: unmatched request | 8 / 18 | 51 / 76 | 107 / 201 | 47 / 67 | 8 / 14 |
+| UI process RSS (end of run / peak) | 150 / 241 MB | 208 / 685 MB | 231 / 867 MB | 261 / 732 MB | 241 / 274 MB |
+| WireMock container memory | 0.8 GB | 2.3 GB | 1.9 GB | 2.3 GB | 0.9 GB |
 
 ¹ WireMock-only mode: the mocks were loaded straight into WireMock.
 
-In the browser at 20,000 mocks (SQLite): *My mocks* opens in ~0.3 s; *All mocks* in ~0.45 s and each page change takes
+In the browser at 20,000 mocks (SQLite; measured on the version before tags, the pages read the same data): *My mocks* opens in ~0.3 s; *All mocks* in ~0.45 s and each page change takes
 ~0.5 s; a search shows its result ~0.5 s after typing stops; Scenarios in ~0.7 s; the request log (500 rows) in ~0.7 s.
 
 What this means:
 
 - **Up to ~10,000 mocks** everything answers well under 300 ms. *My mocks* stays at a
   few milliseconds at any size.
-- **Past ~10,000**, the views that read every mock (*All mocks*, search, a tag filter, Scenarios, export, scripts calling
-  `GET /api/mocks` without `limit`) cost ~7–10 ms per 1,000 mocks and run one at a time on the server's single thread,
+- **Past ~10,000**, the views that read every mock (*All mocks*, search, a tag filter, the tag list, opening a mock with
+  several responses, Scenarios, export, scripts calling `GET /api/mocks` without `limit`) cost ~7–10 ms per 1,000 mocks and run one at a time on the server's single thread,
   so concurrent users wait for each other: five people opening *All mocks* at once at 20,000 mocks wait up to ~0.9 s.
   The Scenarios page asks again every 2 s while it is open.
 - **Imports, boots and re-syncs grow faster than linearly**: each imported mock is a separate WireMock call, and the
   boot sync re-sends every stub. Expect about a minute to import 20,000 mocks (two with Redis) and ~15–20 s before a
   restarted UI or WireMock is serving every mock again.
 - **WireMock itself** slows with the number of stubs: it compares a request with every stub, so a matched request
-  takes ~12 ms and an unmatched one ~95 ms at 20,000. Give its JVM 2–3 GB of memory for 10,000 mocks or more.
+  takes ~13 ms and an unmatched one ~110 ms at 20,000. Give its JVM 2–3 GB of memory for 10,000 mocks or more.
 
 Run it yourself (needs Docker; uses ports 3400–3402 and its own containers, removed at the end):
 

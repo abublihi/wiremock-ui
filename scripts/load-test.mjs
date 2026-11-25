@@ -325,8 +325,8 @@ function largeBody(key, i) {
   }
 }
 
-/** Builds the request matching a keyed catalog mock (for traffic) and the stub's request pattern. */
-function catalogRequest(prefix, ep, key) {
+/** Builds the request matching one response of a mock with several responses (for traffic) and the stub's request pattern. */
+function keyedRequest(prefix, ep, key) {
   const traffic = { method: ep.method, path: `${prefix}${ep.path}`, query: '', headers: {}, body: undefined }
   const request = { method: ep.method }
   const match = { equalTo: key }
@@ -353,28 +353,29 @@ function catalogRequest(prefix, ep, key) {
 }
 
 /**
- * N mocks over ceil(N/100) integrations. Per 100: one 3-step scenario, 2 large JSON bodies (~45 KB), 10 quick URL
- * mocks, 85 keyed catalog mocks over 6 endpoints (query, path, jsonPath and header keys). 1 in 20 is owned by the
- * admin account, the rest are baseline (as an import makes them).
+ * N mocks (stubs) in ceil(N/100) systems, each system a tag. Per 100: one 3-step scenario, 10 URL mocks, and 87
+ * stubs that are the responses of 6 mocks with several responses (one per entry in ENDPOINTS, chosen by a query,
+ * path, JSONPath or header value), two of them with large JSON bodies (~45 KB). 1 in 20 is owned by the admin
+ * account, the rest are baseline (as an import makes them).
  */
 function generate(n) {
-  const integrations = []
-  const catalog = []
   const mocks = []
+  const tags = new Set()
+  const groups = new Set()
   const traffic = []
   const count = Math.ceil(n / 100)
   for (let i = 1; i <= count; i++) {
     const key = `sys-${pad(i)}`
     const prefix = `/${key}`
-    integrations.push({ key, name: `System ${pad(i)}`, prefix, description: `Load-test integration ${i}` })
-    for (const ep of ENDPOINTS) {
-      catalog.push({
-        integration: key,
-        ...ep,
-        contentType: 'json',
-        exampleResponses: { 200: JSON.stringify({ id: 'example', status: 'ACTIVE' }), 404: '{"error":"not found"}' },
-        allowedStatuses: [200, 404, 500],
-      })
+    tags.add(key)
+    const order = new Map() // group id → next response's place
+    /** metadata.wiremockUi for a response of this system's `ep` mock answering `value`. */
+    const grouped = (ep, value, owner) => {
+      const id = `${key}-${ep.key}`
+      groups.add(id)
+      const o = order.get(id) ?? 0
+      order.set(id, o + 1)
+      return { tags: [key], group: { id, by: ep.lookup, value, order: o }, ...owner }
     }
     const here = Math.min(100, n - (i - 1) * 100)
     for (let m = 0; m < here; m++) {
@@ -391,15 +392,15 @@ function generate(n) {
           scenarioName: `${key}-checkout`,
           requiredScenarioState: states[m],
           ...(m < 2 ? { newScenarioState: states[m + 1] } : {}),
-          metadata: { wiremockUi: { integration: key, ...owner } },
+          metadata: { wiremockUi: { tags: [key], ...owner } },
         })
         continue
       }
       if (m < 5) {
         const ep = ENDPOINTS[0]
         const k = `big-${i}-${m}`
-        const { request, traffic: t } = catalogRequest(prefix, ep, k)
-        mocks.push({ id, name: `${key} large catalog ${m}`, request, response: { status: 200, jsonBody: largeBody(k, i), headers: json }, metadata: { wiremockUi: { integration: key, endpoint: ep.key, ...owner } } })
+        const { request, traffic: t } = keyedRequest(prefix, ep, k)
+        mocks.push({ id, name: `${key} ${ep.name.toLowerCase()}`, request, response: { status: 200, jsonBody: largeBody(k, i), headers: json }, metadata: { wiremockUi: grouped(ep, k, owner) } })
         traffic.push(t)
         continue
       }
@@ -410,7 +411,7 @@ function generate(n) {
           name: `${key} page ${m}`,
           request: { method: 'GET', url: `${path}?lang=en` },
           response: { status: 200, body: `<html><body>Page ${m} of ${key}</body></html>`, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
-          metadata: { wiremockUi: { integration: key, ...owner } },
+          metadata: { wiremockUi: { tags: [key], ...owner } },
         })
         traffic.push({ method: 'GET', path, query: '?lang=en', headers: {}, body: undefined })
         continue
@@ -418,30 +419,30 @@ function generate(n) {
       const ep = ENDPOINTS[m % ENDPOINTS.length]
       const k = `${ep.key}-${i}-${m}`
       const status = m % 10 === 9 ? 404 : 200
-      const { request, traffic: t } = catalogRequest(prefix, ep, k)
+      const { request, traffic: t } = keyedRequest(prefix, ep, k)
       mocks.push({
         id,
-        name: `${key} ${ep.name.toLowerCase()} ${k}`,
+        name: `${key} ${ep.name.toLowerCase()}`,
         request,
         response: { status, jsonBody: status === 404 ? { error: 'not found', id: k } : smallBody(k, i, m), headers: json },
-        metadata: { wiremockUi: { integration: key, endpoint: ep.key, ...owner } },
+        metadata: { wiremockUi: grouped(ep, k, owner) },
       })
       traffic.push(t)
     }
   }
-  return { integrations, catalog, mocks, traffic }
+  return { tags: [...tags], groups: [...groups], mocks, traffic }
 }
 
-/** Bundles of at most MAX_IMPORT_BYTES; the first carries the catalog. */
+/** Bundles of at most MAX_IMPORT_BYTES. */
 function chunkBundles(data) {
   const bundles = []
-  let current = { integrations: data.integrations, catalog: data.catalog, mocks: [], oidcIdentities: [] }
-  let size = Buffer.byteLength(JSON.stringify(current))
+  let current = { mocks: [] }
+  let size = 100
   for (const m of data.mocks) {
     const s = Buffer.byteLength(JSON.stringify(m)) + 1
     if (size + s > MAX_IMPORT_BYTES && current.mocks.length > 0) {
       bundles.push(current)
-      current = { integrations: [], catalog: [], mocks: [], oidcIdentities: [] }
+      current = { mocks: [] }
       size = 100
     }
     current.mocks.push(m)
@@ -507,11 +508,10 @@ async function runOne(driver, size, { serve = false } = {}) {
   try {
     // 1. Seed.
     const data = generate(size)
-    log(`seeding ${data.mocks.length} mocks over ${data.integrations.length} integrations`)
+    log(`seeding ${data.mocks.length} stubs: ${data.groups.length} mocks with several responses, ${data.tags.length} tags`)
     const t0 = performance.now()
     if (driver === 'none') {
-      // WireMock-only mode: the catalog through the API (kept in memory), the mocks straight into WireMock.
-      await api('POST', '/api/import', { integrations: data.integrations, catalog: data.catalog, mocks: [], oidcIdentities: [] })
+      // WireMock-only mode: the stubs (tags and groups in their metadata) straight into WireMock.
       for (let i = 0; i < data.mocks.length; i += 1000) {
         const res = await wmFetch('/__admin/mappings/import', {
           method: 'POST',
@@ -550,8 +550,6 @@ async function runOne(driver, size, { serve = false } = {}) {
     result.coldBootS = (performance.now() - tBoot) / 1000
     await login()
     log(`cold boot ${result.coldBootS.toFixed(1)} s`)
-    // WireMock-only mode keeps the catalog in memory: a restart loses it, so put it back.
-    if (driver === 'none') await api('POST', '/api/import', { integrations: data.integrations, catalog: data.catalog, mocks: [], oidcIdentities: [] })
 
     // 2b. WireMock restart: it comes back empty; the reconciler notices the missing marker and re-syncs.
     if (driver !== 'none') {
@@ -575,13 +573,13 @@ async function runOne(driver, size, { serve = false } = {}) {
     const lastOffset = Math.max(0, first.total - 50)
     lat.list50 = await bench(() => api('GET', '/api/mocks?limit=50'))
     lat.listEnd = await bench(() => api('GET', `/api/mocks?limit=50&offset=${lastOffset}`))
-    const needle = pick(data.mocks.filter((m) => /-\d+-\d+$/.test(m.name ?? '') && !m.name.includes('large'))).name.split(' ').pop()
+    const needle = pick(data.mocks.filter((m) => / page \d+$/.test(m.name ?? ''))).name // one mock: "sys-0042 page 7"
     lat.search = await bench(() => api('GET', `/api/mocks?limit=50&q=${encodeURIComponent(needle)}`))
-    lat.integration = await bench(() => api('GET', `/api/mocks?limit=50&integration=sys-${pad(Math.ceil(size / 200))}`))
+    lat.tag = await bench(() => api('GET', `/api/mocks?limit=50&tag=sys-${pad(Math.ceil(size / 200))}`))
     lat.listAll = await bench(() => api('GET', '/api/mocks'))
     lat.scenarios = await bench(() => api('GET', '/api/scenarios'))
-    lat.integrations = await bench(() => api('GET', '/api/integrations'))
-    lat.endpoints = await bench(() => api('GET', '/api/integrations/sys-0001/endpoints'))
+    lat.tags = await bench(() => api('GET', '/api/tags'))
+    lat.group = await bench(() => api('GET', '/api/mock-groups/sys-0001-customer'))
     lat.export = await bench(() => api('GET', '/api/export?format=bundle'), Math.min(RUNS, 10))
     const created = []
     lat.create = await bench(async (i) => {
@@ -589,7 +587,7 @@ async function runOne(driver, size, { serve = false } = {}) {
         name: `load save ${i}`,
         request: { method: 'GET', urlPath: `/sys-0001/saved/${i + 1}-${randomUUID()}` },
         response: { status: 200, jsonBody: { ok: true } },
-        metadata: { wiremockUi: { integration: 'sys-0001' } },
+        metadata: { wiremockUi: { tags: ['sys-0001'] } },
       })
       created.push(r.body)
       return r
@@ -648,11 +646,11 @@ function table(results) {
     ['GET /api/mocks?limit=50 (p50 / p95 ms)', (r) => ms(r.api?.list50)],
     ['… offset near the end', (r) => ms(r.api?.listEnd)],
     ['… q= search', (r) => ms(r.api?.search)],
-    ['… integration filter', (r) => ms(r.api?.integration)],
+    ['… tag filter', (r) => ms(r.api?.tag)],
     ['GET /api/mocks (no limit)', (r) => ms(r.api?.listAll)],
     ['GET /api/scenarios', (r) => ms(r.api?.scenarios)],
-    ['GET /api/integrations', (r) => ms(r.api?.integrations)],
-    ['GET …/endpoints', (r) => ms(r.api?.endpoints)],
+    ['GET /api/tags', (r) => ms(r.api?.tags)],
+    ['GET /api/mock-groups/:id (16 responses)', (r) => ms(r.api?.group)],
     ['GET /api/export?format=bundle', (r) => ms(r.api?.export)],
     ['… export size', (r) => (r.api?.export ? `${(r.api.export.bytes / 1024 / 1024).toFixed(1)} MB` : '–')],
     ['POST /api/mocks (save new)', (r) => ms(r.api?.create)],
