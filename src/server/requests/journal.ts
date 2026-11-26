@@ -28,8 +28,8 @@ export type RequestSummary = {
 
 export type NearMissView = {
   stub: { id: string; name: string | null; owner: string | null }
-  /** For one response of a mock with several responses: this request's value where the mock looks (null when unreadable). */
-  group: { id: string; by: { location: string; expression: string }; keyValue: string | null } | null
+  /** For one response of a mock with several responses: this request's value for each condition (null when unreadable). */
+  group: { id: string; by: { location: string; expression: string }[]; keyValues: (string | null)[] } | null
   distance: number
   diffs: FieldDiff[]
 }
@@ -156,7 +156,7 @@ export class RequestJournal {
       const template = typeof req.urlPathTemplate === 'string' ? req.urlPathTemplate : typeof req.urlPath === 'string' ? req.urlPath : ''
       return {
         stub: { id: m.stubMapping.id, name: m.stubMapping.name ?? null, owner: meta?.owner ?? null },
-        group: group ? { id: group.id, by: group.by, keyValue: requestKeyValue(group.by, template, event.request) } : null,
+        group: group ? { id: group.id, by: group.by, keyValues: group.by.map((b) => requestKeyValue(b, template, event.request)) } : null,
         distance: m.matchResult.distance,
         diffs: explainMismatch(m.stubMapping, event.request),
       }

@@ -254,7 +254,7 @@ function groupIdFor(key: string): string {
 /** The stubs of `c` rewritten as one mock with several responses (others untouched); `on` false leaves them as they are. */
 export function combineStubs(mocks: StubMapping[], c: Combinable, off: ReadonlySet<number>): StubMapping[] {
   const id = groupIdFor(c.key)
-  const by = { location: 'path' as const, expression: c.param }
+  const by = [{ location: 'path' as const, expression: c.param }]
   const members = c.members.filter((m) => !off.has(m.index))
   if (members.length === 0) return mocks
   const names = new Set(members.map((m) => mocks[m.index]!.name).filter((n): n is string => typeof n === 'string' && n !== ''))
@@ -264,7 +264,7 @@ export function combineStubs(mocks: StubMapping[], c: Combinable, off: ReadonlyS
     const stub = mocks[index]!
     const meta = (stub.metadata ?? {}) as Record<string, unknown>
     const ui = { ...((meta.wiremockUi as Record<string, unknown> | undefined) ?? {}) }
-    ui.group = { id, by, ...(value === undefined ? {} : { value }), order }
+    ui.group = { id, by, ...(value === undefined ? {} : { values: [value] }), order }
     const request: Record<string, unknown> = { method: c.method, urlPathTemplate: c.template }
     if (value !== undefined) request.pathParameters = { [c.param]: { equalTo: value } }
     const { uuid: _uuid, ...rest } = stub

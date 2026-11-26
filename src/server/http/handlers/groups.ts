@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { groupInputSchema } from '../../mocks/groups'
+import { buildGroupStubs, groupInputSchema } from '../../mocks/groups'
 import { idOf, json, parse, readJson, requireJson, withAuth } from '../wrap'
 
 const version = z.number({ error: 'versions must map ids to non-negative integers' }).int().min(0)
@@ -39,4 +39,20 @@ export const updateGroup = withAuth('mocks.editOwn', async ({ rt, request, param
 export const deleteGroup = withAuth('mocks.editOwn', async ({ rt, params, principal }) => {
   await rt.mocks.deleteGroup(idOf(params), principal.user)
   return new Response(null, { status: 204 })
+})
+
+const previewBody = z.strictObject(
+  {
+    input: groupInputSchema,
+    /** The group's id when it is saved already (written into each stub's metadata). */
+    id: z.string().min(1).optional(),
+  },
+  { error: 'body must be an object' },
+)
+
+/** The stubs a group input becomes, in editor order (the fallback last), without saving anything. */
+export const previewGroup = withAuth('mocks.read', async ({ request }) => {
+  requireJson(request)
+  const body = parse(previewBody, await readJson(request))
+  return json(buildGroupStubs(body.input, body.id ?? 'preview'))
 })

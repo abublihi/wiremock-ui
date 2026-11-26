@@ -60,10 +60,10 @@ for (const theme of ['dark', 'light'] as const) {
           input: {
             name: `A11y orders (${theme})`,
             request: { method: 'GET', urlType: 'template', url: `/a11y-${theme}/orders/{id}` },
-            by: { location: 'path', expression: 'id' },
+            by: [{ location: 'path', expression: 'id' }],
             responses: [
-              { value: '1', response: { status: 200, body: '{"id":1}', headers: { 'Content-Type': 'application/json' } } },
-              { value: '2', response: { status: 404 } },
+              { values: ['1'], response: { status: 200, body: '{"id":1}', headers: { 'Content-Type': 'application/json' } } },
+              { values: ['2'], response: { status: 404 } },
             ],
             fallback: { response: { status: 500 } },
           },
@@ -77,7 +77,7 @@ for (const theme of ['dark', 'light'] as const) {
         await page.getByRole('button', { name: `Show the responses of A11y orders (${theme})` }).click()
         await expectNoSeriousViolations(page)
         await page.goto(`/mocks/${stubs[0]!.id}`)
-        await expect(page.getByText('Responses · 3 (by id)')).toBeVisible()
+        await expect(page.getByText('Responses · 3')).toBeVisible()
         await page.waitForLoadState('networkidle')
         await expectNoSeriousViolations(page)
       } finally {

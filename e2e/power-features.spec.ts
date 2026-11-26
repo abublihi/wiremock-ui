@@ -203,8 +203,8 @@ test('a mock with several responses: a near miss adds a response for the value t
       input: {
         name: 'Posts by user',
         request: { method: 'POST', urlType: 'path', url: '/blog/by-user' },
-        by: { location: 'jsonPath', expression: '$.userId' },
-        responses: [{ value: '7', response: { status: 200, body: '{"user":7}', headers: { 'Content-Type': 'application/json' } } }],
+        by: [{ location: 'jsonPath', expression: '$.userId' }],
+        responses: [{ values: ['7'], response: { status: 200, body: '{"user":7}', headers: { 'Content-Type': 'application/json' } } }],
       },
     },
   })
@@ -222,9 +222,9 @@ test('a mock with several responses: a near miss adds a response for the value t
     await page.getByRole('button', { name: 'No match — see why' }).first().click()
     const drawer = page.getByRole('dialog', { name: 'POST /blog/by-user' })
     await drawer.getByRole('link', { name: 'Add a response for 999' }).click()
-    // The router keeps a number-like value a string by quoting it: ?add=%22999%22.
-    await expect(page).toHaveURL(/\/mocks\/[^/?]+\?add=(999|%22999%22)$/)
-    await expect(page.getByText('Responses · 2 (by $.userId)')).toBeVisible()
+    // The values go as a JSON array: ?add=["999"].
+    await expect(page).toHaveURL(/\/mocks\/[^/?]+\?add=%5B%22999%22%5D$/)
+    await expect(page.getByText('Responses · 2')).toBeVisible()
     await page.getByRole('button', { name: 'Save mock' }).click()
     await expect(page.getByText('Mock saved')).toBeVisible()
     await expect.poll(async () => (await post(999)).status).toBe(200)

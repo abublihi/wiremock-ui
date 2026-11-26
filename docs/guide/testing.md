@@ -24,7 +24,7 @@ The request goes from the UI's server to WireMock's stub port (never to the admi
    - **Matched another mock:** followed by its name: another mock won (a link opens it). See "Which mock wins" in [Concepts](concepts.md).
    - **No match**: nothing matched; **See unmatched requests** opens the request log.
 
-Other ways in: **Resend** in the request log (with a logged request), and **Try** on a scenario's card. A mock with several responses also has a **Try it** box in the editor that shows, without sending anything, which response answers a value.
+Other ways in: **Resend** in the request log (with a logged request), and **Try** on a scenario's card. A mock with several responses has a **Test** button on each saved response: the panel opens with a request that response answers, its values filled in.
 
 **Copy as curl** (in the test panel, the editor header, a mock's row menu and the request-log drawer) copies a command such as:
 

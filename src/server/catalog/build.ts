@@ -117,7 +117,7 @@ function proxyResponse(proxy: NonNullable<SimpleMockInput['proxy']>): Record<str
 }
 
 /** WireMock's webhook serveEventListener; empty headers and body are left out. */
-function webhookListener(webhook: NonNullable<SimpleMockInput['webhook']>): WebhookListener {
+export function webhookListener(webhook: NonNullable<SimpleMockInput['webhook']>): WebhookListener {
   const parameters: WebhookListener['parameters'] = { method: webhook.method.toUpperCase(), url: webhook.url }
   if (webhook.headers && Object.keys(webhook.headers).length > 0) parameters.headers = webhook.headers
   if (webhook.body) parameters.body = webhook.body

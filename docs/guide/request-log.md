@@ -21,7 +21,7 @@ It reads WireMock's **request journal** (kept in WireMock's memory, not by the U
 
 1. [Open the request log →](/requests) and find the request with the **No match** stamp (filter by **No match** if the log is busy).
 2. Click the stamp (or the row). The drawer lists the near misses, each with a row per field it checks. The mismatched row is highlighted.
-3. Read the highlighted row. Example: your app asked for `GET /blog/posts/43`, but the closest mock is **Get post**, which answers `id` `42` and `404`; its `pathParam.id` row expects `equalTo 42` and the request had `43`. When the closest mock is a mock with several responses, **Add a response for 43** on that near miss opens it with a new row for `43` (see [Tags and several responses](tags.md)).
+3. Read the highlighted row. Example: your app asked for `GET /blog/posts/43`, but the closest mock is **Get post**, which answers `id` `42` and `404`; its `pathParam.id` row expects `equalTo 42` and the request had `43`. When the closest mock is a mock with several responses, **Add a response for 43** on that near miss opens it with a new response for `43` (see [Tags and several responses](tags.md)).
 4. **Create mock from this request** opens the URL form with the request's method, path and JSON body (extra fields allowed), answering 200. **Resend** opens the test panel with it.
 
 **What did a forwarding mock do?** For a matched request the drawer says **Forwarded to** and the full URL (with the status the service answered) for a proxy mock, and **Calls back** with the method and URL for a webhook. WireMock does not report whether a callback arrived; see [Troubleshooting](troubleshooting.md). Requests answered by a running recording show **Recording → forwarded to** and the target in the list.

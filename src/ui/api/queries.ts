@@ -210,6 +210,14 @@ export function useSaveMockGroup() {
   })
 }
 
+/** The stubs a group input becomes (nothing is saved); `id` is the saved group's, when there is one. */
+export function usePreviewMockGroup() {
+  return useMutation({
+    mutationFn: (args: { input: GroupInput; id?: string }) =>
+      apiFetch<StubMapping[]>('/api/mock-groups/preview', { method: 'POST', body: { input: args.input, ...(args.id ? { id: args.id } : {}) } }),
+  })
+}
+
 export function useDeleteMockGroup() {
   const queryClient = useQueryClient()
   return useMutation({

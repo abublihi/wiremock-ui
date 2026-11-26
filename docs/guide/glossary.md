@@ -33,7 +33,7 @@ Short definitions of the words the UI and WireMock use. The same definitions app
 |---|---|
 | **Tag** | A free-form label on a mock (`blog`, `sprint-42`); a mock can have several. Filter the list, the request log and exports by tag; import suggests them. |
 | **Several responses** / **response by value** | One mock answering differently by a value in the request (`id = 42`, `id = 404`, any other `id`). In WireMock: one stub per value, sharing `metadata.wiremockUi.group`. |
-| **Any other** | The response of a mock with several responses for every value without a row of its own. It sits 5 priority numbers lower, so the rows always win. |
+| **Every other request** | The main response of a mock with several responses: it answers every request no other response is for. It sits 5 priority numbers lower, so the others always win. |
 | **Baseline** | Mocks owned by nobody: they came from an import or a seed. A person's mock beats a baseline mock. |
 | **Owner** | Who made a mock ("My mocks"). Everyone can still edit everything. |
 | **Review list** | Recorded requests waiting to be accepted as mocks (kept 24 hours). |

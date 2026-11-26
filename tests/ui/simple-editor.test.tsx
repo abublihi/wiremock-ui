@@ -288,7 +288,7 @@ describe('new mock — proxy and webhook', () => {
     await ue.click(screen.getByRole('button', { name: 'Preview' }))
     const url = screen.getByRole('textbox', { name: 'Callback URL' })
     await waitFor(() => expect(url.getAttribute('aria-invalid')).toBe('true'))
-    expect(screen.getByText('webhook.url must be an http:// or https:// URL')).toBeTruthy()
+    expect(screen.getByText('This value must be an http:// or https:// URL.')).toBeTruthy()
   })
 })
 
@@ -297,5 +297,55 @@ describe('header rows', () => {
     const { HeaderRows } = await import('@/ui/components/editor/HeaderRows')
     await renderApp(<HeaderRows label="Headers" rows={[{ name: 'X-Id', value: '1' }, { name: 'x-id', value: '2' }]} onChange={() => {}} />)
     expect(screen.getByText('X-Id is listed more than once: only one value is kept.')).toBeTruthy()
+  })
+})
+
+describe('new mock — a response for some requests', () => {
+  it('adds a response chosen by a query parameter and saves the mock as one stub per response', async () => {
+    const calls = mockApi()
+    const { buildGroupStubs } = await import('@/server/mocks/groups')
+    server.use(
+      http.post(`${BASE}/api/mock-groups/preview`, async ({ request }) => {
+        const { input } = (await request.json()) as { input: Parameters<typeof buildGroupStubs>[0] }
+        return HttpResponse.json(buildGroupStubs(input, 'g-new'))
+      }),
+      http.post(`${BASE}/api/mock-groups`, async ({ request }) => {
+        const body = (await request.json()) as { input: Parameters<typeof buildGroupStubs>[0] }
+        calls.push({ method: 'POST', path: 'group', body })
+        return HttpResponse.json(buildGroupStubs(body.input, 'g-new').map((b, i) => ({ id: `s-${i}`, ...b })), { status: 201 })
+      }),
+    )
+    const ue = await openTextForm()
+    expect(screen.queryByText('Choose the response by')).toBeNull()
+    await ue.click(screen.getByRole('button', { name: 'Add a response for some requests' }))
+    // The URL has no variable: the first condition is a query parameter to name.
+    expect(screen.getByText('Choose the response by')).toBeTruthy()
+    await ue.type(screen.getByRole('textbox', { name: 'Condition 1: name' }), 'id')
+    // A response for no value at all is refused before anything is sent.
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    expect(await screen.findByText('Enter a value for at least one condition.')).toBeTruthy()
+    expect(calls.some((c) => c.path === 'group')).toBe(false)
+    await ue.type(screen.getByRole('textbox', { name: '?id =' }), '7')
+    expect(screen.getByRole('button', { name: 'Remove the response for ?id = 7' })).toBeTruthy()
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    await waitFor(() => expect(calls.some((c) => c.path === 'group')).toBe(true))
+    const saved = calls.find((c) => c.path === 'group')!.body as { input: Record<string, unknown> }
+    expect(saved.input).toMatchObject({
+      request: { method: 'GET', urlType: 'path', url: '/ping' },
+      by: [{ location: 'query', expression: 'id' }],
+      responses: [{ values: ['7'], response: { status: 200 } }],
+      fallback: { response: { status: 200 } },
+    })
+  })
+
+  it('removing the last added response goes back to one plain mock', async () => {
+    const calls = mockApi()
+    const ue = await openTextForm()
+    await ue.click(screen.getByRole('button', { name: 'Add a response for some requests' }))
+    await ue.click(screen.getByRole('button', { name: 'Remove the response for New response' }))
+    expect(screen.queryByText('Choose the response by')).toBeNull()
+    await ue.click(screen.getByRole('button', { name: 'Save mock' }))
+    await screen.findByText('Mock saved')
+    expect(calls.some((c) => c.path === 'create')).toBe(true)
   })
 })

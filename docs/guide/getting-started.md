@@ -30,6 +30,6 @@ The **Getting started** checklist on the [Mocks](/mocks) page follows these step
 
 ## Tips and limits
 
-- Every post a different answer? Use **URL match** **Path template** with `/blog/posts/{id}` and **Add a response for another value**: one mock, one response per `id`. See [Tags and several responses](tags.md).
+- Every post a different answer? Use **URL match** **Path template** with `/blog/posts/{id}` and **Add a response for some requests**: one mock, one response per `id`. See [Tags and several responses](tags.md).
 - Press **?** on any page to open this guide; **How this works** in the top bar opens the part of it for the page you are on.
 - Already have WireMock stubs? Point the UI at that WireMock: on its first start it adopts them (see [Sync with WireMock](sync.md)), or run it with no storage at all (see [Storage and WireMock-only mode](storage.md)).

@@ -17,6 +17,7 @@ test('/api/mocks/reset-mine is not captured by /api/mocks/$id', () => {
 test('mock-group and tag routes resolve to their own files', () => {
   expect(leaf('/api/mock-groups')).toBe('/api/mock-groups')
   expect(leaf('/api/mock-groups/g1')).toBe('/api/mock-groups/$id')
+  expect(leaf('/api/mock-groups/preview')).toBe('/api/mock-groups/preview')
   expect(leaf('/api/tags')).toBe('/api/tags')
 })
 

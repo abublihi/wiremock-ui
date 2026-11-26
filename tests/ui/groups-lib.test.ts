@@ -3,65 +3,102 @@ import { emptyBundle } from '@/server/bundle/shape'
 import { buildGroupStubs } from '@/server/mocks/groups'
 import type { StubMapping } from '@/server/wiremock/types'
 import { emptyQuickForm } from '@/ui/lib/editor-sync'
-import { answerFor, groupFormFromSimple, groupFormFromStubs, groupInput, groupProblems } from '@/ui/lib/groups'
+import { addFirstRow, groupInputFrom, noResponses, responsesFromStubs, responsesProblems, rowLabel, suggestBy, withValuesRow } from '@/ui/lib/groups'
 import { combineStubs, findCombinable, groupForReview, initialReview, reviewedBundle } from '@/ui/lib/import-review'
 
 const stored = (stubs: ReturnType<typeof buildGroupStubs>) => stubs.map((s, i) => ({ id: `s${i}`, ...s }) as unknown as StubMapping)
 
-describe('the several-responses form', () => {
+describe('a mock with several responses in the editor', () => {
   const input = {
     name: 'Est',
     tags: ['qiwa'],
     priority: 3,
     request: { method: 'GET' as const, urlType: 'template' as const, url: '/est/{office}/{seq}', query: { lang: 'en' } },
-    by: { location: 'path' as const, expression: 'seq' },
+    by: [{ location: 'path' as const, expression: 'seq' }],
     responses: [
-      { value: '1', response: { status: 200, headers: { 'Content-Type': 'application/json' }, body: '{\n  "ok": true\n}' } },
-      { value: '2', response: { status: 201, body: 'plain', delayMs: 300 } },
+      { values: ['1'], response: { status: 200, headers: { 'Content-Type': 'application/json' }, body: '{\n  "ok": true\n}' } },
+      { values: ['2'], response: { status: 201, headers: { 'Content-Type': 'text/plain' }, body: 'plain', delayMs: 2000 } },
     ],
-    fallback: { response: { status: 404 } },
+    fallback: { response: { status: 404, headers: { 'Content-Type': 'text/plain' } } },
+  }
+  const roundTrip = (i: Parameters<typeof buildGroupStubs>[0]) => {
+    const read = responsesFromStubs(stored(buildGroupStubs(i, 'g')))!
+    return buildGroupStubs(groupInputFrom(read.form, i.tags ?? [], read.responses), 'g')
   }
 
   it('round-trips through the server builder', () => {
-    const form = groupFormFromStubs(stored(buildGroupStubs(input, 'g')))!
-    expect(form).toMatchObject({ name: 'Est', tags: ['qiwa'], by: input.by, quick: { url: '/est/{office}/{seq}', priority: '3' }, fallback: { on: true } })
-    expect(form.rows.map((r) => [r.value, r.response.status, r.response.delayMs])).toEqual([
-      ['1', '200', ''],
-      ['2', '201', '300'],
+    const read = responsesFromStubs(stored(buildGroupStubs(input, 'g')))!
+    expect(read.form).toMatchObject({ name: 'Est', status: 404, quick: { url: '/est/{office}/{seq}', priority: '3' } })
+    expect(read.responses).toMatchObject({ by: input.by, fallbackOn: true, fallbackStubId: 's2' })
+    expect(read.responses.rows.map((r) => [r.values, r.form.status, r.form.slow, r.stubId])).toEqual([
+      [['1'], 200, false, 's0'],
+      [['2'], 201, true, 's1'],
     ])
-    expect(buildGroupStubs(groupInput(form), 'g')).toEqual(buildGroupStubs(input, 'g'))
+    expect(roundTrip(input)).toEqual(buildGroupStubs(input, 'g'))
   })
 
-  it('round-trips query, header and JSON body keys', () => {
+  it('round-trips query, header and JSON body keys, several conditions and values left at any', () => {
     for (const by of [
-      { location: 'query' as const, expression: 'type' },
-      { location: 'header' as const, expression: 'X-Tenant' },
-      { location: 'jsonPath' as const, expression: '$.id' },
+      [{ location: 'query' as const, expression: 'type' }],
+      [{ location: 'header' as const, expression: 'X-Tenant' }],
+      [{ location: 'jsonPath' as const, expression: '$.id' }],
     ]) {
       const i = { ...input, request: { method: 'POST' as const, urlType: 'path' as const, url: '/x' }, by }
-      expect(buildGroupStubs(groupInput(groupFormFromStubs(stored(buildGroupStubs(i, 'g')))!), 'g')).toEqual(buildGroupStubs(i, 'g'))
+      expect(roundTrip(i)).toEqual(buildGroupStubs(i, 'g'))
     }
+    const two = {
+      ...input,
+      priority: undefined,
+      by: [
+        { location: 'path' as const, expression: 'seq' },
+        { location: 'header' as const, expression: 'X-Tenant' },
+      ],
+      responses: [
+        { values: ['1', 'acme'], response: { status: 409 } },
+        { values: ['1', null], response: { status: 200 } },
+        { values: [null, 'acme'], response: { status: 403 } },
+      ],
+    }
+    expect(roundTrip(two)).toEqual(buildGroupStubs(two, 'g'))
+    expect(responsesFromStubs(stored(buildGroupStubs(two, 'g')))!.responses.rows.map((r) => r.values)).toEqual([
+      ['1', 'acme'],
+      ['1', ''],
+      ['', 'acme'],
+    ])
+    // Without "every other request".
+    const none = { ...input, fallback: null }
+    const read = responsesFromStubs(stored(buildGroupStubs(none, 'g')))!
+    expect(read.responses.fallbackOn).toBe(false)
+    expect(roundTrip(none)).toEqual(buildGroupStubs(none, 'g'))
   })
 
   it('anything it cannot show keeps it closed', () => {
     const stubs = stored(buildGroupStubs(input, 'g'))
-    expect(groupFormFromStubs([{ ...stubs[0]!, response: { ...stubs[0]!.response, transformers: ['response-template'] } }, ...stubs.slice(1)])).toBeNull()
-    expect(groupFormFromStubs([stubs[0]!, { ...stubs[1]!, request: { ...stubs[1]!.request, method: 'POST' } }])).toBeNull()
+    expect(responsesFromStubs([{ ...stubs[0]!, response: { ...stubs[0]!.response, transformers: ['response-template'] } }, ...stubs.slice(1)])).toBeNull()
+    expect(responsesFromStubs([stubs[0]!, { ...stubs[1]!, request: { ...stubs[1]!.request, method: 'POST' } }])).toBeNull()
+    expect(responsesFromStubs([stubs[0]!, { ...stubs[1]!, priority: 9 }])).toBeNull()
   })
 
-  it('checks, Try it and growing from a URL mock', () => {
-    const form = groupFormFromStubs(stored(buildGroupStubs(input, 'g')))!
-    expect(groupProblems(form)).toEqual({})
-    expect(groupProblems({ ...form, rows: [...form.rows, { ...form.rows[0]!, key: 'x' }] })).toEqual({ x: 'valueTwice' })
-    expect(groupProblems({ ...form, by: { location: 'path', expression: 'nope' } })).toEqual({ by: 'byPathMissing' })
-    expect(answerFor(form, '2')).toMatchObject({ kind: 'row', row: { value: '2' } })
-    expect(answerFor(form, '9').kind).toBe('fallback')
-    expect(answerFor({ ...form, fallback: { ...form.fallback, on: false } }, '9').kind).toBe('none')
+  it('checks, the first response, and a response for a near miss', () => {
+    const read = responsesFromStubs(stored(buildGroupStubs(input, 'g')))!
+    const quick = read.form.quick!
+    expect(responsesProblems(quick, read.responses)).toEqual({})
+    const twice = { ...read.responses, rows: [...read.responses.rows, { ...read.responses.rows[0]!, key: 'x' }] }
+    expect(responsesProblems(quick, twice)).toEqual({ x: 'valueTwice' })
+    expect(responsesProblems(quick, { ...read.responses, by: [{ location: 'path', expression: 'nope' }] })).toEqual({ 'by:0': 'byPathMissing' })
+    const blank = { ...read.responses, rows: [{ ...read.responses.rows[0]!, values: [' '] }] }
+    expect(responsesProblems(quick, blank)).toEqual({ [read.responses.rows[0]!.key]: 'valueRequired' })
 
-    const quick = { ...emptyQuickForm(), status: 200, body: '{}' }
-    quick.quick = { ...quick.quick!, urlType: 'template', url: '/u/{id}' }
-    expect(groupFormFromSimple(quick, ['t'])).toMatchObject({ tags: ['t'], by: { location: 'path', expression: 'id' }, rows: [{ value: '', response: { status: '200', body: '{}' } }] })
-    expect(groupFormFromSimple({ ...quick, fault: 'EMPTY_RESPONSE' }, [])).toBeNull()
+    const form = { ...emptyQuickForm(), status: 200, body: '{}' }
+    form.quick = { ...form.quick!, urlType: 'template', url: '/u/{id}' }
+    const first = addFirstRow(form, noResponses())
+    expect(first).toMatchObject({ by: [{ location: 'path', expression: 'id' }], fallbackOn: true, rows: [{ values: [''], form: { status: 200, body: '{}' } }] })
+    expect(suggestBy(form.quick, first.by)).toEqual({ location: 'query', expression: '' })
+
+    const added = withValuesRow(read.form, read.responses, ['7'])
+    expect(added.rows.map((r) => r.values)).toEqual([['1'], ['2'], ['7']])
+    expect(withValuesRow(read.form, read.responses, ['2'])).toBe(read.responses)
+    expect(rowLabel([{ location: 'query', expression: 'a' }, { location: 'header', expression: 'H' }], ['1', ''])).toBe('?a = 1')
   })
 })
 
@@ -102,7 +139,7 @@ describe('import: stubs that differ by one segment', () => {
       { method: 'GET', urlPathTemplate: '/q/SequenceNumber/{sequenceNumber}' },
     ])
     expect(group[2]!.priority).toBe(10)
-    expect(groupFormFromStubs(group)).toMatchObject({ name: 'Est', rows: [{ value: '1' }, { value: '2' }], fallback: { on: true } })
+    expect(responsesFromStubs(group)).toMatchObject({ form: { name: 'Est' }, responses: { rows: [{ values: ['1'] }, { values: ['2'] }], fallbackOn: true } })
     expect(out[1]).toBe(mocks[1])
 
     const bundle = { ...emptyBundle(), mocks }

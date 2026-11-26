@@ -76,11 +76,12 @@ curl -u $AUTH -X POST $UI/api/mocks/reset-mine      # {"deleted":4}
 curl -u $AUTH -X DELETE $UI/api/requests            # clear the request log
 
 # A mock with several responses (one stub per value; see Tags and several responses)
-# by.location: path | query | header | jsonPath | xPath | form; fallback ("any other value") is optional
+# by: up to 4 of {location: path | query | header | jsonPath | xPath | form, expression}; one value per condition (null = any)
+# fallback ("every other request") is optional; responses: [] turns a group back into one plain mock
 curl -u $AUTH -X POST $UI/api/mock-groups -H "$JSON" -d '{"input":{"name":"Get post","tags":["blog"],
   "request":{"method":"GET","urlType":"template","url":"/blog/posts/{id}"},
-  "by":{"location":"path","expression":"id"},
-  "responses":[{"value":"42","response":{"status":200,"body":"{\"id\":42}"}},{"value":"404","response":{"status":404}}],
+  "by":[{"location":"path","expression":"id"}],
+  "responses":[{"values":["42"],"response":{"status":200,"body":"{\"id\":42}"}},{"values":["404"],"response":{"status":404}}],
   "fallback":{"response":{"status":200,"body":"{\"id\":1}"}}}}'  # 201 → its stubs; metadata.wiremockUi.group.id names the group
 curl -u $AUTH $UI/api/mock-groups/<group-id>               # its stubs, the fallback last
 curl -u $AUTH -X PUT $UI/api/mock-groups/<group-id> -H "$JSON" -d '{"input":{…},"versions":{"<stub-id>":1,…}}'  # every stub's version as loaded

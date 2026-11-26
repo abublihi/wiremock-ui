@@ -44,6 +44,7 @@ import { Route as AppMocksNewRouteImport } from './routes/_app/mocks.new'
 import { Route as AppScenariosIndexRouteImport } from './routes/_app/scenarios.index'
 import { Route as AppScenariosNewRouteImport } from './routes/_app/scenarios.new'
 import { Route as ApiMockGroupsIdRouteImport } from './routes/api/mock-groups.$id'
+import { Route as ApiMockGroupsPreviewRouteImport } from './routes/api/mock-groups.preview'
 import { Route as ApiMocksIdRouteImport } from './routes/api/mocks.$id'
 import { Route as ApiMocksPreviewRouteImport } from './routes/api/mocks.preview'
 import { Route as ApiMocksResetMineRouteImport } from './routes/api/mocks.reset-mine'
@@ -241,6 +242,11 @@ const ApiMockGroupsIdRoute = ApiMockGroupsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ApiMockGroupsRoute,
 } as any)
+const ApiMockGroupsPreviewRoute = ApiMockGroupsPreviewRouteImport.update({
+  id: '/preview',
+  path: '/preview',
+  getParentRoute: () => ApiMockGroupsRoute,
+} as any)
 const ApiMocksIdRoute = ApiMocksIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -386,6 +392,7 @@ export interface FileRoutesByFullPath {
   '/mocks/new': typeof AppMocksNewRoute
   '/scenarios/new': typeof AppScenariosNewRoute
   '/api/mock-groups/$id': typeof ApiMockGroupsIdRoute
+  '/api/mock-groups/preview': typeof ApiMockGroupsPreviewRoute
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/preview': typeof ApiMocksPreviewRoute
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
@@ -444,6 +451,7 @@ export interface FileRoutesByTo {
   '/mocks/new': typeof AppMocksNewRoute
   '/scenarios/new': typeof AppScenariosNewRoute
   '/api/mock-groups/$id': typeof ApiMockGroupsIdRoute
+  '/api/mock-groups/preview': typeof ApiMockGroupsPreviewRoute
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/preview': typeof ApiMocksPreviewRoute
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
@@ -504,6 +512,7 @@ export interface FileRoutesById {
   '/_app/mocks/new': typeof AppMocksNewRoute
   '/_app/scenarios/new': typeof AppScenariosNewRoute
   '/api/mock-groups/$id': typeof ApiMockGroupsIdRoute
+  '/api/mock-groups/preview': typeof ApiMockGroupsPreviewRoute
   '/api/mocks/$id': typeof ApiMocksIdRouteWithChildren
   '/api/mocks/preview': typeof ApiMocksPreviewRoute
   '/api/mocks/reset-mine': typeof ApiMocksResetMineRoute
@@ -564,6 +573,7 @@ export interface FileRouteTypes {
     | '/mocks/new'
     | '/scenarios/new'
     | '/api/mock-groups/$id'
+    | '/api/mock-groups/preview'
     | '/api/mocks/$id'
     | '/api/mocks/preview'
     | '/api/mocks/reset-mine'
@@ -622,6 +632,7 @@ export interface FileRouteTypes {
     | '/mocks/new'
     | '/scenarios/new'
     | '/api/mock-groups/$id'
+    | '/api/mock-groups/preview'
     | '/api/mocks/$id'
     | '/api/mocks/preview'
     | '/api/mocks/reset-mine'
@@ -681,6 +692,7 @@ export interface FileRouteTypes {
     | '/_app/mocks/new'
     | '/_app/scenarios/new'
     | '/api/mock-groups/$id'
+    | '/api/mock-groups/preview'
     | '/api/mocks/$id'
     | '/api/mocks/preview'
     | '/api/mocks/reset-mine'
@@ -979,6 +991,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMockGroupsIdRouteImport
       parentRoute: typeof ApiMockGroupsRoute
     }
+    '/api/mock-groups/preview': {
+      id: '/api/mock-groups/preview'
+      path: '/preview'
+      fullPath: '/api/mock-groups/preview'
+      preLoaderRoute: typeof ApiMockGroupsPreviewRouteImport
+      parentRoute: typeof ApiMockGroupsRoute
+    }
     '/api/mocks/$id': {
       id: '/api/mocks/$id'
       path: '/$id'
@@ -1172,10 +1191,12 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface ApiMockGroupsRouteChildren {
   ApiMockGroupsIdRoute: typeof ApiMockGroupsIdRoute
+  ApiMockGroupsPreviewRoute: typeof ApiMockGroupsPreviewRoute
 }
 
 const ApiMockGroupsRouteChildren: ApiMockGroupsRouteChildren = {
   ApiMockGroupsIdRoute: ApiMockGroupsIdRoute,
+  ApiMockGroupsPreviewRoute: ApiMockGroupsPreviewRoute,
 }
 
 const ApiMockGroupsRouteWithChildren = ApiMockGroupsRoute._addFileChildren(

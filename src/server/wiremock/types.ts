@@ -3,11 +3,14 @@ export type WireMockUiMeta = {
   endpoint?: string
   /** Free-form labels that group mocks (see src/server/mocks/tags.ts); absent when none. */
   tags?: string[]
-  /** Set on each stub of a mock with several responses (see src/server/mocks/groups.ts). */
+  /**
+   * Set on each stub of a mock with several responses (see src/server/mocks/groups.ts, which also reads the older
+   * one-condition shape: `by` an object, `value` a string).
+   */
   group?: {
     id: string
-    by: { location: 'jsonPath' | 'xPath' | 'query' | 'path' | 'header' | 'form'; expression: string }
-    value?: string
+    by: { location: 'jsonPath' | 'xPath' | 'query' | 'path' | 'header' | 'form'; expression: string }[]
+    values?: (string | null)[]
     order: number
   }
   owner: string

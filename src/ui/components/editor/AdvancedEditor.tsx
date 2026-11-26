@@ -24,6 +24,8 @@ export function AdvancedEditor({
   saving,
   error,
   onSave,
+  above,
+  saveDisabledReason,
 }: {
   text: string
   onTextChange: (text: string) => void
@@ -32,6 +34,10 @@ export function AdvancedEditor({
   saving: boolean
   error: { title: string; message: string } | null
   onSave: (stub: EditableStub) => void
+  /** Shown above the JSON (e.g. which response of a mock with several responses this is). */
+  above?: React.ReactNode
+  /** Why this JSON can't be saved on its own (Save stays off and says why). */
+  saveDisabledReason?: string
 }) {
   const t = useT()
   const errorId = useId()
@@ -57,7 +63,7 @@ export function AdvancedEditor({
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault()
-        if (parsed.ok && !saving) onSave(parsed.value)
+        if (parsed.ok && !saving && !saveDisabledReason) onSave(parsed.value)
       }}
     >
       {error && (
@@ -67,6 +73,8 @@ export function AdvancedEditor({
           <AlertDescription>{error.message}</AlertDescription>
         </Alert>
       )}
+
+      {above}
 
       <ServerFields mock={mock} />
 
@@ -102,7 +110,8 @@ export function AdvancedEditor({
       </section>
 
       <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-2 border-t border-line bg-canvas/85 px-1 py-3 backdrop-blur">
-        <Button type="submit" disabled={saving || !parsed.ok}>
+        {saveDisabledReason && <span className="text-xs text-muted-foreground">{saveDisabledReason}</span>}
+        <Button type="submit" disabled={saving || !parsed.ok || Boolean(saveDisabledReason)}>
           {saving ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
           {saving ? t('editor.saving') : t('editor.save')}
         </Button>

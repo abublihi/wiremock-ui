@@ -20,7 +20,8 @@ test('the example seed is a valid bundle: tagged Blog and Orders mocks, fixed id
   expect([...new Set(bundle.mocks.map((m) => (m.metadata?.wiremockUi as { tags: string[] }).tags[0]))]).toEqual(['blog', 'orders'])
 
   const getPost = bundle.mocks.filter((m) => (m.metadata?.wiremockUi as { group?: GroupMeta }).group?.id === 'endpoint-blog-get-post')
-  expect(getPost.map((m) => (m.metadata?.wiremockUi as { group: GroupMeta }).group.value)).toEqual(['42', '43', undefined])
+  // In the older one-condition shape (still read): a value per response, the fallback without one.
+  expect(getPost.map((m) => (m.metadata?.wiremockUi as unknown as { group: { value?: string } }).group.value)).toEqual(['42', '43', undefined])
 
   const scenario = bundle.mocks.filter((m) => m.scenarioName === 'order-1001')
   expect(scenario.map((m) => [m.requiredScenarioState, m.newScenarioState])).toEqual([

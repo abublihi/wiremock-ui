@@ -84,9 +84,9 @@ export function migrateLinkedStubs(stubs: StubMapping[], endpoints: LegacyEndpoi
     const fallbacks = list.filter((m) => m.value === undefined)
     if (valued.length === 0 || fallbacks.length > 1 || new Set(valued.map((m) => m.value)).size !== valued.length) continue
     const id = legacyGroupId(endpoint.integration, endpoint.key)
-    const by = { location: endpoint.lookup!.location, expression: endpoint.lookup!.expression }
+    const by = [{ location: endpoint.lookup!.location, expression: endpoint.lookup!.expression }]
     const sorted = [...valued].sort((a, b) => (a.value! < b.value! ? -1 : a.value! > b.value! ? 1 : 0))
-    sorted.forEach((m, order) => groupOf.set(m.index, { endpoint, meta: { id, by, value: m.value!, order } }))
+    sorted.forEach((m, order) => groupOf.set(m.index, { endpoint, meta: { id, by, values: [m.value!], order } }))
     for (const f of fallbacks) groupOf.set(f.index, { endpoint, meta: { id, by, order: sorted.length } })
   }
   return stubs.map((stub, index) => {

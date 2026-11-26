@@ -18,8 +18,7 @@ import { relativeTime } from '@/ui/lib/time'
 import { cn } from '@/ui/lib/utils'
 import { MockRowActions, mockName } from './MockActions'
 import { GroupRowActions } from './GroupActions'
-import { groupOf } from '@/server/mocks/groups'
-import { byLabel } from '@/ui/lib/groups'
+import { conditionLabel, groupOf, valuesLabel } from '@/server/mocks/groups'
 import { ListTreeIcon } from 'lucide-react'
 
 const URL_FIELDS = ['url', 'urlPath', 'urlPattern', 'urlPathPattern', 'urlPathTemplate'] as const
@@ -291,12 +290,12 @@ function GroupRows({ id, mocks, open, onToggle }: { id: string; mocks: StubMappi
   const statuses = [...new Set(mocks.map((m) => (typeof m.response.status === 'number' ? m.response.status : 200)))]
   const owners = [...new Set(mocks.map((m) => m.metadata?.wiremockUi?.owner ?? 'baseline'))]
   const latest = mocks.map((m) => m.metadata?.wiremockUi?.updatedAt).filter((d): d is string => Boolean(d)).sort().at(-1)
-  const by = byLabel(meta.by)
+  const by = meta.by.map(conditionLabel).join(', ')
   const label = t(mocks.length === 1 ? 'groups.countOne' : 'groups.count', { count: mocks.length, by })
   const tags = tagsOf(first)
   const step = (stub: StubMapping) => {
-    const value = groupOf(stub)?.value
-    return value === undefined ? t('groups.anyOther', { by }) : t('groups.when', { by, value })
+    const values = groupOf(stub)?.values
+    return values === undefined ? t('groups.anyOther') : valuesLabel(meta.by, values)
   }
   return (
     <>

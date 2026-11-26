@@ -1,257 +1,230 @@
 import type { GroupBy, GroupInput } from '@/server/mocks/groups'
-import { DEFAULT_PRIORITY, FALLBACK_STEP, groupOf, templateVariables } from '@/server/mocks/groups'
-import { tagsOf } from '@/server/mocks/tags'
+import { DEFAULT_PRIORITY, FALLBACK_STEP, MAX_CONDITIONS, conditionLabel, groupOf, templateVariables } from '@/server/mocks/groups'
 import type { StubMapping } from '@/server/wiremock/types'
-import { type HeaderRow, type QuickRequest, type SimpleForm, headerMap, isJsonContentType, readQuickRequest } from './editor-sync'
+import { type QuickRequest, type SimpleForm, fromQuickStub, toQuickInput } from './editor-sync'
 
 /**
- * The editor of a mock with several responses ("When seq = 1 → …"): its form, read from the group's stubs and
- * turned into the server's GroupInput. Keep in step with src/server/mocks/groups.ts (what it builds is what we read).
+ * A mock's extra responses in the Simple editor ("When orderId = 2003 and X-Tenant = acme → 409"). The editor's
+ * own form is the mock's request and its "every other request" response; each row adds a response for some values.
+ * With rows the mock is saved as a group of stubs (src/server/mocks/groups.ts), without them as one plain stub.
+ * Keep in step with the server's builder: what it builds is what `responsesFromStubs` reads.
  */
 
-/** How the deciding value is named in sentences ("When {by} = 1"). */
-export function byLabel(by: GroupBy): string {
-  return by.location === 'query' ? `?${by.expression}` : by.expression
+export { conditionLabel, MAX_CONDITIONS }
+
+/** One extra response: a value per condition ('' for any value) and the response, edited like the main one. */
+export type ResponseRow = {
+  key: string
+  values: string[]
+  /** The response part is what counts; its request is the editor's (only its response headers are its own). */
+  form: SimpleForm
+  /** The saved stub this row was read from (Test and Advanced use it). */
+  stubId?: string
 }
 
-/** One response as the form edits it: everything as typed. */
-export type ResponseForm = {
-  status: string
-  /** Response headers, Content-Type included. */
-  headers: HeaderRow[]
-  body: string
-  /** Delay in milliseconds ('' for none). */
-  delayMs: string
-}
-
-export type GroupRow = { key: string; value: string; response: ResponseForm }
-
-export type GroupForm = {
-  name: string
-  tags: string[]
-  /** The request every response shares (method, URL, query and body to match, priority). */
-  quick: Omit<QuickRequest, 'responseHeaders'>
-  by: GroupBy
-  rows: GroupRow[]
-  /** "Any other value": a response, or none (WireMock tries other mocks, then answers 404). */
-  fallback: { on: boolean; response: ResponseForm }
+export type Responses = {
+  /** The conditions (empty until a row is added). */
+  by: GroupBy[]
+  rows: ResponseRow[]
+  /** Whether the editor's own response answers every other request (off: "No answer", WireMock tries other mocks). */
+  fallbackOn: boolean
+  /** The saved stub of "every other request", when there is one. */
+  fallbackStubId?: string
 }
 
 let nextKey = 0
 export const rowKey = () => `r${++nextKey}`
 
-export const emptyResponse = (): ResponseForm => ({ status: '200', headers: [{ name: 'Content-Type', value: 'application/json' }], body: '', delayMs: '' })
+export const noResponses = (): Responses => ({ by: [], rows: [], fallbackOn: true })
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const sameRequest = (a: QuickRequest, b: QuickRequest) =>
+  JSON.stringify({ ...a, responseHeaders: [] }) === JSON.stringify({ ...b, responseHeaders: [] })
 
-/** A response the form can show (status, string headers, a text or JSON body, a fixed delay), else null. */
-function readResponse(response: Record<string, unknown>): ResponseForm | null {
-  const allowed = ['status', 'headers', 'body', 'jsonBody', 'fixedDelayMilliseconds']
-  if (!Object.keys(response).every((k) => allowed.includes(k))) return null
-  if (typeof response.status !== 'number') return null
-  const headers = response.headers ?? {}
-  if (!isRecord(headers) || !Object.values(headers).every((v) => typeof v === 'string')) return null
-  const delay = response.fixedDelayMilliseconds
-  if (delay !== undefined && (typeof delay !== 'number' || !Number.isInteger(delay) || delay < 0)) return null
-  if ('body' in response && 'jsonBody' in response) return null
-  let body = ''
-  if (response.jsonBody !== undefined) body = JSON.stringify(response.jsonBody, null, 2)
-  else if (response.body !== undefined) {
-    if (typeof response.body !== 'string') return null
-    body = response.body
-  }
-  return {
-    status: String(response.status),
-    headers: Object.entries(headers as Record<string, string>).map(([name, value]) => ({ name, value })),
-    body,
-    delayMs: delay === undefined ? '' : String(delay),
-  }
-}
-
-/** The request without the value's matcher (what every response shares), or null when the matcher is not there as built. */
-function withoutKey(request: Record<string, unknown>, by: GroupBy, value: string | undefined): Record<string, unknown> | null {
+/** The request without the values' matchers (what every response shares), or null when a matcher is not there as built. */
+function withoutKeys(request: Record<string, unknown>, by: GroupBy[], values: (string | null)[]): Record<string, unknown> | null {
   const out = { ...request }
-  if (value === undefined) return out
-  const drop = (field: string) => {
-    const map = out[field]
-    if (!isRecord(map) || !isRecord(map[by.expression]) || (map[by.expression] as Record<string, unknown>).equalTo !== value) return false
-    const { [by.expression]: _gone, ...rest } = map
-    if (Object.keys(rest).length > 0) out[field] = rest
-    else delete out[field]
-    return true
-  }
-  switch (by.location) {
-    case 'path':
-      return drop('pathParameters') ? out : null
-    case 'query':
-      return drop('queryParameters') ? out : null
-    case 'header':
-      return drop('headers') ? out : null
-    case 'form':
-      return drop('formParameters') ? out : null
-    default: {
-      const key = by.location === 'jsonPath' ? 'matchesJsonPath' : 'matchesXPath'
-      const patterns = out.bodyPatterns
-      if (!Array.isArray(patterns) || patterns.length !== 1) return null
-      const p = patterns[0]
-      if (!isRecord(p) || !isRecord(p[key])) return null
-      const m = p[key] as Record<string, unknown>
-      if (m.expression !== by.expression || m.equalTo !== value) return null
-      delete out.bodyPatterns
-      return out
+  let bodyPatterns = Array.isArray(out.bodyPatterns) ? [...(out.bodyPatterns as unknown[])] : undefined
+  for (const [i, b] of by.entries()) {
+    const value = values[i]
+    if (value === null || value === undefined) continue
+    const drop = (field: string) => {
+      const map = out[field]
+      if (!isRecord(map)) return false
+      const name = Object.keys(map).find((k) => (b.location === 'header' ? k.toLowerCase() === b.expression.toLowerCase() : k === b.expression))
+      if (name === undefined || !isRecord(map[name]) || (map[name] as Record<string, unknown>).equalTo !== value) return false
+      const { [name]: _gone, ...rest } = map
+      if (Object.keys(rest).length > 0) out[field] = rest
+      else delete out[field]
+      return true
     }
+    const ok = (() => {
+      switch (b.location) {
+        case 'path':
+          return drop('pathParameters')
+        case 'query':
+          return drop('queryParameters')
+        case 'header':
+          return drop('headers')
+        case 'form':
+          return drop('formParameters')
+        default: {
+          const key = b.location === 'jsonPath' ? 'matchesJsonPath' : 'matchesXPath'
+          const at = (bodyPatterns ?? []).findIndex((p) => {
+            if (!isRecord(p) || !isRecord(p[key])) return false
+            const m = p[key] as Record<string, unknown>
+            return m.expression === b.expression && m.equalTo === value
+          })
+          if (at === -1) return false
+          bodyPatterns = bodyPatterns!.filter((_, j) => j !== at)
+          return true
+        }
+      }
+    })()
+    if (!ok) return null
   }
-}
-
-/**
- * The form for a group's stubs (in editor order, the fallback last), or null when they hold anything the form cannot
- * show; the page then offers each response in the JSON editor.
- */
-export function groupFormFromStubs(stubs: StubMapping[]): GroupForm | null {
-  const first = stubs[0]
-  const meta = first && groupOf(first)
-  if (!first || !meta) return null
-  let quick: Omit<QuickRequest, 'responseHeaders' | 'priority'> | null = null
-  const rows: GroupRow[] = []
-  let fallback: GroupForm['fallback'] = { on: false, response: emptyResponse() }
-  let priority: number | undefined
-  for (const stub of stubs) {
-    const g = groupOf(stub)
-    if (!g || g.id !== meta.id || g.by.location !== meta.by.location || g.by.expression !== meta.by.expression) return null
-    const allowed = ['id', 'uuid', 'name', 'priority', 'persistent', 'request', 'response', 'metadata']
-    if (!Object.keys(stub).every((k) => allowed.includes(k))) return null
-    if (!isRecord(stub.request) || !isRecord(stub.response)) return null
-    const base = withoutKey(stub.request, meta.by, g.value)
-    const read = base && readQuickRequest(base)
-    if (!read) return null
-    // Every response shares one request (but its value).
-    if (quick && JSON.stringify(quick) !== JSON.stringify(read)) return null
-    const response = readResponse(stub.response)
-    if (!response) return null
-    if (g.value === undefined) {
-      fallback = { on: true, response }
-    } else {
-      const p = typeof stub.priority === 'number' ? stub.priority : undefined
-      if (rows.length > 0 && p !== priority) return null
-      priority = p
-      rows.push({ key: rowKey(), value: g.value, response })
-    }
-    quick ??= read
-  }
-  if (!quick || rows.length === 0) return null
-  return {
-    name: typeof first.name === 'string' ? first.name : '',
-    tags: tagsOf(first),
-    quick: { ...quick, priority: priority === undefined ? '' : String(priority) },
-    by: meta.by,
-    rows,
-    fallback,
-  }
-}
-
-/** A response as the server's builder takes it (a JSON Content-Type sends the body as JSON). */
-function responseInput(r: ResponseForm) {
-  const headers = headerMap(r.headers)
-  const delay = r.delayMs.trim()
-  return {
-    status: Number(r.status),
-    ...(headers ? { headers } : {}),
-    ...(r.body !== '' ? { body: r.body } : {}),
-    ...(delay !== '' ? { delayMs: Number(delay) } : {}),
-  }
-}
-
-export function groupInput(form: GroupForm): GroupInput {
-  const q = form.quick
-  const query = headerMap(q.query)
-  const priority = q.priority.trim()
-  return {
-    ...(form.name.trim() !== '' ? { name: form.name.trim() } : {}),
-    ...(form.tags.length > 0 ? { tags: form.tags } : {}),
-    ...(priority !== '' ? { priority: Number(priority) } : {}),
-    request: {
-      method: q.method,
-      urlType: q.urlType,
-      url: q.url.trim(),
-      ...(query ? { query } : {}),
-      ...(q.body.trim() !== '' ? { body: q.body } : {}),
-    },
-    by: { location: form.by.location, expression: form.by.expression.trim() },
-    responses: form.rows.map((r) => ({ value: r.value, response: responseInput(r.response) })),
-    fallback: form.fallback.on ? { response: responseInput(form.fallback.response) } : null,
-  }
-}
-
-/** The checks the form makes before sending (the server makes them too); keys are row keys, `by`, `fallback`. */
-export function groupProblems(form: GroupForm): Record<string, string> {
-  const out: Record<string, string> = {}
-  const expression = form.by.expression.trim()
-  if (expression === '') out.by = 'byRequired'
-  else if (form.by.location === 'path' && (form.quick.urlType !== 'template' || !templateVariables(form.quick.url).includes(expression))) out.by = 'byPathMissing'
-  const seen = new Set<string>()
-  for (const row of form.rows) {
-    if (row.value === '') out[row.key] = 'valueRequired'
-    else if (seen.has(row.value)) out[row.key] = 'valueTwice'
-    else out[row.key] = responseProblem(row.response) ?? ''
-    seen.add(row.value)
-    if (out[row.key] === '') delete out[row.key]
-  }
-  if (form.fallback.on) {
-    const p = responseProblem(form.fallback.response)
-    if (p) out.fallback = p
+  if (bodyPatterns !== undefined) {
+    if (bodyPatterns.length > 0) out.bodyPatterns = bodyPatterns
+    else delete out.bodyPatterns
   }
   return out
 }
 
-function responseProblem(r: ResponseForm): string | undefined {
-  const status = Number(r.status)
-  if (!/^\d+$/.test(r.status) || status < 100 || status > 599) return 'statusRange'
-  if (r.delayMs.trim() !== '' && (!/^\d+$/.test(r.delayMs.trim()) || Number(r.delayMs) > 120000)) return 'delayRange'
-  const type = r.headers.find((h) => h.name.trim().toLowerCase() === 'content-type')?.value
-  if (r.body !== '' && isJsonContentType(type)) {
-    try {
-      JSON.parse(r.body)
-    } catch {
-      return 'bodyJson'
-    }
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/**
+ * The editor's form and responses for a group's stubs (in editor order, the fallback last), or null when they hold
+ * anything the form cannot show (Advanced mode then edits each stub's JSON).
+ */
+export function responsesFromStubs(stubs: StubMapping[]): { form: SimpleForm; responses: Responses } | null {
+  const meta = stubs[0] && groupOf(stubs[0])
+  if (!meta) return null
+  const by = meta.by
+  // The shared priority: a response sits one lower (a higher number) per condition left at any value, the fallback
+  // FALLBACK_STEP lower. Read from the first response; every stub must sit where the builder puts it.
+  const firstRow = stubs.find((s) => groupOf(s)?.values !== undefined)
+  if (!firstRow) return null
+  const stepOf = (values: (string | null)[] | undefined) => (values === undefined ? FALLBACK_STEP : values.filter((v) => v === null).length)
+  const firstStep = stepOf(groupOf(firstRow)!.values)
+  const firstOwn = typeof firstRow.priority === 'number' ? firstRow.priority : undefined
+  const base = firstStep === 0 ? firstOwn : firstOwn === undefined ? undefined : firstOwn - firstStep === DEFAULT_PRIORITY ? undefined : firstOwn - firstStep
+  const expected = (step: number) => (step === 0 ? base : (base ?? DEFAULT_PRIORITY) + step)
+  let shared: QuickRequest | null = null
+  let fallback: { form: SimpleForm; id: string } | null = null
+  const rows: ResponseRow[] = []
+  for (const stub of stubs) {
+    const g = groupOf(stub)
+    if (!g || g.id !== meta.id || JSON.stringify(g.by) !== JSON.stringify(by)) return null
+    if (!isRecord(stub.request)) return null
+    const request = withoutKeys(stub.request, by, g.values ?? [])
+    if (!request) return null
+    const own = typeof stub.priority === 'number' ? stub.priority : undefined
+    if (own !== expected(stepOf(g.values))) return null
+    const { priority: _p, ...rest } = stub
+    const form = fromQuickStub({ ...rest, ...(base !== undefined ? { priority: base } : {}), request } as StubMapping)
+    if (!form || form.scenario.enabled) return null
+    if (shared && !sameRequest(shared, form.quick!)) return null
+    shared ??= form.quick!
+    if (g.values === undefined) fallback = { form, id: stub.id }
+    else rows.push({ key: rowKey(), values: g.values.map((v) => v ?? ''), form, stubId: stub.id })
   }
-  return undefined
-}
-
-/** Which response answers `value` ("Try it"): a row, the fallback, or nothing from this mock. */
-export function answerFor(form: GroupForm, value: string): { kind: 'row'; row: GroupRow } | { kind: 'fallback' } | { kind: 'none' } {
-  const row = form.rows.find((r) => r.value !== '' && r.value === value)
-  if (row) return { kind: 'row', row }
-  return form.fallback.on ? { kind: 'fallback' } : { kind: 'none' }
-}
-
-/** The "Answer differently by" a URL suggests: its last template variable, else a query parameter to name. */
-export function suggestBy(quick: Pick<QuickRequest, 'urlType' | 'url'>): GroupBy {
-  const vars = quick.urlType === 'template' ? templateVariables(quick.url) : []
-  return vars.length > 0 ? { location: 'path', expression: vars.at(-1)! } : { location: 'query', expression: '' }
-}
-
-/** A new group from a single mock's Simple form: its request, its response as the first row (value to fill in). */
-export function groupFormFromSimple(form: SimpleForm, tags: string[]): GroupForm | null {
-  const quick = form.quick
-  if (!quick || form.answer === 'proxy' || form.fault !== '' || form.binary) return null
-  const { responseHeaders, ...request } = quick
-  const by = suggestBy(quick)
+  if (rows.length === 0) return null
+  const main = fallback?.form ?? structuredClone(rows[0]!.form)
   return {
-    name: form.name,
-    tags,
-    quick: request,
-    by,
-    rows: [
-      {
-        key: rowKey(),
-        value: '',
-        response: { status: String(form.status), headers: responseHeaders, body: form.body, delayMs: form.slow ? String(form.delaySeconds * 1000) : '' },
-      },
-    ],
-    fallback: { on: false, response: { ...emptyResponse(), status: '404' } },
+    form: main,
+    responses: { by, rows, fallbackOn: fallback !== null, ...(fallback ? { fallbackStubId: fallback.id } : {}) },
   }
 }
 
-/** The fallback's priority as the server will write it. */
-export const fallbackPriority = (form: GroupForm) => (form.quick.priority.trim() === '' ? DEFAULT_PRIORITY : Number(form.quick.priority)) + FALLBACK_STEP
+/** A response as the server's group builder takes it, from a form (its request is the editor's). */
+function responseInput(form: SimpleForm, request: QuickRequest): GroupInput['responses'][number]['response'] {
+  const q = toQuickInput({ ...form, quick: { ...request, responseHeaders: form.quick!.responseHeaders } })
+  const { request: _r, priority: _p, name: _n, tags: _t, scenario: _s, ...response } = q
+  return response
+}
+
+/** What the editor sends to save a mock with responses (or, with no rows, to turn a group back into one mock). */
+export function groupInputFrom(form: SimpleForm, tags: string[], responses: Responses): GroupInput {
+  const q = toQuickInput(form)
+  const request = form.quick!
+  return {
+    ...(q.name !== undefined ? { name: q.name } : {}),
+    ...(tags.length > 0 ? { tags } : {}),
+    ...(q.priority !== undefined ? { priority: q.priority } : {}),
+    request: q.request,
+    by: responses.by.map((b) => ({ location: b.location, expression: b.expression.trim() })),
+    responses: responses.rows.map((r) => ({
+      values: r.values.map((v) => (v.trim() === '' ? null : v)),
+      response: responseInput(r.form, request),
+    })),
+    fallback: responses.fallbackOn || responses.rows.length === 0 ? { response: responseInput(form, request) } : null,
+  }
+}
+
+export type ResponsesProblem = 'byRequired' | 'byPathMissing' | 'byTwice' | 'valueRequired' | 'valueTwice'
+
+/** The checks the editor makes before saving (the server makes them too); keys are `by:<i>` and row keys. */
+export function responsesProblems(quick: QuickRequest, responses: Responses): Record<string, ResponsesProblem> {
+  const out: Record<string, ResponsesProblem> = {}
+  if (responses.rows.length === 0) return out
+  const vars = quick.urlType === 'template' ? templateVariables(quick.url) : []
+  responses.by.forEach((b, i) => {
+    const expression = b.expression.trim()
+    const same = (o: GroupBy) =>
+      o.location === b.location && (b.location === 'header' ? o.expression.trim().toLowerCase() === expression.toLowerCase() : o.expression.trim() === expression)
+    if (expression === '') out[`by:${i}`] = 'byRequired'
+    else if (b.location === 'path' && !vars.includes(expression)) out[`by:${i}`] = 'byPathMissing'
+    else if (responses.by.slice(0, i).some(same)) out[`by:${i}`] = 'byTwice'
+  })
+  const seen = new Set<string>()
+  for (const row of responses.rows) {
+    const values = row.values.map((v) => v.trim())
+    const key = JSON.stringify(values)
+    if (values.every((v) => v === '')) out[row.key] = 'valueRequired'
+    else if (seen.has(key)) out[row.key] = 'valueTwice'
+    seen.add(key)
+  }
+  return out
+}
+
+/** The condition a URL suggests first: its last template variable, else a query parameter to name. */
+export function suggestBy(quick: Pick<QuickRequest, 'urlType' | 'url'>, taken: GroupBy[] = []): GroupBy {
+  const vars = quick.urlType === 'template' ? templateVariables(quick.url) : []
+  const free = vars.filter((v) => !taken.some((b) => b.location === 'path' && b.expression === v))
+  return free.length > 0 ? { location: 'path', expression: free.at(-1)! } : { location: 'query', expression: '' }
+}
+
+/** A new row: a copy of `from`'s response, a blank value per condition (or the given ones). */
+export function newRow(from: SimpleForm, by: GroupBy[], values?: string[]): ResponseRow {
+  return { key: rowKey(), values: by.map((_, i) => values?.[i] ?? ''), form: structuredClone({ ...from, name: '', scenario: { ...from.scenario, enabled: false } }) }
+}
+
+/** Adds the first row (and its first condition, from the URL). */
+export function addFirstRow(form: SimpleForm, responses: Responses): Responses {
+  const by = responses.by.length > 0 ? responses.by : [suggestBy(form.quick!)]
+  return { ...responses, by, rows: [...responses.rows, newRow(form, by)] }
+}
+
+/** "Add a response for 999" (a near miss): a row with those values, unless one already has them. */
+export function withValuesRow(form: SimpleForm, responses: Responses, values: (string | null)[]): Responses {
+  const wanted = responses.by.map((_, i) => values[i] ?? '')
+  if (wanted.every((v) => v === '') || responses.rows.some((r) => JSON.stringify(r.values) === JSON.stringify(wanted))) return responses
+  const from = responses.rows.at(-1)?.form ?? form
+  return { ...responses, rows: [...responses.rows, newRow(from, responses.by, wanted)] }
+}
+
+/** "orderId = 2003 · X-Tenant = acme" for a row (values left empty are "any" and left out). */
+export function rowLabel(by: GroupBy[], values: string[]): string {
+  return by
+    .map((b, i) => (values[i]?.trim() ? `${conditionLabel(b)} = ${values[i]!.trim()}` : null))
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/** A short summary of a response for a collapsed row: its status and the start of its body. */
+export function responseSummary(form: SimpleForm): { status: number | null; text: string } {
+  if (form.answer === 'proxy') return { status: null, text: form.proxy.baseUrl }
+  if (form.fault) return { status: null, text: form.fault }
+  if (form.binary) return { status: form.status, text: form.binary.name || form.binary.contentType }
+  const text = form.body.replace(/\s+/g, ' ').trim()
+  return { status: form.status, text: text.length > 80 ? `${text.slice(0, 80)}…` : text }
+}

@@ -91,7 +91,9 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
   // The first difference in one plain sentence, above the table.
   const first = rows.find((r) => r.state === 'mismatch')
   // "Add a response for p-2": the closest mock answers by a value, and this request had another one.
-  const addFor = miss.group?.keyValue ?? null
+  // A response of a mock with several responses missed: offer one for this request's values (when they could be read).
+  const addValues = miss.group?.keyValues ?? null
+  const addFor = addValues && addValues.some((v) => v !== null) ? addValues.filter((v) => v !== null).join(' · ') : null
 
   return (
     <article aria-labelledby={titleId} className="glow-border overflow-hidden rounded-md border border-line bg-surface">
@@ -139,7 +141,7 @@ function NearMissCard({ miss, rank }: { miss: NearMissView; rank: number }) {
           )}
           {addFor !== null && (
             <Button asChild size="sm" variant="outline" className="ms-auto">
-              <Link to="/mocks/$id" params={{ id: miss.stub.id }} search={{ add: addFor }}>
+              <Link to="/mocks/$id" params={{ id: miss.stub.id }} search={{ add: addValues! }}>
                 <PlusIcon data-icon="inline-start" />
                 <span className="min-w-0 truncate">{t('near.addFor', { value: addFor })}</span>
               </Link>

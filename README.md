@@ -50,7 +50,7 @@ Other ways to run it (the one-container image's settings, with Redis, from sourc
 ## Features
 
 - **Simple and Advanced mode.** **New mock** opens a form: a method, a URL (exact path, path template or regex), what else to match, and the answer (status preset, body, headers, slow responses, faults). **Advanced mode** edits the full stub JSON, or start from blank JSON.
-- **Several responses by value**: one mock that answers differently by a URL variable, query parameter, header, JSON or XML body field or form field (`GET /blog/posts/{id}`: `id` 42 → 200, `id` 404 → 404, any other `id` → a default), with an "any other value" response and a Try it box. A near miss in the request log offers "Add a response for" the value it had.
+- **Several responses by value**: one mock that answers differently by up to 4 values in the request (a URL variable, query parameter, header, JSON or XML body field or form field) (`GET /blog/posts/{id}`: `id` 42 → 200, `id` 404 → 404, any other `id` → a default), with an "every other request" response and a Test button on each response. A near miss in the request log offers "Add a response for" the value it had.
 - **Tags**: free-form labels on mocks (`blog`, `sprint-42`), edited above the editor; the Mocks list, the request log and export filter by tag.
 - **Test a mock** from the editor and see which mock answered. **Copy as curl** for any mock or logged request.
 - **Proxy** (forward to a real service), **webhooks** (call back after responding) and **scenarios** (pending, then shipped, then delivered), with a step-by-step scenario builder and a live state view.

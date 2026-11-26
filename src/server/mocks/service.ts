@@ -292,9 +292,9 @@ export class MockService {
   /**
    * Writes a group as `input` describes it and returns its stubs. `id` undefined makes a new group. `versions` holds
    * the version of every stub the editor loaded: a stub missing from it or at another version means someone changed
-   * the group meanwhile (409). A response keeps its stub (and its history) when its value is still there; new values
-   * get new stubs; values that are gone are deleted. `replaces`: a single mock the new group grows from (its first
-   * response keeps that mock's id).
+   * the group meanwhile (409). A response keeps its stub (and its history) when its values are still there; new values
+   * get new stubs; values that are gone are deleted. `replaces`: a single mock the new group grows from (its "every
+   * other request" response keeps that mock's id). With no responses left, the fallback's stub becomes a plain mock.
    */
   async saveGroup(
     id: string | undefined,
@@ -316,12 +316,15 @@ export class MockService {
       if (adopted.metadata?.wiremockUi?.version !== replaces.version) throw new ConflictError()
       if (groupOf(adopted)) throw new ValidationError('replaces must be a mock without several responses')
     }
-    const keyOf = (value: string | undefined) => (value === undefined ? '\u0000fallback' : value)
-    const byKey = new Map(existing.map((s) => [keyOf(groupOf(s)?.value), s]))
+    // A response keeps its stub by its values; the fallback (or a plain mock's one stub) by being the fallback.
+    const keyOf = (values: (string | null)[] | undefined) => (values === undefined ? '\u0000fallback' : JSON.stringify(values))
+    const byKey = new Map(existing.map((s) => [keyOf(groupOf(s)?.values), s]))
+    // The mock it grows from is the same response as "every other request" (or, without one, the first response).
+    const adoptAt = desired.findIndex((d) => d.metadata.wiremockUi.group?.values === undefined)
     const written: StubMapping[] = []
     for (const [i, d] of desired.entries()) {
-      const key = keyOf(d.metadata.wiremockUi.group.value)
-      const previous = byKey.get(key) ?? (i === 0 ? adopted : undefined)
+      const key = keyOf(d.metadata.wiremockUi.group?.values)
+      const previous = byKey.get(key) ?? (i === (adoptAt === -1 ? 0 : adoptAt) ? adopted : undefined)
       byKey.delete(key)
       if (previous === adopted) adopted = undefined
       written.push(

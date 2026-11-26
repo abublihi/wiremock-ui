@@ -1,12 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { AlertCircleIcon, ArrowUpRightIcon, FlaskConicalIcon, ListTreeIcon, TerminalIcon, WorkflowIcon } from 'lucide-react'
+import { AlertCircleIcon, ArrowUpRightIcon, FlaskConicalIcon, TerminalIcon, WorkflowIcon } from 'lucide-react'
 import { groupOf } from '@/server/mocks/groups'
-import { type GroupForm, byLabel, groupFormFromStubs, groupInput, rowKey } from '@/ui/lib/groups'
-import { GroupEditor } from './GroupEditor'
 import type { StubMapping } from '@/server/wiremock/types'
 import { ApiError } from '@/ui/api/client'
-import { useMock, useMockGroup, useSaveMockGroup } from '@/ui/api/queries'
+import { useMock, useMockGroup } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Skeleton } from '@/ui/components/ui/skeleton'
@@ -19,27 +17,25 @@ import { type EditorMode, MockEditor } from './MockEditor'
 import { TestPanel, copyCurl } from './TestPanel'
 
 /**
- * Edit a mock. The editor works on the version it opened: background refetches never replace a draft;
- * only a save, a Reload (after a conflict) or a restore with no unsaved changes moves it to another version.
+ * Edit a mock, one with several responses included (its stubs open together). The editor works on the version it
+ * opened: background refetches never replace a draft; only a save, a Reload (after a conflict) or a restore with no
+ * unsaved changes moves it to another version.
  */
-export function EditMockPage({ id, addValue }: { id: string; addValue?: string }) {
+export function EditMockPage({ id, addValues }: { id: string; addValues?: (string | null)[] }) {
   const t = useT()
   const mock = useMock(id)
   const [opened, setOpened] = useState<StubMapping>()
   const [generation, setGeneration] = useState(0)
   const [mode, setMode] = useState<EditorMode>()
-  const [testing, setTesting] = useState(false)
+  // The stub under test: the mock, or one response of a mock with several responses.
+  const [testing, setTesting] = useState<StubMapping | null>(null)
   const publicUrl = useWiremockPublicUrl()
   const navigate = useNavigate()
   if (!opened && mock.data) setOpened(mock.data)
 
   const meta = opened?.metadata?.wiremockUi
-  // A mock with several responses opens as one: every stub of its group.
   const group = opened ? groupOf(opened) : undefined
   const groupStubs = useMockGroup(group?.id)
-  const saveGroup = useSaveMockGroup()
-  /** A URL mock growing into one with several responses (not saved yet). */
-  const [growing, setGrowing] = useState<GroupForm | null>(null)
 
   if (!opened && mock.isError) {
     const missing = mock.error instanceof ApiError && mock.error.status === 404
@@ -70,113 +66,78 @@ export function EditMockPage({ id, addValue }: { id: string; addValue?: string }
     if (result.error) throw result.error
     if (result.data) load(result.data)
   }
-
-  // After a group save: the page follows the group (its first response, which may be another stub now).
+  // After saving several responses: the page stays on this stub while it is still there, else follows the first one.
   const afterGroupSave = async (stubs: StubMapping[]) => {
-    const first = stubs[0]!
-    if (first.id !== opened.id) await navigate({ to: '/mocks/$id', params: { id: first.id } })
-    else {
-      await groupStubs.refetch()
-      load(first)
-    }
+    const kept = stubs.find((s) => s.id === opened.id)
+    if (!kept) return void (await navigate({ to: '/mocks/$id', params: { id: stubs[0]!.id } }))
+    if (group) await groupStubs.refetch()
+    load(kept)
+  }
+  // After saving one stub's JSON: the group is read again.
+  const afterSave = async (stub: StubMapping) => {
+    if (group) await groupStubs.refetch()
+    load(stub)
   }
 
-  if (growing) {
-    return (
-      <EditorShell valueTitle title={growing.name || opened.name || opened.id} caption={t('groups.editCaption', { count: growing.rows.length + (growing.fallback.on ? 1 : 0), by: byLabel(growing.by) })}>
-        <GroupEditor
-          initial={growing}
-          cancelLabel={t('groups.backToOne')}
-          onCancel={() => setGrowing(null)}
-          onSave={async (form) => {
-            const stubs = await saveGroup.mutateAsync({ input: groupInput(form), replaces: { id: opened.id, version: meta?.version ?? 0 } })
-            await afterGroupSave(stubs)
-            setGrowing(null)
-            return stubs
-          }}
-        />
-      </EditorShell>
-    )
-  }
-
-  const loadedForm = group && groupStubs.data ? groupFormFromStubs(groupStubs.data) : null
-  // "Add a response for 7" (from a near miss): a new row with that value, unless one already has it.
-  const groupForm =
-    loadedForm && addValue !== undefined && !loadedForm.rows.some((r) => r.value === addValue)
-      ? { ...loadedForm, rows: [...loadedForm.rows, { key: rowKey(), value: addValue, response: { ...loadedForm.rows.at(-1)!.response } }] }
-      : loadedForm
-  if (group && groupStubs.data && groupForm) {
-    const versions = Object.fromEntries(groupStubs.data.map((s) => [s.id, s.metadata?.wiremockUi?.version ?? 0]))
-    return (
-      <EditorShell
-        valueTitle
-        title={opened.name || opened.id}
-        caption={t('groups.editCaption', { count: groupStubs.data.length, by: byLabel(group.by) })}
-      >
-        <GroupEditor
-          key={JSON.stringify(versions)}
-          initial={groupForm}
-          onSave={async (form) => {
-            const stubs = await saveGroup.mutateAsync({ id: group.id, input: groupInput(form), versions })
-            await afterGroupSave(stubs)
-            return stubs
-          }}
-        />
-      </EditorShell>
-    )
-  }
-
+  const stubs = group ? groupStubs.data : undefined
+  const versions = stubs?.map((s) => `${s.id}:${s.metadata?.wiremockUi?.version ?? 0}`).join(',')
   const ref = t('editor.quickRef')
-  const tested = draftFromStub(opened)
+  const tested = testing ? draftFromStub(testing) : null
   const scenario = typeof opened.scenarioName === 'string' && opened.scenarioName !== '' ? opened.scenarioName : undefined
 
   return (
     <EditorShell
       valueTitle
       title={opened.name || opened.id}
-      caption={t('editor.editCaption', { ref, version: meta?.version ?? 0 })}
-      notice={scenario ? <ScenarioLink name={scenario} /> : group ? <GroupNotice /> : undefined}
+      caption={stubs ? t('responses.editCaption', { count: stubs.length }) : t('editor.editCaption', { ref, version: meta?.version ?? 0 })}
+      notice={scenario ? <ScenarioLink name={scenario} /> : undefined}
       actions={
-        // Both act on the saved version: that is what WireMock serves.
-        <>
-          <Button variant="outline" size="sm" title={t('curl.savedHint')} onClick={() => void copyCurl(publicUrl === undefined ? undefined : curlFromStub(opened, undefined, publicUrl), t)}>
-            <TerminalIcon data-icon="inline-start" />
-            {t('curl.copy')}
-          </Button>
-          <Button size="sm" onClick={() => setTesting(true)}>
-            <FlaskConicalIcon data-icon="inline-start" />
-            {t('test.open')}
-          </Button>
-        </>
+        // Both act on the saved version: that is what WireMock serves. A mock with several responses tests each one.
+        stubs ? undefined : (
+          <>
+            <Button variant="outline" size="sm" title={t('curl.savedHint')} onClick={() => void copyCurl(publicUrl === undefined ? undefined : curlFromStub(opened, undefined, publicUrl), t)}>
+              <TerminalIcon data-icon="inline-start" />
+              {t('curl.copy')}
+            </Button>
+            <Button size="sm" onClick={() => setTesting(opened)}>
+              <FlaskConicalIcon data-icon="inline-start" />
+              {t('test.open')}
+            </Button>
+          </>
+        )
       }
     >
-      <TestPanel open={testing} onOpenChange={setTesting} mockId={opened.id} initial={tested.draft} pathIsPattern={tested.pathIsPattern} />
+      {testing && tested && (
+        <TestPanel
+          key={testing.id}
+          open
+          onOpenChange={(o) => !o && setTesting(null)}
+          mockId={testing.id}
+          initial={tested.draft}
+          pathIsPattern={tested.pathIsPattern}
+        />
+      )}
       <MockEditor
-        key={`${opened.id}:${meta?.version ?? 0}:${generation}`}
+        key={`${opened.id}:${meta?.version ?? 0}:${generation}:${versions ?? ''}`}
         mock={opened}
+        group={group && stubs ? { id: group.id, stubs } : undefined}
+        addValues={addValues}
         initialMode={mode}
         onModeChange={setMode}
-        onSaved={(stub, savedIn) => {
+        onSaved={async (stub, savedIn) => {
           setMode(savedIn)
-          load(stub)
+          await afterSave(stub)
         }}
-        onReload={reload}
+        onGroupSaved={afterGroupSave}
+        onReload={async () => {
+          if (group) await groupStubs.refetch()
+          await reload()
+        }}
         // Restoring with no unsaved changes shows the restored version; a draft stays (its next save will conflict).
-        onRestored={(stub, dirty) => !dirty && load(stub)}
-        onAddResponse={group ? undefined : setGrowing}
+        onRestored={(stub, dirty) => !dirty && void afterSave(stub)}
+        onTest={setTesting}
       />
     </EditorShell>
-  )
-}
-
-/** One response of a mock with several responses the editor can't show as a whole: edited here as JSON, on its own. */
-function GroupNotice() {
-  const t = useT()
-  return (
-    <p className="flex items-center gap-2 rounded-md border border-hazard/40 bg-hazard/5 px-3 py-2 text-xs">
-      <ListTreeIcon aria-hidden className="size-3.5 shrink-0 text-hazard-fg" />
-      {t('groups.cantShow')}
-    </p>
   )
 }
 

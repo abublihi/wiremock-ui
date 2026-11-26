@@ -1,84 +1,44 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertCircleIcon, EyeIcon, FileIcon, ListTreeIcon, SaveIcon, Trash2Icon } from 'lucide-react'
+import { AlertCircleIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon, FlaskConicalIcon, ListPlusIcon, PlusIcon, SaveIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Endpoint, Integration } from '@/server/catalog/types'
+import type { GroupBy } from '@/server/mocks/groups'
+import type { KeyLocation } from '@/server/catalog/types'
 import type { StubMapping } from '@/server/wiremock/types'
 import { ApiError } from '@/ui/api/client'
-import { type BuiltStub, type PreviewArgs, useCreateMock, usePreviewMock, useScenarios, useUpdateMock } from '@/ui/api/queries'
+import { type PreviewArgs, useCreateMock, usePreviewMock, usePreviewMockGroup, useSaveMockGroup, useScenarios, useUpdateMock } from '@/ui/api/queries'
+import { StatusBadge } from '@/ui/components/common/StatusBadge'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/ui/components/ui/field'
+import { Field, FieldError, FieldLabel } from '@/ui/components/ui/field'
 import { Input } from '@/ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/ui/components/ui/sheet'
 import { Spinner } from '@/ui/components/ui/spinner'
-import { Switch } from '@/ui/components/ui/switch'
-import { Textarea } from '@/ui/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/ui/components/ui/toggle-group'
 import { useT } from '@/ui/i18n'
+import type { MessageKey } from '@/ui/i18n'
+import { type QuickRequest, type ScenarioForm, type ScenarioSeed, type SimpleForm, emptyQuickForm, quickMockName, toQuickInput } from '@/ui/lib/editor-sync'
 import {
-  type ProxyForm,
-  type QuickRequest,
-  type ScenarioForm,
-  type ScenarioSeed,
-  type SimpleForm,
-  type WebhookForm,
-  QUICK_INTEGRATION,
-  emptyForm,
-  emptyQuickForm,
-  exampleFor,
-  isHttpUrl,
-  quickEndpoint,
-  quickMockName,
-  seedScenario,
-  toQuickInput,
-  toSimpleInput,
-} from '@/ui/lib/editor-sync'
-import {
-  FAULT_OPTIONS,
-  PRESET_LABEL,
-  SLOW_MAX_SECONDS,
-  MAX_WEBHOOK_DELAY_MS,
-  SLOW_MIN_SECONDS,
-  type Preset,
-  presetToStatus,
-  visiblePresets,
-} from '@/ui/lib/presets'
+  type ResponseRow,
+  type Responses,
+  MAX_CONDITIONS,
+  addFirstRow,
+  conditionLabel,
+  groupInputFrom,
+  newRow,
+  noResponses,
+  responseSummary,
+  responsesProblems,
+  rowLabel,
+  suggestBy,
+} from '@/ui/lib/groups'
+import { templateVariables } from '@/server/mocks/groups'
 import { cn } from '@/ui/lib/utils'
-import { type BodyFile, formatSize } from '@/ui/lib/body-file'
-import { BodyFileButton } from './BodyFileButton'
 import { CodeEditor } from './CodeEditor'
-import { Eyebrow } from './EditorShell'
-import { HeaderRows, hasUnnamedRow } from './HeaderRows'
-import { ProxySection } from './ProxySection'
 import { QuickRequestFields, quickRequestErrors } from './QuickRequestFields'
+import { type Errors, type FieldName, ON, ResponseFields, Section, responseBlocked, responseClientErrors } from './ResponseFields'
 import { ScenarioSection } from './ScenarioSection'
-import { WebhookSection } from './WebhookSection'
-
-type FieldName =
-  | 'keyValue'
-  | 'url'
-  | 'query'
-  | 'priority'
-  | 'headers'
-  | 'status'
-  | 'body'
-  | 'delay'
-  | 'fault'
-  | 'name'
-  | 'proxyBaseUrl'
-  | 'proxyStripPrefix'
-  | 'proxyHeaders'
-  | 'webhookMethod'
-  | 'webhookUrl'
-  | 'webhookHeaders'
-  | 'webhookBody'
-  | 'webhookDelay'
-  | 'scenarioName'
-  | 'scenarioRequiredState'
-  | 'scenarioNewState'
-type Errors = Partial<Record<FieldName, string>>
 
 const SERVER_FIELD = new Map<string, FieldName>([
   ['keyValue', 'keyValue'],
@@ -108,18 +68,15 @@ const SERVER_FIELD = new Map<string, FieldName>([
 ])
 
 /**
- * The form field a server validation message names, if any: "keyValue is required" → keyValue,
- * "webhook.delay.lower must …" → webhookDelay (the longest known dotted prefix).
- */
-/**
  * A server message for a field, without the API's field path ("webhook.delay.lower must be …" → "This value must
  * be …"): the field it belongs to is already marked, and the reader never sees those names.
  */
 export function withoutFieldPath(message: string, t: ReturnType<typeof useT>): string {
-  const rest = /^[w.]+s+(.*)$/s.exec(message)?.[1]
-  return rest ? t('editor.fieldProblem', { problem: rest.replace(/.$/, '') }) : message
+  const rest = /^[\w.[\]]+\s+(.*)$/s.exec(message)?.[1]
+  return rest ? t('editor.fieldProblem', { problem: rest.replace(/\.$/, '') }) : message
 }
 
+/** The form field a server validation message names, if any (the longest known dotted prefix). */
 function fieldOf(message: string): FieldName | undefined {
   if (message === 'body must be an object') return undefined // about the request, not the response body
   const parts = (/^([\w.]+)/.exec(message)?.[1] ?? '').split('.')
@@ -130,133 +87,113 @@ function fieldOf(message: string): FieldName | undefined {
   return undefined
 }
 
-const NO_FAULT = 'none'
-const ON = 'data-[state=on]:border-signal/50 data-[state=on]:bg-signal/10 data-[state=on]:text-signal-fg'
+const LOCATIONS: [KeyLocation, MessageKey][] = [
+  ['path', 'responses.location.path'],
+  ['query', 'responses.location.query'],
+  ['header', 'responses.location.header'],
+  ['jsonPath', 'responses.location.jsonPath'],
+  ['xPath', 'responses.location.xPath'],
+  ['form', 'responses.location.form'],
+]
+const PROBLEM: Record<string, MessageKey> = {
+  byRequired: 'responses.problem.byRequired',
+  byPathMissing: 'responses.problem.byPathMissing',
+  byTwice: 'responses.problem.byTwice',
+  valueRequired: 'responses.problem.valueRequired',
+  valueTwice: 'responses.problem.valueTwice',
+}
+
+/** A saved mock with several responses: its stubs (for their versions, and to test one response). */
+export type SavedGroup = { id: string; stubs: StubMapping[] }
 
 /**
- * The catalog-first Simple editor: answers for one endpoint, built by the server's builder (preview/create),
- * or saved over an existing mock with `PUT { stub, version }` when `mock` is given. Without an integration and
- * endpoint it is the quick form ("Mock a URL directly"): the same response parts plus a method and URL of its own,
- * built by the server's quick builder and saved as a free-form mock.
- * `onChange` reports every form change; `onSaved` takes over after a save (default: open the mock);
- * `onConflict` takes over a 409 (default: an inline message).
+ * The Simple editor: the mock's request, its response, and (on demand) more responses for some requests. With no
+ * extra responses it is one stub, built by the server's quick builder and saved as a free-form mock (`PUT { stub,
+ * version }` over `mock`). With extra responses, "Choose the response by" names the conditions, each response says
+ * which values it is for, and the mock's own response answers every other request; it is saved as a group
+ * (src/server/mocks/groups.ts). `onChange` / `onResponsesChange` report every change; `onSaved` / `onGroupSaved` take
+ * over after a save (default: open the mock); `onConflict` takes over a 409.
  */
 export function SimpleEditor({
   initial,
+  initialResponses,
   mock,
+  group,
   scenarioSeed,
   tags = [],
   onChange,
+  onResponsesChange,
   onSaved,
+  onGroupSaved,
   onConflict,
-  growButton,
+  onTest,
 }: {
   initial?: SimpleForm
+  initialResponses?: Responses
   mock?: StubMapping
+  /** The saved group this editor opened (its responses are in `initialResponses`). */
+  group?: SavedGroup
   /** A new mock's scenario (when `initial` is not given): the Scenario section starts on and filled in. */
   scenarioSeed?: ScenarioSeed
   /** The mock's tags (edited above the tabs); saved with the stub. */
   tags?: string[]
   onChange?: (form: SimpleForm) => void
+  onResponsesChange?: (responses: Responses) => void
   onSaved?: (stub: StubMapping) => void | Promise<void>
+  onGroupSaved?: (stubs: StubMapping[]) => void | Promise<void>
   onConflict?: () => void
-  /** Shown on a URL mock: "Add a response for another value" (the page opens the several-responses editor). */
-  growButton?: () => void
+  /** Test one saved response (opens the test panel filled for its values). */
+  onTest?: (stub: StubMapping) => void
 }) {
   const t = useT()
   const navigate = useNavigate()
   const ids = useId()
   const id = (name: string) => `${ids}-${name}`
 
-  const [form, setForm] = useState<SimpleForm>(
-    () => initial ?? emptyQuickForm(scenarioSeed),
-  )
-  // A quick mock: its request (method, URL, …) is part of the form and stands in for the endpoint below.
-  const quick = form.quick
-  const endpoint = quickEndpoint(quick!)
-  const integration = QUICK_INTEGRATION
-  // An existing mock's body is the user's; a new form's body follows the example until the user types (a quick
-  // mock has no examples).
-  const [bodyTouched, setBodyTouched] = useState(true)
-  // The status whose catalog example is in the body (shown in the "prefilled from" caption).
-  const [exampleStatus, setExampleStatus] = useState(form.status)
-  const [customText, setCustomText] = useState(String(form.status))
+  const [form, setForm] = useState<SimpleForm>(() => initial ?? emptyQuickForm(scenarioSeed))
+  const [responses, setResponses] = useState<Responses>(() => initialResponses ?? noResponses())
+  const quick = form.quick!
   const [serverErrors, setServerErrors] = useState<Errors>({})
   const [formError, setFormError] = useState<{ title: string; message: string } | null>(null)
-  const [preview, setPreview] = useState<BuiltStub | null>(null)
-  const [fileError, setFileError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<unknown>(null)
   // Required URLs are only flagged once the user tries to preview or save.
   const [attempted, setAttempted] = useState(false)
+  // Which response cards are open (the new ones open; "every other request" is `main`).
+  const [open, setOpen] = useState<Set<string>>(() => new Set())
 
   const scenarios = useScenarios({ enabled: form.scenario.enabled, live: true })
   const previewMock = usePreviewMock()
+  const previewGroup = usePreviewMockGroup()
   const createFreeMock = useCreateMock()
   const updateMock = useUpdateMock()
+  const saveGroup = useSaveMockGroup()
   const [saving, setSaving] = useState(false)
 
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
   useEffect(() => onChangeRef.current?.(form), [form])
+  const onResponsesRef = useRef(onResponsesChange)
+  onResponsesRef.current = onResponsesChange
+  useEffect(() => onResponsesRef.current?.(responses), [responses])
 
-  const presets = visiblePresets(endpoint.allowedStatuses)
-  const covered = new Set(presets.map((p) => presetToStatus(p).status))
-  // Also shown whenever the form is on a custom status, so a stored one always has a selected item.
-  const showCustom =
-    form.preset === 'custom' || endpoint.allowedStatuses.length === 0 || endpoint.allowedStatuses.some((s) => !covered.has(s))
-  const proxied = form.answer === 'proxy'
-  const broken = !proxied && form.fault !== ''
-  const timeout = !proxied && !broken && form.preset === 'timeout'
-
-  // Client-side checks for the two number inputs; everything else is the server builder's call.
-  const clientErrors: Errors = {}
-  if (!proxied && !broken && form.preset === 'custom') {
-    const n = Number(customText)
-    if (!Number.isInteger(n) || n < 100 || n > 599) clientErrors.status = t('editor.statusRange')
-    else if (endpoint.allowedStatuses.length > 0 && !endpoint.allowedStatuses.includes(n))
-      clientErrors.status = t('editor.statusNotAllowed', { allowed: endpoint.allowedStatuses.join(', ') })
-  }
-  if (form.slow && !timeout) {
-    const s = form.delaySeconds
-    if (!Number.isInteger(s) || s < SLOW_MIN_SECONDS || s > SLOW_MAX_SECONDS) clientErrors.delay = t('editor.slowRange')
-  }
-  if (proxied) {
-    const { baseUrl, stripPrefix, addHeaders } = form.proxy
-    if ((attempted || baseUrl.trim() !== '') && !isHttpUrl(baseUrl)) clientErrors.proxyBaseUrl = t('editor.proxy.baseUrlInvalid')
-    if (stripPrefix.trim() !== '' && !stripPrefix.trim().startsWith('/')) clientErrors.proxyStripPrefix = t('editor.proxy.stripPrefixInvalid')
-    if (hasUnnamedRow(addHeaders)) clientErrors.proxyHeaders = t('editor.headers.unnamed')
-  }
-  if (form.webhook.enabled) {
-    const { url, headers, delay, delayMs, lower, upper } = form.webhook
-    if ((attempted || url.trim() !== '') && !isHttpUrl(url, { templated: true })) clientErrors.webhookUrl = t('editor.webhook.urlInvalid')
-    if (hasUnnamedRow(headers)) clientErrors.webhookHeaders = t('editor.headers.unnamed')
-    const inRange = (n: number) => Number.isInteger(n) && n >= 0 && n <= MAX_WEBHOOK_DELAY_MS
-    if (delay === 'fixed' && !inRange(delayMs)) clientErrors.webhookDelay = t('editor.webhook.delayRange')
-    if (delay === 'uniform') {
-      if (!inRange(lower) || !inRange(upper)) clientErrors.webhookDelay = t('editor.webhook.delayRange')
-      else if (lower > upper) clientErrors.webhookDelay = t('editor.webhook.delayOrder')
-    }
-  }
-  if (form.scenario.enabled && attempted && form.scenario.name.trim() === '') clientErrors.scenarioName = t('editor.scenario.nameRequired')
-  if (quick) {
-    Object.assign(clientErrors, quickRequestErrors(t, quick, attempted))
-    if (!proxied && !broken && hasUnnamedRow(quick.responseHeaders)) clientErrors.headers = t('editor.headers.unnamed')
-  }
+  const several = responses.rows.length > 0
+  // Saved through the group path: it has (or had) several responses.
+  const asGroup = several || group !== undefined
+  const problems = responsesProblems(quick, responses)
+  const quickErrors = quickRequestErrors(t, quick, attempted)
+  const mainErrors = !several || responses.fallbackOn ? responseClientErrors(t, form, attempted) : {}
+  const clientErrors: Errors = { ...mainErrors, ...quickErrors }
+  if (!asGroup && form.scenario.enabled && attempted && form.scenario.name.trim() === '') clientErrors.scenarioName = t('editor.scenario.nameRequired')
   const errors: Errors = { ...serverErrors, ...clientErrors }
+  const rowsBlocked = responses.rows.some((r) => Object.keys(responseClientErrors(t, r.form, attempted)).length > 0)
+  const blocked = Object.keys(clientErrors).length > 0 || rowsBlocked || (several && attempted && Object.keys(problems).length > 0)
 
-  const update = (patch: Partial<SimpleForm>, clears: FieldName[] = []) => {
-    setForm((f) => ({ ...f, ...patch }))
-    if (clears.some((c) => serverErrors[c])) setServerErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !clears.includes(k as FieldName))))
-  }
   const clear = (clears: FieldName[]) => {
     if (clears.some((c) => serverErrors[c])) setServerErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !clears.includes(k as FieldName))))
   }
-  const updateProxy = (patch: Partial<ProxyForm>) => {
-    setForm((f) => ({ ...f, proxy: { ...f.proxy, ...patch } }))
-    clear(['proxyBaseUrl', 'proxyStripPrefix', 'proxyHeaders'])
-  }
-  const updateWebhook = (patch: Partial<WebhookForm>) => {
-    setForm((f) => ({ ...f, webhook: { ...f.webhook, ...patch } }))
-    clear(['webhookMethod', 'webhookUrl', 'webhookHeaders', 'webhookBody', 'webhookDelay'])
+  const update = (patch: Partial<SimpleForm>, clears: FieldName[] = []) => {
+    setForm((f) => ({ ...f, ...patch }))
+    clear(clears)
   }
   const updateQuick = (patch: Partial<QuickRequest>, clears: FieldName[]) => {
     setForm((f) => ({ ...f, quick: { ...f.quick!, ...patch } }))
@@ -266,38 +203,31 @@ export function SimpleEditor({
     setForm((f) => ({ ...f, scenario: { ...f.scenario, ...patch } }))
     clear(['scenarioName', 'scenarioRequiredState', 'scenarioNewState'])
   }
-  /** A preset always swaps in its example (or none); a typed custom status only when the catalog has one. */
-  const setStatus = (preset: Preset, status: number, keepWithoutExample = false) => {
-    const example = exampleFor(endpoint, status)
-    const refill = !bodyTouched && (example !== '' || !keepWithoutExample)
-    if (refill) setExampleStatus(status)
-    update({ preset, status, ...(refill ? { body: example } : {}) }, ['status', 'body'])
+  const patchRow = (key: string, patch: Partial<ResponseRow>) => setResponses((r) => ({ ...r, rows: r.rows.map((row) => (row.key === key ? { ...row, ...patch } : row)) }))
+  const setBy = (by: GroupBy[]) => setResponses((r) => ({ ...r, by }))
+
+  const addResponse = () => {
+    const next = several ? { ...responses, rows: [...responses.rows, newRow(responses.rows.at(-1)!.form, responses.by)] } : addFirstRow(form, responses)
+    setResponses(next)
+    setOpen((o) => new Set(o).add(next.rows.at(-1)!.key))
   }
-  /** A text file becomes the body (the endpoint keeps its Content-Type); anything else a binary body with its own. */
-  const onBodyFile = (file: BodyFile) => {
-    setBodyTouched(true)
-    if (file.kind === 'text') update({ body: file.text, binary: null }, ['body'])
-    else {
-      const binary = { base64: file.base64, name: file.name, size: file.size, contentType: file.contentType }
-      // A quick mock's typed Content-Type gives way to the file's own.
-      const headers = quick?.responseHeaders.filter((r) => r.name.trim().toLowerCase() !== 'content-type')
-      update({ body: '', binary, ...(quick ? { quick: { ...quick, responseHeaders: headers! } } : {}) }, ['body', 'headers'])
-    }
-    toast.success(t('editor.bodyFile.loaded', { name: file.name }))
-  }
-  const onPreset = (value: string) => {
-    if (!value) return // the toggle group allows deselecting; a status is always chosen
-    const preset = value as Preset
-    if (preset === 'custom') {
-      setCustomText(String(form.status))
-      update({ preset }, ['status'])
-    } else setStatus(preset, presetToStatus(preset).status)
-  }
-  const onCustom = (text: string) => {
-    setCustomText(text)
-    const n = Number(text)
-    if (text !== '' && Number.isInteger(n)) setStatus('custom', n, true)
-  }
+  const addCondition = () =>
+    setResponses((r) => ({ ...r, by: [...r.by, suggestBy(quick, r.by)], rows: r.rows.map((row) => ({ ...row, values: [...row.values, ''] })) }))
+  const removeCondition = (i: number) =>
+    setResponses((r) => ({ ...r, by: r.by.filter((_, j) => j !== i), rows: r.rows.map((row) => ({ ...row, values: row.values.filter((_, j) => j !== i) })) }))
+  const removeRow = (key: string) =>
+    setResponses((r) => {
+      const rows = r.rows.filter((row) => row.key !== key)
+      // The last extra response gone: the mock answers every request again.
+      return rows.length === 0 ? { ...r, rows, fallbackOn: true } : { ...r, rows }
+    })
+  const toggle = (key: string) =>
+    setOpen((o) => {
+      const next = new Set(o)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
 
   const handleError = (error: unknown, title: string) => {
     if (error instanceof ApiError && error.status === 409) {
@@ -306,35 +236,47 @@ export function SimpleEditor({
       return
     }
     const message = error instanceof Error && error.message ? error.message : t('error.generic')
-    const field = error instanceof ApiError && error.status === 400 ? fieldOf(error.field ?? message) : undefined
+    const field = !asGroup && error instanceof ApiError && error.status === 400 ? fieldOf(error.field ?? message) : undefined
     if (field) setServerErrors({ [field]: field === 'keyValue' && /required/.test(message) ? t('editor.keyRequired') : withoutFieldPath(message, t) })
     else setFormError({ title, message })
   }
   const withTagList = <T extends object>(input: T): T => (tags.length > 0 ? { ...input, tags } : input)
   const args = (): PreviewArgs => ({ quick: withTagList(toQuickInput(form)) })
-  const blocked = Object.keys(clientErrors).length > 0
+  const groupInput = () => groupInputFrom(form, tags, responses)
   const reset = () => {
     setServerErrors({})
     setFormError(null)
   }
 
-  /** Flags the required URLs; false when the form has a client-side error to fix first. */
+  /** Flags the required URLs; false when the form has something to fix first. */
   const ready = () => {
     setAttempted(true)
-    return !(
-      blocked ||
-      (proxied && !isHttpUrl(form.proxy.baseUrl)) ||
-      (form.webhook.enabled && !isHttpUrl(form.webhook.url, { templated: true })) ||
-      (form.scenario.enabled && form.scenario.name.trim() === '') ||
-      (quick !== undefined && Object.keys(quickRequestErrors(t, quick, true)).length > 0)
-    )
+    if (Object.keys(quickRequestErrors(t, quick, true)).length > 0) return false
+    if (several) {
+      if (Object.keys(problems).length > 0) {
+        // Show what is wrong: open the responses whose values need fixing.
+        setOpen((o) => new Set([...o, ...responses.rows.filter((r) => problems[r.key]).map((r) => r.key)]))
+        return false
+      }
+      const bad = responses.rows.filter((r) => responseBlocked(t, r.form))
+      if (bad.length > 0) {
+        setOpen((o) => new Set([...o, ...bad.map((r) => r.key)]))
+        return false
+      }
+      if (responses.fallbackOn && responseBlocked(t, form)) {
+        setOpen((o) => new Set(o).add('main'))
+        return false
+      }
+      return true
+    }
+    return !(blocked || responseBlocked(t, form) || (!asGroup && form.scenario.enabled && form.scenario.name.trim() === ''))
   }
 
   const onPreview = async () => {
     if (!ready()) return
     reset()
     try {
-      setPreview(await previewMock.mutateAsync(args()))
+      setPreview(asGroup ? await previewGroup.mutateAsync({ input: groupInput(), id: group?.id }) : await previewMock.mutateAsync(args()))
     } catch (error) {
       handleError(error, t('editor.previewFailed'))
     }
@@ -346,6 +288,16 @@ export function SimpleEditor({
     reset()
     setSaving(true)
     try {
+      if (asGroup) {
+        const input = groupInput()
+        const stubs = group
+          ? await saveGroup.mutateAsync({ id: group.id, input, versions: Object.fromEntries(group.stubs.map((s) => [s.id, s.metadata?.wiremockUi?.version ?? 0])) })
+          : await saveGroup.mutateAsync({ input, ...(mock ? { replaces: { id: mock.id, version: mock.metadata?.wiremockUi?.version ?? 0 } } : {}) })
+        toast.success(t('editor.saved'))
+        if (onGroupSaved) await onGroupSaved(stubs)
+        else await navigate({ to: '/mocks/$id', params: { id: stubs[0]!.id } })
+        return
+      }
       let saved: StubMapping
       if (mock) {
         // The server's builder stays the single source of the stub; the PUT carries the version we opened.
@@ -365,13 +317,14 @@ export function SimpleEditor({
     }
   }
 
-  const described = (field: FieldName, ...extra: (string | false)[]) =>
-    [...extra, errors[field] && id(`${field}-error`)].filter(Boolean).join(' ') || undefined
-  const fieldError = (field: FieldName) =>
-    errors[field] ? <FieldError id={id(`${field}-error`)}>{errors[field]}</FieldError> : null
+  const fieldError = (field: FieldName) => (errors[field] ? <FieldError id={id(`${field}-error`)}>{errors[field]}</FieldError> : null)
+  const stubOf = (stubId: string | undefined) => (stubId ? group?.stubs.find((s) => s.id === stubId) : undefined)
+  const savedMain = several ? stubOf(responses.fallbackStubId) : undefined
+  const pending = previewMock.isPending || previewGroup.isPending
 
-  const bodyLanguage = endpoint.contentType === 'json' || endpoint.contentType === 'xml' ? endpoint.contentType : null
-  const namePlaceholder = quickMockName(quick!)
+  const mainFields = (compact: boolean) => (
+    <ResponseFields form={form} request={quick} serverErrors={serverErrors} attempted={attempted} onChange={update} compact={compact} />
+  )
 
   return (
     <form noValidate onSubmit={onSave} className="flex flex-col gap-4">
@@ -384,317 +337,104 @@ export function SimpleEditor({
       )}
 
       <Section title={t('editor.section.match')}>
-        <QuickRequestFields
-          quick={quick!}
-          errors={{ url: errors.url, query: errors.query, priority: errors.priority }}
-          onChange={updateQuick}
-        />
-      </Section>
-
-      <Section title={t('editor.section.respond')}>
-        <FieldSet className="gap-2">
-          <FieldLegend variant="label" id={id('answer-label')}>
-            {t('editor.answer')}
-          </FieldLegend>
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            spacing={1}
-            aria-labelledby={id('answer-label')}
-            value={form.answer}
-            onValueChange={(v) => v && update({ answer: v as SimpleForm['answer'] }, ['status', 'body', 'fault', 'delay'])}
-            className="flex-wrap"
-          >
-            <ToggleGroupItem value="mock" className={ON}>
-              {t('editor.answer.mock')}
-            </ToggleGroupItem>
-            <ToggleGroupItem value="proxy" className={ON}>
-              {t('editor.answer.proxy')}
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </FieldSet>
-
-        {proxied ? (
-          <ProxySection
-            integration={integration}
-            endpoint={endpoint}
-            proxy={form.proxy}
-            errors={{ baseUrl: errors.proxyBaseUrl, stripPrefix: errors.proxyStripPrefix, headers: errors.proxyHeaders }}
-            onChange={updateProxy}
+        <QuickRequestFields quick={quick} errors={{ url: errors.url, query: errors.query, priority: errors.priority }} onChange={updateQuick} />
+        {several && (
+          <Conditions
+            quick={quick}
+            by={responses.by}
+            problems={attempted ? problems : {}}
+            onChange={setBy}
+            onAdd={addCondition}
+            onRemove={removeCondition}
           />
-        ) : (
-          <>
-            <FieldSet disabled={broken} className="gap-2">
-              <FieldLegend variant="label" id={id('status-label')}>
-                {t('editor.status')}
-              </FieldLegend>
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                size="sm"
-                spacing={1}
-                aria-labelledby={id('status-label')}
-                aria-describedby={described('status', timeout && id('timeout-hint'))}
-                disabled={broken}
-                value={form.preset}
-                onValueChange={onPreset}
-                className="flex-wrap"
-              >
-                {presets.map((preset) => (
-                  <ToggleGroupItem
-                    key={preset}
-                    value={preset}
-                    aria-label={`${t(PRESET_LABEL[preset])} ${presetToStatus(preset).status}`}
-                    className={cn('gap-1.5', ON)}
-                  >
-                    {t(PRESET_LABEL[preset])}
-                    <span aria-hidden className="font-mono text-[11px] opacity-60">
-                      {presetToStatus(preset).status}
-                    </span>
-                  </ToggleGroupItem>
-                ))}
-                {showCustom && (
-                  <ToggleGroupItem value="custom" aria-label={t(PRESET_LABEL.custom)} className={ON}>
-                    {t(PRESET_LABEL.custom)}
-                  </ToggleGroupItem>
-                )}
-              </ToggleGroup>
-              {timeout && (
-                <FieldDescription id={id('timeout-hint')} className="text-xs">
-                  {t('editor.timeoutHint')}
-                </FieldDescription>
-              )}
-              {form.preset === 'custom' && !broken && (
-                <Field data-invalid={Boolean(errors.status)} className="max-w-48">
-                  <FieldLabel htmlFor={id('custom')} className="sr-only">
-                    {t('editor.customStatus')}
-                  </FieldLabel>
-                  <Input
-                    id={id('custom')}
-                    type="number"
-                    inputMode="numeric"
-                    min={100}
-                    max={599}
-                    className="font-mono"
-                    value={customText}
-                    aria-invalid={Boolean(errors.status)}
-                    aria-describedby={described('status')}
-                    onChange={(e) => onCustom(e.target.value)}
-                  />
-                </Field>
-              )}
-              {fieldError('status')}
-            </FieldSet>
-
-            {quick && !broken && (
-              <Field data-invalid={Boolean(errors.headers)}>
-                <FieldLabel id={id('headers-label')}>{t('editor.quick.responseHeaders')}</FieldLabel>
-                <HeaderRows
-                  label={t('editor.quick.responseHeaders')}
-                  rows={quick.responseHeaders}
-                  invalid={Boolean(errors.headers)}
-                  describedBy={described('headers', id('headers-hint'))}
-                  onChange={(responseHeaders) => updateQuick({ responseHeaders }, ['headers', 'body'])}
-                />
-                <FieldDescription id={id('headers-hint')} className="text-xs">
-                  {form.binary ? t('editor.quick.headersBinaryHint', { type: form.binary.contentType }) : t('editor.quick.headersHint')}
-                </FieldDescription>
-                {fieldError('headers')}
-              </Field>
-            )}
-
-            <Field data-invalid={Boolean(errors.body)}>
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                {bodyLanguage ? (
-                  <span id={id('body-label')} className="text-sm font-medium">
-                    {t('editor.body')}
-                  </span>
-                ) : (
-                  <FieldLabel htmlFor={id('body')}>{t('editor.body')}</FieldLabel>
-                )}
-                <span className="flex flex-wrap items-center gap-2">
-                  {!broken && !bodyTouched && form.body !== '' && (
-                    <span className="text-xs text-muted-foreground">{t('editor.bodyFromExample', { status: exampleStatus })}</span>
-                  )}
-                  {!broken && !form.binary && <BodyFileButton onFile={onBodyFile} onError={setFileError} />}
-                </span>
-              </div>
-              {!broken && form.binary ? (
-                <div
-                  role="group"
-                  aria-label={t('editor.bodyFile.binary')}
-                  className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-surface-2 px-3 py-2.5"
-                >
-                  <FileIcon aria-hidden className="size-4 shrink-0 text-signal-fg" />
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">{t('editor.bodyFile.binary')}</span>
-                    <span dir="ltr" className="font-mono text-xs [overflow-wrap:anywhere]">
-                      {form.binary.name
-                        ? t('editor.bodyFile.binaryDetails', { name: form.binary.name, size: formatSize(form.binary.size), type: form.binary.contentType })
-                        : t('editor.bodyFile.binaryDetailsNoName', { size: formatSize(form.binary.size), type: form.binary.contentType })}
-                    </span>
-                  </div>
-                  <span className="flex items-center gap-1.5">
-                    <BodyFileButton label={t('editor.bodyFile.replace')} onFile={onBodyFile} onError={setFileError} />
-                    <Button type="button" variant="ghost" size="xs" onClick={() => update({ binary: null, body: '' }, ['body'])}>
-                      <Trash2Icon data-icon="inline-start" />
-                      {t('editor.bodyFile.remove')}
-                    </Button>
-                  </span>
-                </div>
-              ) : bodyLanguage ? (
-                <CodeEditor
-                  value={broken ? '' : form.body}
-                  language={bodyLanguage}
-                  label={t('editor.body')}
-                  readOnly={broken}
-                  invalid={Boolean(errors.body)}
-                  describedBy={described('body', broken && id('body-hint'))}
-                  maxHeight="28rem"
-                  onChange={(body) => {
-                    setBodyTouched(true)
-                    update({ body }, ['body'])
-                  }}
-                />
-              ) : (
-                <Textarea
-                  id={id('body')}
-                  dir="ltr"
-                  className="min-h-48 font-mono text-xs md:text-xs"
-                  spellCheck={false}
-                  disabled={broken}
-                  value={broken ? '' : form.body}
-                  aria-invalid={Boolean(errors.body)}
-                  aria-describedby={described('body', broken && id('body-hint'))}
-                  onChange={(e) => {
-                    setBodyTouched(true)
-                    update({ body: e.target.value }, ['body'])
-                  }}
-                />
-              )}
-              {broken && (
-                <FieldDescription id={id('body-hint')} className="text-xs">
-                  {t('editor.bodyDisabled')}
-                </FieldDescription>
-              )}
-              {fileError && (
-                <p role="alert" className="text-xs text-mismatch">
-                  {fileError}
-                </p>
-              )}
-              {fieldError('body')}
-            </Field>
-          </>
         )}
       </Section>
 
-      <Section title={t('editor.section.behaviour')}>
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field data-invalid={Boolean(errors.delay)}>
-            <div className="flex items-center gap-3">
-              <Switch
-                id={id('slow')}
-                checked={form.slow && !timeout}
-                disabled={timeout}
-                aria-describedby={timeout ? id('slow-hint') : undefined}
-                onCheckedChange={(slow) => update({ slow }, ['delay'])}
+      {!several ? (
+        mainFields(false)
+      ) : (
+        <Section title={t('responses.title', { count: responses.rows.length + (responses.fallbackOn ? 1 : 0) })}>
+          <ul aria-label={t('responses.listLabel')} className="flex flex-col gap-2">
+            {responses.rows.map((row) => (
+              <ResponseCard
+                key={row.key}
+                row={row}
+                by={responses.by}
+                request={quick}
+                open={open.has(row.key)}
+                problem={attempted && problems[row.key] ? t(PROBLEM[problems[row.key]!]!) : undefined}
+                attempted={attempted}
+                saved={stubOf(row.stubId)}
+                onToggle={() => toggle(row.key)}
+                onChange={(patch) => patchRow(row.key, patch)}
+                onRemove={() => removeRow(row.key)}
+                onTest={onTest}
               />
-              <FieldLabel htmlFor={id('slow')}>{t('editor.slow')}</FieldLabel>
-            </div>
-            {timeout && (
-              <FieldDescription id={id('slow-hint')} className="text-xs">
-                {t('editor.slowTimeout')}
-              </FieldDescription>
-            )}
-            {form.slow && !timeout && (
-              <div className="flex items-center gap-2">
-                <Input
-                  id={id('seconds')}
-                  type="number"
-                  inputMode="numeric"
-                  min={SLOW_MIN_SECONDS}
-                  max={SLOW_MAX_SECONDS}
-                  className="w-24 font-mono"
-                  aria-label={t('editor.slowSeconds')}
-                  aria-invalid={Boolean(errors.delay)}
-                  aria-describedby={described('delay', id('seconds-hint'))}
-                  value={Number.isNaN(form.delaySeconds) ? '' : form.delaySeconds}
-                  onChange={(e) => update({ delaySeconds: e.target.value === '' ? Number.NaN : Number(e.target.value) }, ['delay'])}
-                />
-                <span id={id('seconds-hint')} className="text-xs text-muted-foreground">
-                  s · {t('editor.slowRange')}
-                </span>
+            ))}
+            <li className="rounded-md border border-line bg-surface-2/40">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+                <button
+                  type="button"
+                  aria-expanded={responses.fallbackOn ? open.has('main') : undefined}
+                  disabled={!responses.fallbackOn}
+                  onClick={() => toggle('main')}
+                  className="flex items-center gap-1.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+                >
+                  {responses.fallbackOn &&
+                    (open.has('main') ? <ChevronDownIcon aria-hidden className="size-4" /> : <ChevronRightIcon aria-hidden className="size-4" />)}
+                  {t('responses.everyOther')}
+                </button>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  spacing={1}
+                  aria-label={t('responses.everyOther')}
+                  value={responses.fallbackOn ? 'on' : 'off'}
+                  onValueChange={(v) => v && setResponses((r) => ({ ...r, fallbackOn: v === 'on' }))}
+                >
+                  <ToggleGroupItem value="on" className={ON}>
+                    {t('responses.everyOtherOn')}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="off" className={ON}>
+                    {t('responses.everyOtherOff')}
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                {responses.fallbackOn && <Summary form={form} />}
+                <span className="flex-1" />
+                {responses.fallbackOn && onTest && <TestButton saved={savedMain} label={t('responses.everyOther')} onTest={onTest} />}
               </div>
-            )}
-            {fieldError('delay')}
-          </Field>
+              <p className="px-3 pb-2.5 text-xs text-muted-foreground">
+                {responses.fallbackOn ? t('responses.everyOtherHint') : t('responses.everyOtherOffHint')}
+              </p>
+              {responses.fallbackOn && open.has('main') && <div className="flex flex-col gap-4 border-t border-line p-4">{mainFields(true)}</div>}
+            </li>
+          </ul>
+        </Section>
+      )}
 
-          <Field data-invalid={Boolean(errors.fault)}>
-            <FieldLabel htmlFor={id('fault')}>{t('editor.fault')}</FieldLabel>
-            <Select
-              value={proxied ? NO_FAULT : form.fault || NO_FAULT}
-              disabled={proxied}
-              onValueChange={(v) => update({ fault: v === NO_FAULT ? '' : (v as SimpleForm['fault']) }, ['fault', 'status', 'body'])}>
-              <SelectTrigger
-                id={id('fault')}
-                className="w-full"
-                aria-invalid={Boolean(errors.fault)}
-                aria-describedby={described('fault', proxied && id('fault-hint'))}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_FAULT}>{t('editor.fault.none')}</SelectItem>
-                {FAULT_OPTIONS.map((fault) => (
-                  <SelectItem key={fault.value} value={fault.value}>
-                    {t(fault.label)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {proxied && (
-              <FieldDescription id={id('fault-hint')} className="text-xs">
-                {t('editor.proxy.noFault')}
-              </FieldDescription>
-            )}
-            {fieldError('fault')}
-          </Field>
-        </div>
-      </Section>
-
-      <Section title={t('editor.section.callback')}>
-        <WebhookSection
-          webhook={form.webhook}
-          errors={{
-            method: errors.webhookMethod,
-            url: errors.webhookUrl,
-            headers: errors.webhookHeaders,
-            body: errors.webhookBody,
-            delay: errors.webhookDelay,
-          }}
-          onChange={updateWebhook}
-        />
-      </Section>
-
-      <Section title={t('editor.section.scenario')}>
-        <ScenarioSection
-          scenario={form.scenario}
-          existing={scenarios.data ?? []}
-          selfId={mock?.id}
-          errors={{ name: errors.scenarioName, requiredState: errors.scenarioRequiredState, newState: errors.scenarioNewState }}
-          onChange={updateScenario}
-        />
-      </Section>
-
-      {growButton && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-dashed border-line px-3 py-2.5 text-xs">
-          <Button type="button" variant="outline" size="sm" onClick={growButton}>
-            <ListTreeIcon data-icon="inline-start" />
-            {t('groups.start')}
+      {form.scenario.enabled && !several ? (
+        <p className="rounded-md border border-dashed border-line px-3 py-2.5 text-xs text-muted-foreground">{t('responses.addScenario')}</p>
+      ) : (
+        <div className="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-line px-3 py-3 text-center">
+          <Button type="button" variant="outline" onClick={addResponse}>
+            <ListPlusIcon data-icon="inline-start" />
+            {t('responses.add')}
           </Button>
-          <span className="text-muted-foreground">{t('groups.startHint')}</span>
+          <span className="text-xs text-muted-foreground">{several ? t('responses.addMoreHint') : t('responses.addHint')}</span>
         </div>
+      )}
+
+      {!asGroup && (
+        <Section title={t('editor.section.scenario')}>
+          <ScenarioSection
+            scenario={form.scenario}
+            existing={scenarios.data ?? []}
+            selfId={mock?.id}
+            errors={{ name: errors.scenarioName, requiredState: errors.scenarioRequiredState, newState: errors.scenarioNewState }}
+            onChange={updateScenario}
+          />
+        </Section>
       )}
 
       <Section title={t('editor.section.label')}>
@@ -705,9 +445,9 @@ export function SimpleEditor({
           <Input
             id={id('name')}
             value={form.name}
-            placeholder={namePlaceholder}
+            placeholder={quickMockName(quick)}
             aria-invalid={Boolean(errors.name)}
-            aria-describedby={described('name')}
+            aria-describedby={errors.name ? id('name-error') : undefined}
             onChange={(e) => update({ name: e.target.value }, ['name'])}
           />
           {fieldError('name')}
@@ -715,8 +455,8 @@ export function SimpleEditor({
       </Section>
 
       <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-2 border-t border-line bg-canvas/85 px-1 py-3 backdrop-blur">
-        <Button type="button" variant="outline" disabled={previewMock.isPending || saving || blocked} onClick={() => void onPreview()}>
-          {previewMock.isPending && !saving ? <Spinner data-icon="inline-start" /> : <EyeIcon data-icon="inline-start" />}
+        <Button type="button" variant="outline" disabled={pending || saving || blocked} onClick={() => void onPreview()}>
+          {pending && !saving ? <Spinner data-icon="inline-start" /> : <EyeIcon data-icon="inline-start" />}
           {t('editor.preview')}
         </Button>
         <Button type="submit" disabled={saving || blocked}>
@@ -725,16 +465,14 @@ export function SimpleEditor({
         </Button>
       </div>
 
-      <Sheet open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
+      <Sheet open={preview !== null} onOpenChange={(o) => !o && setPreview(null)}>
         <SheetContent className="glass-panel flex w-full flex-col gap-0 sm:max-w-xl">
           <SheetHeader>
             <SheetTitle>{t('editor.previewTitle')}</SheetTitle>
-            <SheetDescription className="text-xs">{t('editor.previewDescription')}</SheetDescription>
+            <SheetDescription className="text-xs">{asGroup ? t('responses.previewDescription') : t('editor.previewDescription')}</SheetDescription>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
-            {preview && (
-              <CodeEditor value={JSON.stringify(preview, null, 2)} language="json" label={t('editor.previewTitle')} readOnly />
-            )}
+            {preview !== null && <CodeEditor value={JSON.stringify(preview, null, 2)} language="json" label={t('editor.previewTitle')} readOnly />}
           </div>
         </SheetContent>
       </Sheet>
@@ -742,11 +480,228 @@ export function SimpleEditor({
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** "Choose the response by": the conditions, each a place in the request (and its name). */
+function Conditions({
+  quick,
+  by,
+  problems,
+  onChange,
+  onAdd,
+  onRemove,
+}: {
+  quick: QuickRequest
+  by: GroupBy[]
+  problems: Record<string, string>
+  onChange: (by: GroupBy[]) => void
+  onAdd: () => void
+  onRemove: (i: number) => void
+}) {
+  const t = useT()
+  const ids = useId()
+  const vars = quick.urlType === 'template' ? templateVariables(quick.url) : []
+  const set = (i: number, patch: Partial<GroupBy>) => onChange(by.map((b, j) => (j === i ? { ...b, ...patch } : b)))
   return (
-    <section className="glow-border flex flex-col gap-4 rounded-md border border-line bg-surface p-4 sm:p-5">
-      <Eyebrow>{title}</Eyebrow>
-      <FieldGroup className="gap-5">{children}</FieldGroup>
-    </section>
+    <fieldset className="flex flex-col gap-3 rounded-md border border-signal/40 bg-signal/5 p-3">
+      <legend className="px-1 text-sm font-medium">{t('responses.chooseBy')}</legend>
+      <p className="text-xs text-muted-foreground">{t('responses.chooseByHint')}</p>
+      {by.map((b, i) => {
+        const problem = problems[`by:${i}`]
+        const nameId = `${ids}-name-${i}`
+        const errorId = `${ids}-error-${i}`
+        return (
+          <div key={i} className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={b.location}
+                onValueChange={(v) => {
+                  const location = v as KeyLocation
+                  set(i, { location, expression: location === 'path' ? (vars.at(-1) ?? '') : location === 'jsonPath' ? '$.' : '' })
+                }}
+              >
+                <SelectTrigger className="w-48" aria-label={t('responses.conditionWhere', { n: i + 1 })}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOCATIONS.map(([location, key]) => (
+                    <SelectItem key={location} value={location}>
+                      {t(key)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {b.location === 'path' && vars.length > 0 ? (
+                <Select value={vars.includes(b.expression) ? b.expression : ''} onValueChange={(v) => set(i, { expression: v })}>
+                  <SelectTrigger className="w-48 font-mono" aria-label={t('responses.conditionName', { n: i + 1 })} aria-invalid={Boolean(problem)} aria-describedby={problem ? errorId : undefined}>
+                    <SelectValue placeholder={t('responses.pickVariable')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vars.map((v) => (
+                      <SelectItem key={v} value={v} className="font-mono">
+                        {`{${v}}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id={nameId}
+                  dir="ltr"
+                  className="w-56 font-mono"
+                  aria-label={t('responses.conditionName', { n: i + 1 })}
+                  placeholder={t(b.location === 'jsonPath' ? 'responses.placeholder.jsonPath' : b.location === 'xPath' ? 'responses.placeholder.xPath' : b.location === 'header' ? 'responses.placeholder.header' : 'responses.placeholder.name')}
+                  value={b.expression}
+                  aria-invalid={Boolean(problem)}
+                  aria-describedby={problem ? errorId : undefined}
+                  onChange={(e) => set(i, { expression: e.target.value })}
+                />
+              )}
+              {by.length > 1 && (
+                <Button type="button" variant="ghost" size="icon-sm" aria-label={t('responses.removeCondition', { name: b.expression || String(i + 1) })} onClick={() => onRemove(i)}>
+                  <XIcon />
+                </Button>
+              )}
+            </div>
+            {problem && (
+              <p id={errorId} className="text-xs text-mismatch">
+                {t(PROBLEM[problem]!)}
+              </p>
+            )}
+          </div>
+        )
+      })}
+      {by.length < MAX_CONDITIONS && (
+        <Button type="button" variant="link" size="sm" className="h-auto self-start p-0 text-signal-fg" onClick={onAdd}>
+          <PlusIcon data-icon="inline-start" />
+          {t('responses.addCondition')}
+        </Button>
+      )}
+    </fieldset>
   )
 }
+
+/** One extra response: its values, a summary, Test, remove; open, its whole response. */
+function ResponseCard({
+  row,
+  by,
+  request,
+  open,
+  problem,
+  attempted,
+  saved,
+  onToggle,
+  onChange,
+  onRemove,
+  onTest,
+}: {
+  row: ResponseRow
+  by: GroupBy[]
+  request: QuickRequest
+  open: boolean
+  problem?: string
+  attempted: boolean
+  saved?: StubMapping
+  onToggle: () => void
+  onChange: (patch: Partial<ResponseRow>) => void
+  onRemove: () => void
+  onTest?: (stub: StubMapping) => void
+}) {
+  const t = useT()
+  const ids = useId()
+  const label = rowLabel(by, row.values) || t('responses.newResponse')
+  const hasErrors = attempted && Object.keys(responseClientErrors(t, row.form, true)).length > 0
+  return (
+    <li className={cn('rounded-md border bg-surface-2/40', problem || hasErrors ? 'border-mismatch/60' : 'border-line')}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-3 py-2.5">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={`${ids}-body`}
+          aria-label={t('responses.toggle', { values: label })}
+          onClick={onToggle}
+          className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {open ? <ChevronDownIcon aria-hidden className="size-4" /> : <ChevronRightIcon aria-hidden className="size-4" />}
+        </button>
+        <span className="text-sm">{t('responses.when')}</span>
+        {by.map((b, i) => (
+          <span key={i} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-sm text-muted-foreground">{t('responses.and')}</span>}
+            <label htmlFor={`${ids}-v${i}`} className="font-mono text-xs">
+              {conditionLabel(b) || '…'} =
+            </label>
+            <Input
+              id={`${ids}-v${i}`}
+              dir="ltr"
+              className="h-8 w-32 font-mono text-xs"
+              placeholder={t('responses.any')}
+              value={row.values[i] ?? ''}
+              aria-invalid={Boolean(problem)}
+              aria-describedby={problem ? `${ids}-problem` : undefined}
+              onChange={(e) => onChange({ values: row.values.map((v, j) => (j === i ? e.target.value : v)) })}
+            />
+          </span>
+        ))}
+        <span aria-hidden className="text-muted-foreground">
+          →
+        </span>
+        <Summary form={row.form} />
+        <span className="flex-1" />
+        {onTest && <TestButton saved={saved} label={label} onTest={onTest} />}
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={t('responses.remove', { values: label })} onClick={onRemove}>
+          <XIcon />
+        </Button>
+      </div>
+      {problem && (
+        <p id={`${ids}-problem`} className="px-3 pb-2 text-xs text-mismatch">
+          {problem}
+        </p>
+      )}
+      {open && (
+        <div id={`${ids}-body`} className="flex flex-col gap-4 border-t border-line p-4">
+          <ResponseFields
+            form={row.form}
+            request={request}
+            attempted={attempted}
+            compact
+            onChange={(patch) => onChange({ form: { ...row.form, ...patch } })}
+          />
+        </div>
+      )}
+    </li>
+  )
+}
+
+/** A response's status and the start of its body. */
+function Summary({ form }: { form: SimpleForm }) {
+  const t = useT()
+  const { status, text } = responseSummary(form)
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      {status !== null ? <StatusBadge status={status} /> : <span className="text-xs text-muted-foreground">{form.answer === 'proxy' ? t('responses.forwards') : t('responses.breaks')}</span>}
+      {text && (
+        <span dir="ltr" className="max-w-72 truncate font-mono text-xs text-muted-foreground">
+          {text}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** Test a saved response; a new one says to save first. */
+function TestButton({ saved, label, onTest }: { saved?: StubMapping; label: string; onTest: (stub: StubMapping) => void }) {
+  const t = useT()
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="xs"
+      aria-label={t('responses.test', { values: label })}
+      title={saved ? t('curl.savedHint') : t('responses.testUnsaved')}
+      onClick={() => (saved ? onTest(saved) : toast.info(t('responses.testUnsaved')))}
+    >
+      <FlaskConicalIcon data-icon="inline-start" />
+      {t('test.open')}
+    </Button>
+  )
+}
+

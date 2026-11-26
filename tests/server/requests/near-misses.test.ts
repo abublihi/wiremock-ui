@@ -41,7 +41,7 @@ test('an unmatched request explains the closest stub field by field', async () =
   const [first] = misses
   expect(first.stub).toMatchObject({ owner: 'ui-admin', name: 'Citizen' })
   // The value this request has where the mock looks: what "Add a response for 999" fills in.
-  expect(first.group).toMatchObject({ by: { location: 'jsonPath', expression: '$.idNo' }, keyValue: '999' })
+  expect(first.group).toMatchObject({ by: [{ location: 'jsonPath', expression: '$.idNo' }], keyValues: ['999'] })
   expect(first.diffs.find((d) => d.field === 'method')).toMatchObject({ matched: true })
   expect(first.diffs.find((d) => d.field === 'urlPath')).toMatchObject({ matched: true })
   expect(first.diffs.find((d) => d.field === 'body')).toEqual({

@@ -50,7 +50,7 @@ Saving a mock checks it, pushes it into WireMock, then stores it; WireMock refus
 
 Good for one-offs, and for catch-alls such as `ANY` `/api/.*` with priority 10 so more specific mocks win.
 
-**Several responses by value.** **Add a response for another value** turns the mock into one mock with a response per value (`id` `42`, `id` `404`, any other `id`). See [Tags and several responses](tags.md).
+**Several responses by value.** **Add a response for some requests** (under the response) adds a response for some values (`id` `42`, `id` `404`); the first response keeps answering every other request. Each added response has the full response form and its own **Test**. See [Tags and several responses](tags.md).
 
 **Advanced.** Open a mock and switch to **Advanced**, or **New mock** → **Start from blank JSON** (**Use the form** goes back). The **Server fields** box shows what the UI manages for you (id, owner, version, who changed it last). When a mock uses options Simple mode cannot show, Simple mode says so and links to Advanced.
 

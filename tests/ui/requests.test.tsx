@@ -282,7 +282,7 @@ const misses = [
 const endpointMisses = [
   {
     stub: { id: 'stub-p1', name: 'Refund — p-1', owner: 'omar' },
-    group: { id: 'g-refund', by: { location: 'path', expression: 'paymentId' }, keyValue: 'p-2' },
+    group: { id: 'g-refund', by: [{ location: 'path', expression: 'paymentId' }], keyValues: ['p-2'] },
     distance: 0.05,
     diffs: [{ field: 'pathParam.paymentId', expected: 'equalTo p-1', actual: 'p-2', matched: false }],
   },
@@ -346,7 +346,7 @@ describe('request drawer', () => {
     await renderApp(<Harness initial={{ open: 'b' }} />)
     const card = await screen.findByRole('article', { name: 'Refund — p-1' })
     const add = within(card).getByRole('link', { name: 'Add a response for p-2' })
-    expect(add.getAttribute('href')).toBe('/mocks/stub-p1?add=p-2')
+    expect(add.getAttribute('href')).toBe('/mocks/stub-p1?add=%5B%22p-2%22%5D')
     // A mock with one response has nothing to add to.
     const other = screen.getByRole('article', { name: 'Refund ok' })
     expect(within(other).queryByRole('link', { name: /Add a response for/ })).toBeNull()

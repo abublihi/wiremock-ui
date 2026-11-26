@@ -5,9 +5,7 @@ import { toast } from 'sonner'
 import { AlertCircleIcon, ArrowLeftRightIcon, BracesIcon, WorkflowIcon } from 'lucide-react'
 import type { StubMapping } from '@/server/wiremock/types'
 import { apiFetch } from '@/ui/api/client'
-import { queryKeys, useMocks, useRequest, useSaveMockGroup, useUpdateMock } from '@/ui/api/queries'
-import { type GroupForm, byLabel, groupInput } from '@/ui/lib/groups'
-import { GroupEditor } from './GroupEditor'
+import { queryKeys, useMocks, useRequest, useUpdateMock } from '@/ui/api/queries'
 import { Alert, AlertDescription, AlertTitle } from '@/ui/components/ui/alert'
 import { Button } from '@/ui/components/ui/button'
 import { Checkbox } from '@/ui/components/ui/checkbox'
@@ -47,9 +45,6 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
   // The state the new step answers in, as the Simple form has it now (editable there).
   const [target, setTarget] = useState(seed?.requiredState ?? '')
   const [linkLast, setLinkLast] = useState(true)
-  /** The quick mock growing into one with several responses (not saved yet). */
-  const [growing, setGrowing] = useState<GroupForm | null>(null)
-  const saveGroup = useSaveMockGroup()
   // Before saving, the new step's request is not known yet: offer the move when some mock answers in the last state.
   // The save then moves only those matching the same request.
   const scenarioMocks = useMocks({ scenario: seed?.name }, { enabled: Boolean(seed && after) })
@@ -126,25 +121,9 @@ export function NewMockPage({ search, onSearchChange: setSearch }: { search: New
     )
   }
 
-  if (growing) {
-    return (
-      <EditorShell title={t('editor.newTitle')} caption={t('groups.editCaption', { count: growing.rows.length + (growing.fallback.on ? 1 : 0), by: byLabel(growing.by) })}>
-        <GroupEditor
-          initial={growing}
-          cancelLabel={t('groups.backToOne')}
-          onCancel={() => setGrowing(null)}
-          onSave={async (form) => {
-            const stubs = await saveGroup.mutateAsync({ input: groupInput(form) })
-            await navigate({ to: '/mocks/$id', params: { id: stubs[0]!.id } })
-            return stubs
-          }}
-        />
-      </EditorShell>
-    )
-  }
   return (
     <EditorShell title={t('editor.newTitle')} caption={t('editor.quickCaption')} actions={toJson} notice={notice}>
-      <MockEditor key="url" quick scenarioSeed={seed} onFormChange={seed ? onFormChange : undefined} onSaved={open} onAddResponse={setGrowing} />
+      <MockEditor key="url" quick scenarioSeed={seed} onFormChange={seed ? onFormChange : undefined} onSaved={open} />
     </EditorShell>
   )
 }
