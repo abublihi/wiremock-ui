@@ -322,9 +322,23 @@ export function SimpleEditor({
   const savedMain = several ? stubOf(responses.fallbackStubId) : undefined
   const pending = previewMock.isPending || previewGroup.isPending
 
-  const mainFields = (compact: boolean) => (
-    <ResponseFields form={form} request={quick} serverErrors={serverErrors} attempted={attempted} onChange={update} compact={compact} />
+  const mainFields = (
+    <ResponseFields form={form} request={quick} serverErrors={serverErrors} attempted={attempted} onChange={update} compact />
   )
+
+  // Under the last response: a scenario step keeps one response, any other mock can add one.
+  const addButton =
+    form.scenario.enabled && !several ? (
+      <p className="rounded-md border border-dashed border-line px-3 py-2.5 text-xs text-muted-foreground">{t('responses.addScenario')}</p>
+    ) : (
+      <div className="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-line px-3 py-3 text-center">
+        <Button type="button" variant="outline" onClick={addResponse}>
+          <ListPlusIcon data-icon="inline-start" />
+          {t('responses.add')}
+        </Button>
+        <span className="text-xs text-muted-foreground">{several ? t('responses.addMoreHint') : t('responses.addHint')}</span>
+      </div>
+    )
 
   return (
     <form noValidate onSubmit={onSave} className="flex flex-col gap-4">
@@ -351,7 +365,11 @@ export function SimpleEditor({
       </Section>
 
       {!several ? (
-        mainFields(false)
+        // One box for the whole response (what it answers, its behaviour, its call back), like a response card.
+        <section aria-label={t('editor.section.respond')} className="glow-border flex flex-col gap-4 rounded-md border border-line bg-surface p-4 sm:p-5">
+          {mainFields}
+          {addButton}
+        </section>
       ) : (
         <Section title={t('responses.title', { count: responses.rows.length + (responses.fallbackOn ? 1 : 0) })}>
           <ul aria-label={t('responses.listLabel')} className="flex flex-col gap-2">
@@ -407,22 +425,11 @@ export function SimpleEditor({
               <p className="px-3 pb-2.5 text-xs text-muted-foreground">
                 {responses.fallbackOn ? t('responses.everyOtherHint') : t('responses.everyOtherOffHint')}
               </p>
-              {responses.fallbackOn && open.has('main') && <div className="flex flex-col gap-4 border-t border-line p-4">{mainFields(true)}</div>}
+              {responses.fallbackOn && open.has('main') && <div className="flex flex-col gap-4 border-t border-line p-4">{mainFields}</div>}
             </li>
           </ul>
+          {addButton}
         </Section>
-      )}
-
-      {form.scenario.enabled && !several ? (
-        <p className="rounded-md border border-dashed border-line px-3 py-2.5 text-xs text-muted-foreground">{t('responses.addScenario')}</p>
-      ) : (
-        <div className="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-line px-3 py-3 text-center">
-          <Button type="button" variant="outline" onClick={addResponse}>
-            <ListPlusIcon data-icon="inline-start" />
-            {t('responses.add')}
-          </Button>
-          <span className="text-xs text-muted-foreground">{several ? t('responses.addMoreHint') : t('responses.addHint')}</span>
-        </div>
       )}
 
       {!asGroup && (
